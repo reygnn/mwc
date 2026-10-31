@@ -4,6 +4,14 @@ PREFIX ?= /usr/local
 PKG_CONFIG ?= pkg-config
 PKGS = wlroots-0.19 wayland-server xkbcommon pixman-1 cairo pangocairo
 
+ifeq ($(filter clean uninstall,$(MAKECMDGOALS)),)
+MISSING := $(foreach p,$(PKGS) wayland-protocols wayland-scanner,\
+	$(if $(shell $(PKG_CONFIG) --exists $(p) && echo ok),,$(p)))
+ifneq ($(strip $(MISSING)),)
+$(error Missing build dependencies: $(strip $(MISSING)) -- see README.md for the apt install line)
+endif
+endif
+
 WAYLAND_PROTOCOLS = $(shell $(PKG_CONFIG) --variable=pkgdatadir wayland-protocols)
 WAYLAND_SCANNER = $(shell $(PKG_CONFIG) --variable=wayland_scanner wayland-scanner)
 
