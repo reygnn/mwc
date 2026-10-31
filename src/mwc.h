@@ -1,0 +1,355 @@
+/*
+ * mwc - a Motif-style Wayland compositor
+ *
+ * Shared types. The compositor follows the structure of wlroots' tinywl:
+ * one global server struct, listeners embedded in the objects they belong
+ * to, and the wlr_scene graph doing all the actual rendering.
+ */
+#ifndef MWC_H
+#define MWC_H
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <cairo.h>
+#include <wayland-server-core.h>
+#include <wlr/types/wlr_buffer.h>
+#include <wlr/types/wlr_scene.h>
+#include <wlr/util/box.h>
+#include <wlr/util/edges.h>
+
+struct wlr_xdg_toplevel;
+struct wlr_xwayland_surface;
+
+/* ---- theme ------------------------------------------------------------ */
+
+struct mwc_color {
+	float r, g, b;
+};
+
+/* A Motif "3D colour set": background plus the two derived shadow colours. */
+struct mwc_shade {
+	struct mwc_color bg, top, bottom, fg;
+};
+
+struct mwc_theme {
+	struct mwc_shade active, inactive, menu, icon;
+	struct mwc_color select; /* menu item armed background */
+	struct mwc_color root;   /* desktop background */
+	const char *font;        /* pango font description */
+	int border;              /* resize border width */
+	int title_height;        /* title bar height */
+	int bevel;               /* shadow thickness */
+};
+
+extern struct mwc_theme theme;
+
+void theme_init(void);
+void set_source(cairo_t *cr, struct mwc_color c);
+/* Raised (in == false) or sunken (in == true) Motif bevel. */
+void draw_bevel(cairo_t *cr, double x, double y, double w, double h,
+	int thickness, const struct mwc_shade *s, bool in);
+/* Etched-in groove line, as used for separators and resize corners. */
+void draw_groove_h(cairo_t *cr, double x, double y, double w,
+	const struct mwc_shade *s);
+void draw_groove_v(cairo_t *cr, double x, double y, double h,
+	const struct mwc_shade *s);
+void draw_text(cairo_t *cr, const char *text, const char *font,
+	struct mwc_color color, double x, double y, double w, double h,
+	bool center);
+
+/* ---- cairo-backed wlr_buffer --------------------------------------------- */
+
+struct cairo_buffer {
+	struct wlr_buffer base;
+	cairo_surface_t *surface;
+	cairo_t *cr;
+};
+
+struct cairo_buffer *cairo_buffer_create(int width, int height);
+/* Drops our reference; the scene keeps the buffer alive while shown. */
+void cairo_buffer_drop(struct cairo_buffer *buf);
+
+/* ---- views -------------------------------------------------------------- */
+
+enum view_type {
+	VIEW_XDG,
+	VIEW_XWAYLAND,
+};
+
+/* Frame regions, used for hit testing, cursor shapes and button state. */
+enum frame_part {
+	PART_NONE = 0,
+	PART_CLIENT,
+	PART_TITLE,
+	PART_MENU_BUTTON,
+	PART_MINIMIZE_BUTTON,
+	PART_MAXIMIZE_BUTTON,
+	PART_RESIZE, /* see resize edges */
+};
+
+struct view {
+	struct wl_list link; /* server.views, front to back */
+	struct server *server;
+	enum view_type type;
+	union {
+		struct wlr_xdg_toplevel *xdg_toplevel;
+		struct wlr_xwayland_surface *xsurface;
+	};
+
+	struct wlr_scene_tree *tree;         /* whole window incl. frame */
+	struct wlr_scene_tree *content_tree; /* the client's surfaces */
+	struct wlr_scene_buffer *frame_node;
+	struct wlr_scene_buffer *icon_node;  /* shown while minimized */
+
+	/* Frame geometry: x/y is the outer top-left corner in layout coords,
+	 * width/height the client size. */
+	int x, y, width, height;
+	bool mapped;
+	bool placed;    /* position chosen by the client, skip cascading */
+	bool ssd;       /* client accepted server-side decorations */
+	bool decorated; /* frame currently drawn: ssd && !fullscreen */
+	void *deco;     /* xdg-decoration object, if any */
+	bool activated;
+	bool maximized;
+	bool minimized;
+	bool fullscreen;
+	struct wlr_box saved;  /* geometry before maximize/fullscreen */
+	int icon_x, icon_y;
+	bool icon_placed;
+
+	enum frame_part pressed; /* button currently held down, for drawing */
+	bool pressed_inside;
+
+	struct wl_listener map;
+	struct wl_listener unmap;
+	struct wl_listener commit;
+	struct wl_listener destroy;
+	struct wl_listener request_move;
+	struct wl_listener request_resize;
+	struct wl_listener request_maximize;
+	struct wl_listener request_minimize;
+	struct wl_listener request_fullscreen;
+	struct wl_listener request_show_window_menu;
+	struct wl_listener set_title;
+	/* xwayland only */
+	struct wl_listener associate;
+	struct wl_listener dissociate;
+	struct wl_listener request_configure;
+	struct wl_listener request_activate;
+	struct wl_listener set_decorations;
+};
+
+/* Unmanaged XWayland windows: override-redirect menus, tooltips, DnD icons. */
+struct unmanaged {
+	struct wl_list link;
+	struct server *server;
+	struct wlr_xwayland_surface *xsurface;
+	struct wlr_scene_tree *tree;
+	struct wl_listener associate;
+	struct wl_listener dissociate;
+	struct wl_listener map;
+	struct wl_listener unmap;
+	struct wl_listener destroy;
+	struct wl_listener request_configure;
+	struct wl_listener set_geometry;
+};
+
+/* ---- menus -------------------------------------------------------------- */
+
+enum menu_action {
+	ACT_NONE,
+	ACT_RESTORE,
+	ACT_MOVE,
+	ACT_SIZE,
+	ACT_MINIMIZE,
+	ACT_MAXIMIZE,
+	ACT_LOWER,
+	ACT_CLOSE,
+	ACT_NEW_WINDOW,
+	ACT_SHUFFLE_UP,
+	ACT_SHUFFLE_DOWN,
+	ACT_QUIT,
+};
+
+struct menu_item {
+	const char *label;     /* NULL means separator */
+	char mnemonic;         /* underlined letter, 0 for none */
+	const char *accel;     /* right-aligned accelerator text */
+	enum menu_action action;
+	bool sensitive;
+};
+
+#define MENU_MAX_ITEMS 16
+
+struct menu {
+	bool open;
+	const char *title;
+	struct menu_item items[MENU_MAX_ITEMS];
+	int n_items;
+	int armed;              /* highlighted item, -1 for none */
+	struct view *target;    /* window menu: the window it acts on */
+	struct wlr_scene_buffer *node;
+	int x, y, width, height;
+	int item_y[MENU_MAX_ITEMS], item_h[MENU_MAX_ITEMS];
+	uint32_t opened_msec;
+};
+
+/* ---- server ------------------------------------------------------------- */
+
+enum cursor_mode {
+	CURSOR_PASSTHROUGH,
+	CURSOR_MOVE,
+	CURSOR_RESIZE,
+	CURSOR_BUTTON, /* a frame button is held down */
+	CURSOR_MENU,   /* a menu has the pointer grab */
+};
+
+struct server {
+	struct wl_display *display;
+	struct wl_event_loop *event_loop;
+	struct wlr_backend *backend;
+	struct wlr_session *session;
+	struct wlr_renderer *renderer;
+	struct wlr_allocator *allocator;
+	struct wlr_compositor *compositor;
+	struct wlr_scene *scene;
+	struct wlr_scene_output_layout *scene_layout;
+
+	/* Stacking layers, bottom to top. */
+	struct wlr_scene_tree *layer_bg;
+	struct wlr_scene_tree *layer_icons;
+	struct wlr_scene_tree *layer_views;
+	struct wlr_scene_tree *layer_unmanaged;
+	struct wlr_scene_tree *layer_menu;
+
+	struct wlr_xdg_shell *xdg_shell;
+	struct wl_listener new_xdg_toplevel;
+	struct wl_listener new_xdg_popup;
+	struct wl_listener new_xdg_decoration;
+	struct wl_listener new_server_decoration;
+	struct wl_list views;
+	struct wl_list unmanaged;
+
+	struct wlr_xwayland *xwayland;
+	struct wl_listener xwayland_ready;
+	struct wl_listener new_xwayland_surface;
+
+	struct wlr_cursor *cursor;
+	struct wlr_xcursor_manager *cursor_mgr;
+	struct wl_listener cursor_motion;
+	struct wl_listener cursor_motion_absolute;
+	struct wl_listener cursor_button;
+	struct wl_listener cursor_axis;
+	struct wl_listener cursor_frame;
+	const char *cursor_name;
+
+	struct wlr_seat *seat;
+	struct wl_listener new_input;
+	struct wl_listener request_cursor;
+	struct wl_listener request_set_selection;
+	struct wl_listener request_set_primary_selection;
+	struct wl_list keyboards;
+
+	enum cursor_mode cursor_mode;
+	struct view *grabbed_view;
+	double grab_x, grab_y;
+	struct wlr_box grab_geobox;
+	uint32_t resize_edges;
+	bool grab_until_click; /* move/size started from menu or keyboard */
+	enum frame_part grab_part;
+
+	/* Double-click detection */
+	uint32_t last_click_msec;
+	struct view *last_click_view;
+	enum frame_part last_click_part;
+
+	struct menu menu;
+
+	struct wlr_output_layout *output_layout;
+	struct wl_list outputs;
+	struct wl_listener new_output;
+	struct wl_listener layout_change;
+
+	int cascade;
+	const char *terminal;
+};
+
+struct output {
+	struct wl_list link;
+	struct server *server;
+	struct wlr_output *wlr_output;
+	struct wlr_scene_rect *background;
+	struct wl_listener frame;
+	struct wl_listener request_state;
+	struct wl_listener destroy;
+};
+
+/* ---- view.c ------------------------------------------------------------- */
+
+void xdg_init(struct server *server);
+void view_focus(struct view *view);
+void view_set_position(struct view *view, int x, int y);
+void view_set_geometry(struct view *view, int x, int y, int w, int h);
+void view_close(struct view *view);
+void view_lower(struct view *view);
+void view_set_maximized(struct view *view, bool maximized);
+void view_set_fullscreen(struct view *view, bool fullscreen);
+void view_minimize(struct view *view);
+void view_restore(struct view *view);
+void view_begin_interactive(struct view *view, enum cursor_mode mode,
+	uint32_t edges, bool until_click);
+void view_update_title(struct view *view);
+const char *view_title(struct view *view);
+const char *view_app_id(struct view *view);
+struct wlr_surface *view_surface(struct view *view);
+void view_cycle(struct server *server, bool backwards);
+/* Common setup after the type-specific part has filled in the client. */
+void view_init_common(struct view *view);
+void view_handle_map(struct view *view);
+void view_handle_unmap(struct view *view);
+void view_handle_destroy(struct view *view);
+void view_send_size(struct view *view, int w, int h);
+void view_set_activated(struct view *view, bool activated);
+struct view *view_at(struct server *server, double lx, double ly,
+	struct wlr_surface **surface, double *sx, double *sy,
+	enum frame_part *part, uint32_t *edges, bool *on_icon);
+struct wlr_box output_usable_area(struct server *server, double lx, double ly);
+
+/* ---- xwayland.c --------------------------------------------------------- */
+
+void xwayland_init(struct server *server);
+
+/* ---- frame.c ------------------------------------------------------------ */
+
+int frame_left(struct view *view);
+int frame_top(struct view *view);
+int frame_extra_w(struct view *view);
+int frame_extra_h(struct view *view);
+void frame_render(struct view *view);
+enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges);
+void icon_render(struct view *view);
+void icons_arrange(struct server *server);
+#define ICON_W 72
+#define ICON_H 72
+
+/* ---- menu.c ------------------------------------------------------------- */
+
+void menu_open_window(struct server *server, struct view *view, int x, int y);
+void menu_open_root(struct server *server, int x, int y);
+void menu_close(struct server *server);
+void menu_motion(struct server *server, double lx, double ly);
+/* Returns true when the event was consumed by the menu. */
+bool menu_button(struct server *server, double lx, double ly, bool pressed,
+	uint32_t time_msec);
+bool menu_key(struct server *server, uint32_t keysym);
+void run_action(struct server *server, enum menu_action action,
+	struct view *view);
+
+/* ---- input.c ------------------------------------------------------------ */
+
+void input_init(struct server *server);
+void cursor_set_name(struct server *server, const char *name);
+void process_cursor_motion(struct server *server, uint32_t time);
+void spawn(const char *cmd);
+
+#endif
