@@ -690,6 +690,13 @@ static bool handle_press(struct server *server, uint32_t button,
 				struct view *one = tabs_nth(view, tab);
 				server->grab_take = one ? one : view;
 				server->grab_outline = true;
+				/* The outline shows what it will be on its own. */
+				int own_w, own_h;
+				tabs_own_size(server->grab_take, &own_w, &own_h);
+				if (own_w) {
+					server->grab_target.width = own_w;
+					server->grab_target.height = own_h;
+				}
 			} else if (button == BTN_MIDDLE) {
 				view_lower(view);
 			} else if (tab >= 0) {

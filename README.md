@@ -272,7 +272,8 @@ unfocused colour, so it stays recognisable.
 | Middle drag, or Ctrl+left drag | Take just that window: dropped on another window it joins it, on the desktop it goes there on its own |
 | Middle click | Lower |
 
-The window menu offers the same. A group takes one cell in the tiling layout and leaves
+A window taken out gets its own size back, as does the last one left. The window menu
+offers the same. A group takes one cell in the tiling layout and leaves
 one icon when minimized, and everything else also treats it as one window: Alt+Tab
 counts it once, and maximized, snapped and tiled carry over from tab to tab. A dialog of
 a hidden tab brings that tab to the front.

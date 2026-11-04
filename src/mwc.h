@@ -196,6 +196,7 @@ struct view {
 	struct tab_group *group; /* NULL when alone; see tabs.c */
 	struct wl_list tab_link; /* tab_group.members */
 	bool tab_hidden;         /* in a group, and not the one shown */
+	int tab_own_w, tab_own_h; /* the size it had before; 0: its own to choose */
 	void *deco;     /* xdg-decoration object, if any */
 	bool activated;
 	bool maximized;
@@ -610,6 +611,8 @@ void tabs_view_changed(struct view *view);
 void tabs_sync_sizes(struct view *view);
 void tabs_after_restore(struct view *view);
 int tabs_index(struct view *view); /* -1 when alone */
+/* The size it goes back to on leaving its group, or as it is when alone. */
+void tabs_own_size(struct view *view, int *w, int *h);
 
 /* ---- menu.c ------------------------------------------------------------- */
 

@@ -209,6 +209,111 @@ shown "a shown one dies" b
 alone "and the other carries on" b
 stop b
 
+# ---- each to its own size again -----------------------------------------------------------
+
+size_is() { check "$1" "[ \"\$(get $2 w)\" = $3 ] && [ \"\$(get $2 h)\" = $4 ]"; }
+x11 own1 size=400x300
+x11 own2 size=300x200
+do_input key super+g
+size_is "in the group, the size of the group" own2 400 300
+do_input key super+shift+g
+alone "out of the group" own2
+size_is "taken out, its own size again" own2 300 200
+size_is "the other keeps its own" own1 400 300
+stop own1
+stop own2
+
+x11 keep1 size=400x300
+x11 keep2 size=300x200
+do_input key super+g
+do_input key super+Tab
+shown "the other tab" keep1
+do_input key super+shift+g
+alone "that one taken out" keep1
+size_is "it has its size" keep1 400 300
+alone "and the group is over" keep2
+size_is "the one left over has its own size again as well" keep2 300 200
+stop keep1
+stop keep2
+
+x11 cl1 size=400x300
+x11 cl2 size=300x200
+do_input key super+g
+do_input key super+Tab
+shown "the first tab" cl1
+do_input key alt+F4
+alone "the first one closes" cl2
+size_is "the one left over has its own size" cl2 300 200
+stop cl2
+
+wayland w1 size=400x300
+wayland w2 size=250x150
+do_input key super+g
+size_is "a Wayland client in a group" w2 400 300
+do_input key super+shift+g
+size_is "and out of it, the size it was" w2 250 150
+stop w1
+stop w2
+
+# Whatever state it was in before: it is the floating size that counts.
+x11 mx1 size=300x200
+do_input key alt+F10
+check "maximized" "[ \"\$(get mx1 max)\" = 1 ]"
+x11 mx2 size=250x150
+do_input key super+g
+check "a group that fills the screen" "[ \"\$(get mx2 max)\" = 1 ]"
+do_input key super+shift+g
+size_is "taken out of it, its own size" mx2 250 150
+check "the other is still maximized" "[ \"\$(get mx1 max)\" = 1 ]"
+do_input key alt+Tab
+shown "the other one" mx1
+do_input key alt+F10
+size_is "and un-maximized, its own size" mx1 300 200
+stop mx1
+stop mx2
+
+x11 mj1 size=400x300
+x11 mj2 size=250x150
+do_input key alt+F10
+check "maximized before it joins" "[ \"\$(get mj2 max)\" = 1 ]"
+do_input key super+g
+size_is "in the group of a floating one" mj2 400 300
+do_input key super+shift+g
+size_is "and out again, the size it had before maximizing" mj2 250 150
+stop mj1
+stop mj2
+
+# The last one left in a state: what it goes back to is its own size, not that of the other.
+x11 ms1 size=400x300
+do_input key alt+F10
+x11 ms2 size=250x150
+do_input key super+g
+do_input key super+Tab
+shown "the first of a maximized group" ms1
+do_input key super+shift+g
+alone "taken out" ms1
+alone "the group is over" ms2
+check "the other is still maximized" "[ \"\$(get ms2 max)\" = 1 ]"
+do_input key alt+Tab
+shown "the other one" ms2
+do_input key alt+F10
+size_is "and un-maximized, its own size" ms2 250 150
+stop ms1
+stop ms2
+
+# A window larger than its group is placed by the size it is about to have, so it fits.
+for i in 1 2 3 4 5; do x11 "pad$i" size=100x60; done
+x11 tiny size=200x100
+x11 large size=1200x640
+do_input key super+g
+size_is "in a small group" large 200 100
+do_input key super+shift+g
+size_is "out of it, large again" large 1200 640
+check "and on the screen" "[ \$((\$(get large x) + 1200 + 2 * B)) -le 1280 ] && [ \$((\$(get large y) + 640 + 2 * B + T)) -le 720 ]"
+stop large
+stop tiny
+for i in 1 2 3 4 5; do stop "pad$i"; done
+
 # ---- who can't be in a group ---------------------------------------------------------------
 
 wayland a size=400x300
@@ -548,6 +653,24 @@ alone "the group is over" t2
 check "the first went where it was dropped" "[ \"\$(get t1 x)\" = 700 ] && [ \"\$(get t1 y)\" = $((100 + 400 - T / 2)) ]"
 check "the other one stayed" "[ \"\$(get t2 x)\" = 100 ] && [ \"\$(get t2 y)\" = 100 ]"
 shown "the taken one has the focus" t1
+
+# The outline shows the size it will have on its own.
+x11 ob1 pos=500,20 size=500x150
+x11 ob2 size=200x100
+do_input key super+g
+shown "a small window in a larger group" ob2
+sleep 0.5
+OTX=$((500 + B + T)) OTY=$((20 + B)) OTW=$(((500 - 3 * T) / 2))
+do_input move $((OTX + OTW + 10)) $((OTY + T / 2))
+do_input down middle
+do_input move 1100 300
+check "its outline has its own size" "[ \"\$(global outline w)\" = $((200 + 2 * B)) ] && [ \"\$(global outline h)\" = $((100 + 2 * B + T)) ]"
+do_input up middle
+check "and that is what it gets" "[ \"\$(get ob2 w)\" = 200 ] && [ \"\$(get ob2 h)\" = 100 ]"
+alone "on its own" ob2
+stop ob1
+stop ob2
+sleep 0.5
 
 # Ctrl+left does the same, for touchpads.
 sleep 0.5

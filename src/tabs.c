@@ -164,6 +164,41 @@ static struct view *neighbour(struct view *view)
 	return v;
 }
 
+/* A group takes the size of the window it began with, and only a window that floats has
+ * its real size at hand: otherwise it is what it goes back to. */
+static void remember_own_size(struct view *view)
+{
+	if (view->maximized || view->snap != SNAP_NONE || view->tiled) {
+		view->tab_own_w = view->saved.width;
+		view->tab_own_h = view->saved.height;
+	} else {
+		asked_size(view, &view->tab_own_w, &view->tab_own_h);
+	}
+}
+
+void tabs_own_size(struct view *view, int *w, int *h)
+{
+	*w = view->group ? view->tab_own_w : view->width;
+	*h = view->group ? view->tab_own_h : view->height;
+}
+
+/* Out of a group, with no one to share with. In a state, it is what it goes back to. */
+static void back_to_own_size(struct view *view)
+{
+	int w = view->tab_own_w, h = view->tab_own_h;
+	if (view->maximized || view->snap != SNAP_NONE || view->tiled) {
+		view->saved.width = w;
+		view->saved.height = h;
+		return;
+	}
+	/* A size of 0 means the client chooses, which X doesn't know. */
+	if (!w && view->type != VIEW_XDG)
+		return;
+	if (w)
+		view_apply_size_hints(view, &w, &h, false);
+	view_send_size(view, w, h);
+}
+
 /* Out of the list, which ends the group when one is left. It has been hidden by now. */
 static void remove_member(struct view *view)
 {
@@ -179,6 +214,7 @@ static void remove_member(struct view *view)
 	last->group = NULL;
 	last->tab_hidden = false;
 	free(g);
+	back_to_own_size(last);
 	frame_render(last);
 }
 
@@ -221,9 +257,11 @@ bool tabs_join(struct view *view, struct view *target)
 		target = target->group->shown;
 	if (view->group)
 		tabs_detach(view);
+	remember_own_size(view);
 
 	struct tab_group *g = target->group;
 	if (!g) {
+		remember_own_size(target);
 		g = calloc(1, sizeof(*g));
 		wl_list_init(&g->members);
 		wl_list_insert(&g->members, &target->tab_link);
@@ -279,7 +317,16 @@ void tabs_detach(struct view *view)
 	view_show_content(view);
 	dialogs_show(view, true);
 	view->tile_seq = --server->tile_front;
+	back_to_own_size(view);
+	/* It is placed by the size it is about to have. */
+	int width = view->width, height = view->height;
+	if (view->tab_own_w) {
+		view->width = view->tab_own_w;
+		view->height = view->tab_own_h;
+	}
 	view_place(view);
+	view->width = width;
+	view->height = height;
 	frame_render(view);
 	view_focus(view);
 	tile_arrange(server);

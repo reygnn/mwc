@@ -86,6 +86,13 @@ Sizes can still differ, as `xterm` resizes in character steps. The frame follows
 shown client's real size, as tiling does today through `view_apply_tile()`, anchored at
 the top left.
 
+### Leaving a group
+
+Each window remembers the size it had before it joined, or the floating size it would go
+back to, if it was maximized, snapped or tiled. It gets that back when it is taken out,
+and so does the last one left when a group ends. A window in a state keeps the state,
+with that size to go back to.
+
 ## Who can be in a group
 
 A window can join if it is mapped, `WT_NORMAL`, without a parent, not fullscreen, not
