@@ -332,6 +332,7 @@ struct server {
 	struct wlr_scene_tree *layer_unmanaged;
 	struct wlr_scene_tree *layer_menu;
 	struct wlr_scene_tree *layer_feedback; /* outline and move/size box */
+	struct wlr_scene_tree *layer_drag; /* drag icons, follows the pointer */
 
 	struct wl_listener new_layer_surface;
 	struct wlr_layer_surface_v1 *focused_layer;   /* has the keyboard */
@@ -366,6 +367,13 @@ struct server {
 	struct wl_listener request_cursor;
 	struct wl_listener request_set_selection;
 	struct wl_listener request_set_primary_selection;
+	struct wl_listener request_start_drag;
+	struct wl_listener start_drag;
+	/* Buttons a client has seen go down and not yet up. While there are any, the
+	 * pointer stays with that client: its implicit grab. */
+	uint32_t forwarded_buttons[16];
+	int n_forwarded;
+	double grab_surface_x, grab_surface_y; /* the surface's origin in the layout */
 	struct wl_list keyboards;
 
 	enum cursor_mode cursor_mode;
@@ -532,6 +540,10 @@ void grab_forget(struct server *server);
 void input_add_device(struct server *server, struct wlr_input_device *dev);
 void cursor_set_name(struct server *server, const char *name);
 void process_cursor_motion(struct server *server, uint32_t time);
+/* What is under the pointer may have changed without it moving. */
+void input_pointer_changed(struct server *server);
+/* Whether a client may start a move now: only with a button down that it got. */
+bool input_button_held(struct server *server);
 void spawn(const char *cmd);
 
 /* ---- tile.c ------------------------------------------------------------- */

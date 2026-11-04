@@ -308,8 +308,10 @@ void menu_close(struct server *server)
 	m->open = false;
 	m->target = NULL;
 	wlr_scene_node_set_enabled(&m->node->node, false);
-	if (server->cursor_mode == CURSOR_MENU)
+	if (server->cursor_mode == CURSOR_MENU) {
 		server->cursor_mode = CURSOR_PASSTHROUGH;
+		input_pointer_changed(server);
+	}
 }
 
 static int item_at(struct menu *m, double lx, double ly)

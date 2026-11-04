@@ -133,6 +133,9 @@ build/badclient: tests/badclient.c build/xdg-shell-client.h build/xdg-shell-code
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/badclient.c \
 		build/xdg-shell-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
 
+pointer-test: mwc build/vinput build/pngtool build/xclient build/badclient
+	tests/pointer.sh
+
 crash-test: mwc build/vinput build/xclient build/xdgc build/badclient build/layerc
 	tests/crash.sh
 
@@ -158,10 +161,10 @@ config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
 test: smoke input-test wallpaper-test config-test layer-test window-test \
-	move-test snap-test outputs-test tile-test crash-test
+	move-test snap-test outputs-test tile-test crash-test pointer-test
 
 clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN)
-.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test test clean
+.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test test clean

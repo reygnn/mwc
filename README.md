@@ -50,8 +50,9 @@ and `make config-test` does the same for `mwmrc`, including reloading it.
 ask for any hint (`tests/xclient.c`, `tests/xdgc.c`). `make move-test` checks the
 outline, the box and the keys during a move or resize, and `make snap-test` the
 snap zones and every way back out of them. `make outputs-test` runs on two outputs,
-`make tile-test` walks through tiling, and `make crash-test` tries what used to end
-the session, which is worth running against a sanitizer build too:
+`make tile-test` walks through tiling, `make pointer-test` checks who gets the mouse
+and keyboard when, including drag and drop, and `make crash-test` tries what used to
+end the session, which is worth running against a sanitizer build too:
 
     make clean
     CFLAGS="-O1 -g -fsanitize=address,undefined" LDFLAGS="-fsanitize=address,undefined" \

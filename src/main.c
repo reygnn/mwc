@@ -107,6 +107,9 @@ static void new_output(struct wl_listener *listener, void *data)
 	struct wlr_scene_output *so = wlr_scene_output_create(server->scene,
 		wlr_output);
 	wlr_scene_output_layout_add_output(server->scene_layout, lo, so);
+	/* There is no cursor image before the first motion otherwise. */
+	if (!server->cursor_name)
+		cursor_set_name(server, "default");
 }
 
 static void layout_change(struct wl_listener *listener, void *data)
@@ -308,6 +311,7 @@ int main(int argc, char *argv[])
 	server.layer_shell[3] = wlr_scene_tree_create(root);
 	server.layer_menu = wlr_scene_tree_create(root);
 	server.layer_feedback = wlr_scene_tree_create(root);
+	server.layer_drag = wlr_scene_tree_create(root);
 
 	wl_list_init(&server.views);
 	xdg_init(&server);
@@ -357,6 +361,8 @@ int main(int argc, char *argv[])
 	wl_list_remove(&server.request_cursor.link);
 	wl_list_remove(&server.request_set_selection.link);
 	wl_list_remove(&server.request_set_primary_selection.link);
+	wl_list_remove(&server.request_start_drag.link);
+	wl_list_remove(&server.start_drag.link);
 	wl_list_remove(&server.new_output.link);
 	wl_list_remove(&server.layout_change.link);
 	/* The backend goes first: output_destroy() still needs the scene. */

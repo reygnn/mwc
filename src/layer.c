@@ -208,6 +208,7 @@ static void layer_map(struct wl_listener *listener, void *data)
 	struct layer_surface *ls = wl_container_of(listener, ls, map);
 	layer_arrange(ls->output);
 	update_keyboard(ls);
+	input_pointer_changed(ls->server);
 }
 
 static void layer_unmap(struct wl_listener *listener, void *data)
@@ -215,6 +216,7 @@ static void layer_unmap(struct wl_listener *listener, void *data)
 	struct layer_surface *ls = wl_container_of(listener, ls, unmap);
 	update_keyboard(ls);
 	layer_arrange(ls->output);
+	input_pointer_changed(ls->server);
 }
 
 static void place_in_layer(struct layer_surface *ls,

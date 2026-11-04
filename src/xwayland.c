@@ -240,14 +240,18 @@ static void xw_request_activate(struct wl_listener *listener, void *data)
 static void xw_request_move(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_move);
-	view_begin_interactive(view, CURSOR_MOVE, 0, false);
+	/* X11 gives no serial to check, so at least a button must be down. A late
+	 * request would glue the window to the pointer until the next click. */
+	if (input_button_held(view->server))
+		view_begin_interactive(view, CURSOR_MOVE, 0, false);
 }
 
 static void xw_request_resize(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_resize);
 	struct wlr_xwayland_resize_event *ev = data;
-	view_begin_interactive(view, CURSOR_RESIZE, ev->edges, false);
+	if (input_button_held(view->server))
+		view_begin_interactive(view, CURSOR_RESIZE, ev->edges, false);
 }
 
 static void xw_request_maximize(struct wl_listener *listener, void *data)

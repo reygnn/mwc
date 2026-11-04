@@ -258,6 +258,7 @@ void view_focus(struct view *view)
 	/* A panel or a window without input focus only comes to the front. */
 	if (!view_focusable(view)) {
 		view_raise(view);
+		input_pointer_changed(server);
 		return;
 	}
 
@@ -284,6 +285,7 @@ void view_focus(struct view *view)
 	 * full stack shades another one to make room. */
 	if (view->shaded)
 		tile_unshade(view);
+	input_pointer_changed(server);
 }
 
 /* Give the focus to the topmost remaining window, or to nobody. A shaded window
@@ -441,6 +443,7 @@ void view_lower(struct view *view)
 		/* Losing the focus may have moved it to another scene layer. */
 		wlr_scene_node_lower_to_bottom(&view->tree->node);
 	}
+	input_pointer_changed(server);
 }
 
 void view_set_maximized(struct view *view, bool maximized)
@@ -596,6 +599,7 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 		/* Into fullscreen the others close the gap; out of it a window fit
 		 * for the layout joins it, wherever it came from. */
 		tile_arrange(view->server);
+		input_pointer_changed(view->server);
 	}
 	if (view->type == VIEW_XDG) {
 		if (view->xdg_toplevel->base->initialized)
@@ -648,6 +652,7 @@ void view_minimize(struct view *view)
 		focus_next(server, view);
 	struts_changed(view);
 	tile_arrange(server);
+	input_pointer_changed(server);
 }
 
 void view_restore(struct view *view)
@@ -1006,6 +1011,7 @@ void view_handle_unmap(struct view *view)
 		focus_next(server, view);
 	struts_changed(view);
 	tile_arrange(server);
+	input_pointer_changed(server);
 }
 
 void view_handle_destroy(struct view *view)
@@ -1170,14 +1176,21 @@ static void xdg_set_parent(struct wl_listener *listener, void *data)
 static void xdg_request_move(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_move);
-	view_begin_interactive(view, CURSOR_MOVE, 0, false);
+	struct wlr_xdg_toplevel_move_event *event = data;
+	/* Only for a button still down: a late request would glue the window to the
+	 * pointer until the next click. */
+	if (wlr_seat_validate_pointer_grab_serial(view->server->seat, NULL,
+			event->serial))
+		view_begin_interactive(view, CURSOR_MOVE, 0, false);
 }
 
 static void xdg_request_resize(struct wl_listener *listener, void *data)
 {
 	struct wlr_xdg_toplevel_resize_event *event = data;
 	struct view *view = wl_container_of(listener, view, request_resize);
-	view_begin_interactive(view, CURSOR_RESIZE, event->edges, false);
+	if (wlr_seat_validate_pointer_grab_serial(view->server->seat, NULL,
+			event->serial))
+		view_begin_interactive(view, CURSOR_RESIZE, event->edges, false);
 }
 
 static void xdg_request_maximize(struct wl_listener *listener, void *data)

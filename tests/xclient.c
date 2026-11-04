@@ -22,6 +22,10 @@
  *     override=clear      create it override-redirect, clear that, then map
  *     override=mapped     map it normal, set override-redirect afterwards
  *     clipboard=1         own CLIPBOARD and answer with 200 KB of text
+ *     moveresize=2        map it, then ask for _NET_WM_MOVERESIZE with no button down
+ *     move_press=1        a press asks for _NET_WM_MOVERESIZE, as toolkits do
+ *     pulldown=1          a press posts an override-redirect menu and grabs the pointer,
+ *                         as Motif does for press-drag-release; logs what follows
  */
 #define _DEFAULT_SOURCE
 #include <X11/Xatom.h>
@@ -45,7 +49,8 @@ struct options {
 	int aspect_n, aspect_d;
 	long motif_funcs, motif_decor;
 	bool has_motif;
-	bool no_input, workarea, moveresize, clipboard;
+	bool no_input, workarea, clipboard, move_press, pulldown;
+	int moveresize;
 	const char *override;
 	long strut[4];
 	bool has_strut;
@@ -85,6 +90,8 @@ static Window create_window(const struct options *o, const char *class,
 		.background_pixel = o->color,
 		.event_mask = FocusChangeMask | StructureNotifyMask,
 	};
+	if (o->move_press || o->pulldown)
+		a.event_mask |= ButtonPressMask | ButtonReleaseMask;
 	Window win = XCreateWindow(dpy, DefaultRootWindow(dpy), o->x, o->y, o->w, o->h,
 		0, CopyFromParent, InputOutput, CopyFromParent,
 		CWBackPixel | CWEventMask, &a);
@@ -300,6 +307,10 @@ int main(int argc, char *argv[])
 			o.moveresize = atoi(v);
 		else if (!strcmp(k, "clipboard"))
 			o.clipboard = atoi(v);
+		else if (!strcmp(k, "move_press"))
+			o.move_press = atoi(v);
+		else if (!strcmp(k, "pulldown"))
+			o.pulldown = atoi(v);
 		else if (!strcmp(k, "override"))
 			o.override = v;
 	}
@@ -322,7 +333,7 @@ int main(int argc, char *argv[])
 	}
 
 	Window main_win = create_window(&o, o.class, None);
-	if (o.moveresize) {
+	if (o.moveresize == 1) {
 		XSync(dpy, False);
 		usleep(300000);
 		ask_moveresize(main_win);
@@ -341,6 +352,12 @@ int main(int argc, char *argv[])
 		set_override_redirect(main_win, false);
 	}
 	XMapWindow(dpy, main_win);
+	if (o.moveresize == 2) {
+		XSync(dpy, False);
+		usleep(500000);
+		ask_moveresize(main_win);
+		printf("asked\n");
+	}
 	if (o.override && !strcmp(o.override, "mapped")) {
 		XSync(dpy, False);
 		usleep(500000);
@@ -372,10 +389,47 @@ int main(int argc, char *argv[])
 	printf("up\n");
 
 	int open = dialog_win ? 2 : 1;
+	Window menu_win = None;
 	while (open > 0) {
 		XEvent e;
 		XNextEvent(dpy, &e);
 		switch (e.type) {
+		case ButtonPress:
+			printf("press %s\n", e.xbutton.window == main_win ? "main" : "menu");
+			if (o.move_press) {
+				ask_moveresize(main_win);
+			} else if (o.pulldown && !menu_win) {
+				XSetWindowAttributes a = {
+					.override_redirect = True,
+					.background_pixel = 0xff0000,
+					.event_mask = ButtonPressMask | ButtonReleaseMask |
+						PointerMotionMask,
+				};
+				menu_win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+					e.xbutton.x_root, e.xbutton.y_root + 20, 120, 100, 0,
+					CopyFromParent, InputOutput, CopyFromParent,
+					CWOverrideRedirect | CWBackPixel | CWEventMask, &a);
+				XMapRaised(dpy, menu_win);
+				XGrabPointer(dpy, menu_win, True, ButtonPressMask |
+					ButtonReleaseMask | PointerMotionMask, GrabModeAsync,
+					GrabModeAsync, None, None, CurrentTime);
+				XFlush(dpy);
+				printf("posted\n");
+			}
+			break;
+		case ButtonRelease:
+			printf("release %s %d,%d\n", e.xbutton.window == main_win ? "main" :
+				"menu", e.xbutton.x_root, e.xbutton.y_root);
+			if (menu_win) {
+				XUngrabPointer(dpy, CurrentTime);
+				XUnmapWindow(dpy, menu_win);
+				XFlush(dpy);
+			}
+			break;
+		case MotionNotify:
+			printf("motion %s %d,%d\n", e.xmotion.window == main_win ? "main" :
+				"menu", e.xmotion.x_root, e.xmotion.y_root);
+			break;
 		case FocusIn:
 			printf("focus-in %s\n", e.xfocus.window == main_win ? "main" : "dialog");
 			break;

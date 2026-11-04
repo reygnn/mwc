@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <linux/input-event-codes.h>
@@ -28,6 +29,7 @@
 
 #define DOUBLE_CLICK_MS 400
 #define DRAG_THRESHOLD 4
+#define MAX_SWALLOWED_KEYS 32
 
 struct keyboard {
 	struct wl_list link;
@@ -36,6 +38,10 @@ struct keyboard {
 	struct wl_listener modifiers;
 	struct wl_listener key;
 	struct wl_listener destroy;
+	/* Keys whose press went to a binding: their release must not reach a client,
+	 * which never saw them go down. */
+	uint32_t swallowed[MAX_SWALLOWED_KEYS];
+	int n_swallowed;
 };
 
 void spawn(const char *cmd)
@@ -326,8 +332,28 @@ static void process_resize(struct server *server)
 
 /* ---- pointer ------------------------------------------------------------ */
 
+static uint32_t now_msec(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+void input_pointer_changed(struct server *server)
+{
+	if (server->cursor_mode == CURSOR_PASSTHROUGH)
+		process_cursor_motion(server, now_msec());
+}
+
+bool input_button_held(struct server *server)
+{
+	return server->n_forwarded > 0;
+}
+
 void process_cursor_motion(struct server *server, uint32_t time)
 {
+	wlr_scene_node_set_position(&server->layer_drag->node,
+		lround(server->cursor->x), lround(server->cursor->y));
 	switch (server->cursor_mode) {
 	case CURSOR_MOVE:
 		process_move(server);
@@ -351,6 +377,19 @@ void process_cursor_motion(struct server *server, uint32_t time)
 	}
 	case CURSOR_PASSTHROUGH:
 		break;
+	}
+
+	/* While a button is down the pointer stays with the client that got the press,
+	 * wherever it goes, or a text selection ends at the window's edge and X11 sees a
+	 * release that didn't happen. Drags and popups have grabs of their own, which
+	 * have to see what is under the pointer. */
+	struct wlr_seat *seat = server->seat;
+	if (server->n_forwarded > 0 && seat->pointer_state.focused_surface &&
+			!wlr_seat_pointer_has_grab(seat)) {
+		wlr_seat_pointer_notify_motion(seat, time,
+			server->cursor->x - server->grab_surface_x,
+			server->cursor->y - server->grab_surface_y);
+		return;
 	}
 
 	struct wlr_surface *surface;
@@ -546,12 +585,49 @@ static void handle_button_release(struct server *server)
 		run_action(server, ACT_TOGGLE_MAXIMIZE, v);
 }
 
+static bool forwarded_take(struct server *server, uint32_t button)
+{
+	for (int i = 0; i < server->n_forwarded; i++) {
+		if (server->forwarded_buttons[i] == button) {
+			server->forwarded_buttons[i] =
+				server->forwarded_buttons[--server->n_forwarded];
+			return true;
+		}
+	}
+	return false;
+}
+
+static void forward_release(struct wlr_seat *seat, uint32_t time, uint32_t button)
+{
+	struct wlr_seat_pointer_state *st = &seat->pointer_state;
+	for (size_t i = 0; i < st->button_count; i++) {
+		if (st->buttons[i].button == button) {
+			wlr_seat_pointer_notify_button(seat, time, button,
+				WL_POINTER_BUTTON_STATE_RELEASED);
+			return;
+		}
+	}
+	/* A popup's grab lets the pointer change surfaces, and wlroots forgets the
+	 * buttons on every focus change, so notify_button would drop this. Press, drag
+	 * onto the menu, release has to work. Through the grab rather than straight to
+	 * the client, because the grab is what closes the menu on a release outside. */
+	st->grab->interface->button(st->grab, time, button,
+		WL_POINTER_BUTTON_STATE_RELEASED);
+}
+
 static void cursor_button(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server, cursor_button);
 	struct wlr_pointer_button_event *event = data;
+	struct wlr_seat *seat = server->seat;
 	bool pressed = event->state == WL_POINTER_BUTTON_STATE_PRESSED;
 	double cx = server->cursor->x, cy = server->cursor->y;
+
+	/* A client that saw the press gets the release, whatever else is going on. Only
+	 * those: a press that went to a frame or binding stays unknown to clients. */
+	bool client_saw_it = !pressed && forwarded_take(server, event->button);
+	if (client_saw_it)
+		forward_release(seat, event->time_msec, event->button);
 
 	switch (server->cursor_mode) {
 	case CURSOR_MENU:
@@ -574,10 +650,35 @@ static void cursor_button(struct wl_listener *listener, void *data)
 		break;
 	}
 
-	if (pressed && handle_press(server, event->button, event->time_msec))
+	if (!pressed) {
+		/* The implicit grab is over, the pointer may be somewhere else by now. */
+		if (client_saw_it && server->n_forwarded == 0)
+			process_cursor_motion(server, event->time_msec);
 		return;
-	wlr_seat_pointer_notify_button(server->seat, event->time_msec,
-		event->button, event->state);
+	}
+
+	/* The seat's idea of what is under the pointer only changes with motion. */
+	process_cursor_motion(server, event->time_msec);
+
+	/* A click outside a client's open menu closes it, also if the click then does
+	 * something of its own. That only happens through the seat. */
+	if (wlr_seat_pointer_has_grab(seat) && !seat->pointer_state.focused_surface) {
+		wlr_seat_pointer_notify_button(seat, event->time_msec, event->button,
+			WL_POINTER_BUTTON_STATE_PRESSED);
+		wlr_seat_pointer_notify_button(seat, event->time_msec, event->button,
+			WL_POINTER_BUTTON_STATE_RELEASED);
+		process_cursor_motion(server, event->time_msec);
+	}
+
+	if (handle_press(server, event->button, event->time_msec))
+		return;
+	if (server->n_forwarded < (int)(sizeof(server->forwarded_buttons) /
+			sizeof(*server->forwarded_buttons)))
+		server->forwarded_buttons[server->n_forwarded++] = event->button;
+	server->grab_surface_x = cx - seat->pointer_state.sx;
+	server->grab_surface_y = cy - seat->pointer_state.sy;
+	wlr_seat_pointer_notify_button(seat, event->time_msec, event->button,
+		event->state);
 }
 
 static void cursor_axis(struct wl_listener *listener, void *data)
@@ -780,6 +881,16 @@ static void keyboard_key(struct wl_listener *listener, void *data)
 	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
 		for (int i = 0; i < nsyms && !handled; i++)
 			handled = handle_keybinding(server, mods, syms[i]);
+		if (handled && kb->n_swallowed < MAX_SWALLOWED_KEYS)
+			kb->swallowed[kb->n_swallowed++] = event->keycode;
+	} else {
+		for (int i = 0; i < kb->n_swallowed; i++) {
+			if (kb->swallowed[i] == event->keycode) {
+				kb->swallowed[i] = kb->swallowed[--kb->n_swallowed];
+				handled = true;
+				break;
+			}
+		}
 	}
 	if (!handled) {
 		wlr_seat_set_keyboard(seat, kb->wlr_keyboard);
@@ -882,6 +993,28 @@ static void request_set_selection(struct wl_listener *listener, void *data)
 	wlr_seat_set_selection(server->seat, event->source, event->serial);
 }
 
+static void request_start_drag(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server, request_start_drag);
+	struct wlr_seat_request_start_drag_event *event = data;
+	if (wlr_seat_validate_pointer_grab_serial(server->seat, event->origin,
+			event->serial))
+		wlr_seat_start_pointer_drag(server->seat, event->drag, event->serial);
+	else
+		wlr_data_source_destroy(event->drag->source);
+}
+
+static void start_drag(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server, start_drag);
+	struct wlr_drag *drag = data;
+	/* The scene removes the icon with the drag. */
+	if (drag->icon)
+		wlr_scene_drag_icon_create(server->layer_drag, drag->icon);
+	wlr_scene_node_set_position(&server->layer_drag->node,
+		lround(server->cursor->x), lround(server->cursor->y));
+}
+
 static void request_set_primary_selection(struct wl_listener *listener,
 	void *data)
 {
@@ -899,6 +1032,8 @@ void input_init(struct server *server)
 	const char *size = getenv("XCURSOR_SIZE");
 	server->cursor_mgr = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"),
 		size ? atoi(size) : 24);
+	/* Xwayland asks for the default cursor before any output has needed it. */
+	wlr_xcursor_manager_load(server->cursor_mgr, 1);
 
 	server->cursor_mode = CURSOR_PASSTHROUGH;
 	server->cursor_motion.notify = cursor_motion;
@@ -923,6 +1058,11 @@ void input_init(struct server *server)
 	server->request_set_selection.notify = request_set_selection;
 	wl_signal_add(&server->seat->events.request_set_selection,
 		&server->request_set_selection);
+	server->request_start_drag.notify = request_start_drag;
+	wl_signal_add(&server->seat->events.request_start_drag,
+		&server->request_start_drag);
+	server->start_drag.notify = start_drag;
+	wl_signal_add(&server->seat->events.start_drag, &server->start_drag);
 	server->request_set_primary_selection.notify =
 		request_set_primary_selection;
 	wl_signal_add(&server->seat->events.request_set_primary_selection,

@@ -279,6 +279,7 @@ void tile_arrange(struct server *server)
 		break;
 	}
 	busy = false;
+	input_pointer_changed(server);
 }
 
 bool tile_has_stack(struct server *server)
