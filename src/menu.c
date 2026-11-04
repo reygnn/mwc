@@ -173,6 +173,17 @@ static void add(struct menu *m, const char *label, char mnemonic,
 	};
 }
 
+static void add_tabs(struct menu *m, struct view *view)
+{
+	bool group = view->group && !view->minimized;
+	add(m, "Tab With Previous Window", 'T', "Super+G", ACT_TAB_JOIN,
+		!view->minimized && tabs_previous(view));
+	add(m, "Next Tab", 'e', "Super+Tab", ACT_TAB_NEXT, group && !view->fullscreen);
+	add(m, "Previous Tab", 'P', "Super+Shift+Tab", ACT_TAB_PREVIOUS,
+		group && !view->fullscreen);
+	add(m, "Detach Tab", 'D', "Super+Shift+G", ACT_TAB_DETACH, group);
+}
+
 static uint32_t now_msec(void)
 {
 	struct timespec ts;
@@ -243,6 +254,8 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 			(f & FUNC_MAXIMIZE) && !is_main);
 		add(m, "Lower", 'L', "Alt+F3", ACT_LOWER, true);
 		add(m, NULL, 0, NULL, ACT_NONE, false);
+		add_tabs(m, view);
+		add(m, NULL, 0, NULL, ACT_NONE, false);
 		add(m, "Close", 'C', "Alt+F4", ACT_CLOSE, f & FUNC_CLOSE);
 		open_at(server, x, y);
 		return;
@@ -256,6 +269,8 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 	add(m, "Maximize", 'x', "Alt+F10", ACT_MAXIMIZE,
 		(f & FUNC_MAXIMIZE) && !view->maximized && !view->fullscreen);
 	add(m, "Lower", 'L', "Alt+F3", ACT_LOWER, true);
+	add(m, NULL, 0, NULL, ACT_NONE, false);
+	add_tabs(m, view);
 	add(m, NULL, 0, NULL, ACT_NONE, false);
 	add(m, "Close", 'C', "Alt+F4", ACT_CLOSE, f & FUNC_CLOSE);
 	open_at(server, x, y);
@@ -537,6 +552,22 @@ void run_action(struct server *server, enum menu_action action,
 		break;
 	case ACT_SHUFFLE_DOWN:
 		view_cycle(server, true);
+		break;
+	case ACT_TAB_JOIN:
+		if (view && tabs_previous(view))
+			tabs_join(view, tabs_previous(view));
+		break;
+	case ACT_TAB_NEXT:
+		if (view)
+			tabs_step(view, true);
+		break;
+	case ACT_TAB_PREVIOUS:
+		if (view)
+			tabs_step(view, false);
+		break;
+	case ACT_TAB_DETACH:
+		if (view)
+			tabs_detach(view);
 		break;
 	case ACT_RESTART:
 		config_reload(server);

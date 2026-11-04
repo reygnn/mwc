@@ -42,6 +42,7 @@
  *     focus_main=1        once mapped, give the focus from the dialog to the main window
  *     motif_later=FUNCS   once mapped, _MOTIF_WM_HINTS with only the functions set
  *     hints_later=WxH     once mapped, the minimum and maximum size become this
+ *     title_later=TEXT    2 s after mapping, a new WM_NAME
  *     latin1_title=1      a WM_NAME with bytes that are not UTF-8
  *     dialog_ms=MS        wait that long before opening the dialog
  *     pulldown=1          a press posts an override-redirect menu and grabs the pointer,
@@ -90,7 +91,7 @@ struct options {
 	bool no_input, workarea, clipboard, move_press, pulldown;
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
-	const char *script;
+	const char *script, *title_later;
 	int moveresize;
 	bool has_moveto, iconic, normalize, report;
 	int moveto_x, moveto_y;
@@ -404,6 +405,8 @@ int main(int argc, char *argv[])
 			o.rehide_ms = atoi(v);
 		else if (!strcmp(k, "rehide_drop"))
 			o.rehide_drop = atoi(v);
+		else if (!strcmp(k, "title_later"))
+			o.title_later = v;
 		else if (!strcmp(k, "script"))
 			o.script = v;
 		else if (!strcmp(k, "focus_main"))
@@ -572,6 +575,13 @@ int main(int argc, char *argv[])
 		ask_state(main_win, o.ask_later);
 		XSync(dpy, False);
 		printf("asked\n");
+	}
+	if (o.title_later) {
+		XSync(dpy, False);
+		usleep(2000000);
+		XStoreName(dpy, main_win, o.title_later);
+		XSync(dpy, False);
+		printf("renamed\n");
 	}
 	if (o.latin1_title)
 		XStoreName(dpy, main_win, "M\xfcller \xc4rger");

@@ -98,8 +98,12 @@ void snap_preview(struct view *view, enum snap s, double px, double py)
 		snap_preview_hide();
 		return;
 	}
+	snap_preview_box(view, snap_rect(s, output_usable_area(view->server, px, py)));
+}
+
+void snap_preview_box(struct view *view, struct wlr_box r)
+{
 	struct server *server = view->server;
-	struct wlr_box r = snap_rect(s, output_usable_area(server, px, py));
 	const int t = PREVIEW_W;
 	const struct mwc_shade *sh = &view->shade_active;
 

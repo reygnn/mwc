@@ -776,7 +776,8 @@ void view_restore(struct view *view)
 
 void view_update_title(struct view *view)
 {
-	frame_render(view);
+	/* The tabs of a group are all drawn by the shown view. */
+	frame_render(view->tab_hidden ? view->group->shown : view);
 	if (view->minimized)
 		icon_render(view);
 }
@@ -878,6 +879,8 @@ void view_theme_changed(struct view *view)
 	view_frame_changed(view); /* the title bar grows with the font */
 	if (view->minimized)
 		icon_render(view);
+	if (view->tab_hidden)
+		frame_render(view->group->shown);
 }
 
 void view_cycle(struct server *server, bool backwards)
@@ -1154,7 +1157,7 @@ void view_handle_map(struct view *view)
 void view_handle_unmap(struct view *view)
 {
 	struct server *server = view->server;
-	if (server->grabbed_view == view)
+	if (server->grabbed_view == view || server->grab_take == view)
 		grab_forget(server);
 	if (server->menu.open && server->menu.target == view)
 		menu_close(server);

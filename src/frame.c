@@ -150,6 +150,100 @@ void draw_text(cairo_t *cr, const char *text, const char *font,
 	cairo_restore(cr);
 }
 
+/* ---- tabs ---------------------------------------------------------------- */
+
+struct tab_strip {
+	int x, w;        /* where the first drawn tab starts, the width of each */
+	int first, fit;  /* the tabs drawn */
+	int arrow;       /* width of the marks for those that aren't, or 0 */
+};
+
+/* Evenly over the title's area. When they don't all fit at a useful width, as many as
+ * do, moved along so that the shown one is among them. */
+static void tab_strip_layout(struct view *view, const struct title_layout *tl,
+	struct tab_strip *st)
+{
+	struct tab_group *g = view->group;
+	const int n = wl_list_length(&g->members), min = 3 * theme.title_height;
+	*st = (struct tab_strip){ .x = tl->title_x, .fit = n };
+	if (n * min > tl->title_w) {
+		st->arrow = theme.title_height / 2;
+		st->x += st->arrow;
+		st->fit = (tl->title_w - 2 * st->arrow) / min;
+		if (st->fit < 1)
+			st->fit = 1;
+		int shown = tabs_index(g->shown);
+		if (g->first_visible > shown)
+			g->first_visible = shown;
+		if (g->first_visible + st->fit <= shown)
+			g->first_visible = shown - st->fit + 1;
+		if (g->first_visible > n - st->fit)
+			g->first_visible = n - st->fit;
+		st->first = g->first_visible;
+	}
+	st->w = (tl->title_w - 2 * st->arrow) / st->fit;
+}
+
+int frame_tab_at(struct view *view, int fx)
+{
+	if (!view->group)
+		return -1;
+	struct title_layout tl;
+	title_layout(view, &tl);
+	struct tab_strip st;
+	tab_strip_layout(view, &tl, &st);
+	if (fx < st.x || fx >= st.x + st.fit * st.w)
+		return -1;
+	return st.first + (fx - st.x) / st.w;
+}
+
+static void draw_mark(cairo_t *cr, double x, double y, double size, bool left,
+	const struct mwc_shade *s)
+{
+	set_source(cr, s->fg);
+	cairo_move_to(cr, left ? x + size : x, y);
+	cairo_line_to(cr, left ? x : x + size, y + size);
+	cairo_line_to(cr, left ? x + size : x, y + 2 * size);
+	cairo_close_path(cr);
+	cairo_fill(cr);
+}
+
+/* The shown one sunken, in the colours of the frame. The others raised, each in its own
+ * unfocused colours, so a window stays recognisable in a group of any colour. */
+static void draw_tabs(cairo_t *cr, struct view *view, const struct title_layout *tl,
+	int y, int T, const struct mwc_shade *s)
+{
+	struct tab_group *g = view->group;
+	struct tab_strip st;
+	tab_strip_layout(view, tl, &st);
+	draw_bevel(cr, tl->title_x, y, tl->title_w, T, 1, s, false);
+	int i = 0;
+	struct view *m;
+	wl_list_for_each(m, &g->members, tab_link) {
+		int slot = i++ - st.first;
+		if (slot < 0 || slot >= st.fit)
+			continue;
+		bool shown = m == g->shown;
+		const struct mwc_shade *ms = shown ? s : &m->shade_inactive;
+		int x = st.x + slot * st.w;
+		set_source(cr, ms->bg);
+		cairo_rectangle(cr, x, y, st.w, T);
+		cairo_fill(cr);
+		draw_bevel(cr, x, y, st.w, T, 1, ms, shown);
+		draw_text(cr, view_title(m), theme.font, ms->fg, x + 4, y + 1, st.w - 8, T - 2,
+			true);
+	}
+	if (st.arrow) {
+		const double size = T / 4.0, ym = y + T / 2.0 - size;
+		if (st.first > 0)
+			draw_mark(cr, tl->title_x + 1, ym, size, true, s);
+		if (st.first + st.fit < wl_list_length(&g->members))
+			draw_mark(cr, tl->title_x + tl->title_w - size - 1, ym, size, false, s);
+	}
+}
+
+/* ---- the frame ------------------------------------------------------------ */
+
 static void draw_button(cairo_t *cr, struct view *view, enum frame_part part,
 	int x, int y, int size, const struct mwc_shade *s)
 {
@@ -234,10 +328,14 @@ void frame_render(struct view *view)
 		title_layout(view, &tl);
 		if (tl.menu_x >= 0)
 			draw_button(cr, view, PART_MENU_BUTTON, tl.menu_x, B, T, s);
-		draw_bevel(cr, tl.title_x, B, tl.title_w, T, 1, s,
-			view->pressed == PART_TITLE);
-		draw_text(cr, view_title(view), theme.font, s->fg,
-			tl.title_x + 4, B + 1, tl.title_w - 8, T - 2, true);
+		if (view->group) {
+			draw_tabs(cr, view, &tl, B, T, s);
+		} else {
+			draw_bevel(cr, tl.title_x, B, tl.title_w, T, 1, s,
+				view->pressed == PART_TITLE);
+			draw_text(cr, view_title(view), theme.font, s->fg,
+				tl.title_x + 4, B + 1, tl.title_w - 8, T - 2, true);
+		}
 		if (tl.min_x >= 0)
 			draw_button(cr, view, PART_MINIMIZE_BUTTON, tl.min_x, B, T, s);
 		if (tl.max_x >= 0)
@@ -271,7 +369,7 @@ enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges)
 			return PART_MAXIMIZE_BUTTON;
 		if (tl.min_x >= 0 && fx >= tl.min_x && (tl.max_x < 0 || fx < tl.max_x))
 			return PART_MINIMIZE_BUTTON;
-		return PART_TITLE;
+		return view->group ? PART_TAB : PART_TITLE;
 	}
 	/* A border that can't resize moves the window, like the title. */
 	if (B != theme.border || !(view->funcs & FUNC_RESIZE) || view->maximized)

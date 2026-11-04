@@ -358,4 +358,285 @@ stop a
 stop b
 finish
 
+# ---- tabs in the title bar -------------------------------------------------------------
+
+RC=$XDG_CONFIG_HOME/mwc/mwmrc
+mkdir -p "$(dirname "$RC")"
+cat >"$RC" <<'MWMRC'
+Mwm*activeBackground:   #102030
+Mwm*ta*background:      #aa0000
+Mwm*tb*background:      #00aa00
+Mwm*tc*background:      #0000aa
+MWMRC
+begin
+x11 ta pos=100,100 size=600x200
+x11 tb size=300x200
+do_input key super+g
+shown "two tabs" tb
+refresh
+TX=$((100 + B + T)) TY=$((100 + B)) TW=$(((600 - 3 * T) / 2))
+pixel_is "the other tab is in its own unfocused colour" $((TX + 8)) $((TY + 4)) aa0000
+pixel_is "the shown tab in the frame's" $((TX + TW + 8)) $((TY + 4)) 102030
+shot() { sleep 0.3; WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/shot.png"; }
+do_input key super+Tab
+shown "the other one" ta
+pixel_is "and now the colours change places" $((TX + TW + 8)) $((TY + 4)) 00aa00
+pixel_is "the shown one in the frame's" $((TX + 8)) $((TY + 4)) 102030
+do_input key super+Tab
+
+do_input move $((TX + 40)) $((TY + T / 2))
+do_input click left
+shown "a click on a tab shows it" ta
+sleep 0.5
+do_input move $((TX + TW + 40)) $((TY + T / 2))
+do_input down left
+do_input up left
+shown "a click on the other" tb
+sleep 0.5
+do_input down left
+do_input move $((TX + TW + 90)) $((TY + T / 2 + 40))
+check "dragging a tab moves the group" "[ \"\$(global cursor mode)\" != 0 ]"
+do_input up left
+check "to where it was dropped" "[ \"\$(get tb x)\" = 150 ] && [ \"\$(get tb y)\" = 140 ]"
+shown "without a switch" tb
+sleep 0.5
+TY=$((140 + B)) TX=$((150 + B + T))
+do_input move $((TX + 40)) $((TY + T / 2))
+do_input down left
+do_input move $((TX + 90)) $((TY + T / 2 + 40))
+do_input up left
+shown "also from the tab not shown" tb
+check "which moves it as well" "[ \"\$(get tb x)\" = 200 ] && [ \"\$(get tb y)\" = 180 ]"
+TY=$((180 + B)) TX=$((200 + B + T))
+sleep 0.5
+
+do_input move $((TX + 40)) $((TY + T / 2))
+do_input wheel 1
+shown "the wheel: the next tab" ta
+do_input wheel -1
+shown "and back" tb
+do_input wheel 1
+do_input wheel 1
+shown "around the end" tb
+
+do_input move $((TX + 40)) $((TY + T / 2))
+sleep 0.5
+do_input click left
+do_input click left
+check "a double click on a tab behind shows and maximizes it" "[ \"\$(get ta max)\" = 1 ] && [ \"\$(get ta tab_hidden)\" = 0 ]"
+do_input key alt+F10
+stop ta
+stop tb
+
+# With the focus elsewhere, tabs of the same colour differ only by their bevels. The
+# top edge of a raised one is light, that of a sunken one dark.
+x11 sa pos=100,100 size=600x200
+x11 sb size=300x200
+do_input key super+g
+x11 elsewhere pos=800,400 size=200x100
+TX=$((100 + B + T)) TY=$((100 + B))
+shot
+LEFT=$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + TW / 2)) "$TY")
+RIGHT=$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + TW + TW / 2)) "$TY")
+[ "$LEFT" != "$RIGHT" ] || fail "the shown tab looks like the other one"
+do_input key alt+Tab
+do_input key super+Tab
+do_input key alt+Tab
+shot
+[ "$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + TW / 2)) "$TY")" = "$RIGHT" ] &&
+	[ "$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + TW + TW / 2)) "$TY")" = "$LEFT" ] ||
+	fail "the bevels don't change places with the shown tab"
+echo "ok: the shown tab is sunken, and the others raised"
+stop sa
+stop sb
+stop elsewhere
+
+# A title that changes behind the shown tab shows.
+x11 tn pos=100,100 size=600x200 title_later=WWWWWWWWWWWWWWWW
+x11 tb size=300x200
+do_input key super+g
+shown "with a hidden tab" tb
+refresh
+TY=$((100 + B)) TX=$((100 + B + T))
+shot
+BEFORE=$(build/pngtool count "$SMOKE_DIR/shot.png" $((TX + 3)) $((TY + 3)) $((TW - 6)) $((T - 6)) "$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + 3)) $((TY + 3)))")
+wait_for "its title changes" said tn 'renamed'
+shot
+AFTER=$(build/pngtool count "$SMOKE_DIR/shot.png" $((TX + 3)) $((TY + 3)) $((TW - 6)) $((T - 6)) "$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + 3)) $((TY + 3)))")
+[ "$BEFORE" != "$AFTER" ] || fail "the tab of a hidden window keeps its old title"
+echo "ok: the tab of a hidden window shows its new title"
+stop tn
+stop tb
+
+# More tabs than fit.
+x11 n1 pos=100,100 size=300x200
+for i in 2 3 4 5; do
+	x11 "n$i" size=300x200
+	do_input key super+g
+done
+shown "five tabs in a narrow window" n5
+check "the last ones are drawn" "[ \"\$(get n5 tab_first)\" -gt 0 ]"
+do_input key super+1
+shown "the first" n1
+check "and the strip moves along" "[ \"\$(get n1 tab_first)\" = 0 ]"
+TY=$((100 + B)) TX=$((100 + B + T + T / 2))
+do_input move $((TX + (300 - 3 * T - 2 * (T / 2)) / 2 + 10)) $((TY + T / 2))
+sleep 0.5
+do_input click left
+shown "a click reaches the second" n2
+do_input key super+5
+shown "the last again" n5
+check "and clicking where the first was now reaches another" "[ \"\$(get n5 tab_first)\" -gt 0 ]"
+do_input move $((TX + 10)) $((TY + T / 2))
+sleep 0.5
+do_input click left
+check "not the first" "[ \"\$(get n1 tab_hidden)\" = 1 ]"
+for i in 1 2 3 4 5; do stop "n$i"; done
+
+# A reload repaints the tabs of all members.
+x11 ta pos=100,100 size=600x200
+x11 tb size=300x200
+do_input key super+g
+shown "two tabs" tb
+TX=$((100 + B + T)) TY=$((100 + B))
+pixel_is "the other tab's colour" $((TX + 8)) $((TY + 4)) aa0000
+sed -i 's/Mwm\*ta\*background:.*/Mwm*ta*background: #aa00aa/' "$RC"
+kill -HUP "$pid"
+pixel_is "the other tab's new colour" $((TX + 8)) $((TY + 4)) aa00aa
+stop ta
+stop tb
+finish
+rm "$RC"
+
+# ---- taking one window along ---------------------------------------------------------
+
+begin
+preview_is() { # description x y
+	check "$1" "[ \"\$(global preview shown)\" = 1 ] && [ \"\$(global preview x)\" = $2 ] && \
+		[ \"\$(global preview y)\" = $3 ]"
+}
+x11 t1 pos=100,100 size=300x200
+x11 t2 pos=600,300 size=300x200
+sleep 0.5
+do_input move 750 $((300 + B + T / 2))
+do_input down middle
+do_input move 300 200
+check "a drag with the middle button" "[ \"\$(global cursor mode)\" != 0 ]"
+preview_is "the window it would join is marked" 100 100
+check "the window stays where it is meanwhile" "[ \"\$(get t2 x)\" = 600 ] && [ \"\$(get t2 tab)\" = -1 ]"
+do_input up middle
+shown "dropped on it, anywhere: joined, and shown" t2
+check "in its place" "[ \"\$(get t2 x)\" = 100 ] && [ \"\$(get t2 y)\" = 100 ] && [ \"\$(get t1 tab_hidden)\" = 1 ]"
+check "the mark is gone" "[ \"\$(global preview shown)\" = 0 ]"
+
+TX=$((100 + B + T)) TY=$((100 + B))
+sleep 0.5
+do_input move $((TX + 20)) $((TY + T / 2))
+do_input down middle
+do_input move $((TX + 60)) $((TY + 100))
+check "over its own group" "[ \"\$(global preview shown)\" = 0 ]"
+do_input up middle
+check "dropped within its own group, nothing happens" "[ \"\$(get t1 tab)\" = 0 ] && [ \"\$(get t2 tab)\" = 1 ] && [ \"\$(get t2 tab_hidden)\" = 0 ]"
+
+sleep 0.5
+do_input move $((TX + 20)) $((TY + T / 2))
+do_input down middle
+do_input move $((TX + 620)) $((TY + 400))
+do_input up middle
+alone "a hidden tab dragged onto the desktop is on its own" t1
+alone "the group is over" t2
+check "the first went where it was dropped" "[ \"\$(get t1 x)\" = 700 ] && [ \"\$(get t1 y)\" = $((100 + 400 - T / 2)) ]"
+check "the other one stayed" "[ \"\$(get t2 x)\" = 100 ] && [ \"\$(get t2 y)\" = 100 ]"
+shown "the taken one has the focus" t1
+
+# Ctrl+left does the same, for touchpads.
+sleep 0.5
+do_input move 800 $((100 + 400 - T / 2 + B + T / 2))
+do_input hold ctrl
+do_input down left
+do_input release ctrl
+do_input move 200 200
+preview_is "Ctrl+left drag" 100 100
+do_input up left
+shown "joins as well" t1
+sleep 0.5
+do_input move $((TX + 20)) $((TY + T / 2))
+do_input hold ctrl
+do_input down left
+do_input release ctrl
+do_input up left
+shown "Ctrl+click on a tab shows it, as a click would" t2
+sleep 0.5
+
+# Escape, and a middle click.
+do_input move $((TX + 20)) $((TY + T / 2))
+do_input down middle
+do_input move 900 500
+do_input key Escape
+check "Escape ends it" "[ \"\$(global cursor mode)\" = 0 ] && [ \"\$(global preview shown)\" = 0 ]"
+do_input up middle
+check "and nothing happened" "[ \"\$(get t2 tab)\" != -1 ] && [ \"\$(get t2 x)\" = 100 ]"
+x11 t3 pos=500,50 size=200x100
+do_input key alt+Tab
+shown "the group on top" t2
+do_input move $((TX + 20)) $((TY + T / 2))
+sleep 0.5
+do_input click middle
+shown "a middle click lowers, and the other one is on top" t3
+check "without touching the group" "[ \"\$(get t2 tab)\" != -1 ]"
+stop t3
+
+# A window that can't join: it goes there, over the other.
+x11 fix pos=700,400 size=200x100 min=200x100 max=200x100
+do_input key alt+Tab
+sleep 0.5
+do_input move $((TX + 20)) $((TY + T / 2))
+do_input down middle
+do_input move 800 450
+check "no mark over a window that can't take it" "[ \"\$(global preview shown)\" = 0 ]"
+do_input up middle
+alone "so it is on its own" t2
+alone "and so is the other" t1
+stop fix
+
+# The hidden window being taken along goes away.
+stop t2
+do_input key alt+Tab
+x11 t4 size=200x100
+do_input key super+g
+shown "a group again" t4
+hidden "with one behind" t1
+sleep 0.5
+refresh
+TX=$(($(get t4 x) + B + T)) TY=$(($(get t4 y) + B))
+do_input move $((TX + 5)) $((TY + T / 2))
+do_input down middle
+do_input move 900 600
+stop t1
+check "its drag is over" "[ \"\$(global cursor mode)\" = 0 ]"
+do_input up middle
+alone "the other is left on its own" t4
+stop t4
+
+# ---- the window menu -------------------------------------------------------------------
+
+x11 m1 size=300x200
+x11 m2 size=300x200
+do_input key alt+space
+do_input key t
+shown "Tab With Previous Window" m2
+do_input key alt+space
+do_input key e
+shown "Next Tab" m1
+do_input key alt+space
+do_input key p
+shown "Previous Tab" m2
+do_input key alt+space
+do_input key d
+alone "Detach Tab" m2
+alone "both alone" m1
+stop m1
+stop m2
+finish
+
 echo "PASS: tabs"

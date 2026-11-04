@@ -169,6 +169,9 @@ static void clear_grab(struct server *server)
 	server->cursor_mode = CURSOR_PASSTHROUGH;
 	server->grabbed_view = NULL;
 	server->grab_until_click = false;
+	server->grab_tab = -1;
+	server->grab_take = NULL;
+	server->grab_drop = NULL;
 	server->cursor_name = NULL;
 	server->grab_zone = SNAP_NONE;
 	outline_hide();
@@ -211,10 +214,16 @@ static void resize_to(struct view *view, const struct wlr_box *b)
 		view_send_size(view, b->width, b->height);
 }
 
+static void finish_take(struct server *server, struct view *view, struct view *take,
+	bool moved, struct wlr_box target, uint32_t button);
+
 static void end_grab(struct server *server)
 {
 	struct view *view = server->grabbed_view;
 	struct view *resized = server->cursor_mode == CURSOR_RESIZE ? view : NULL;
+	int tab = server->grab_detached ? -1 : server->grab_tab;
+	struct view *take = server->grab_take;
+	bool moved = server->grab_detached;
 	enum cursor_mode mode = server->cursor_mode;
 	bool apply = server->grab_outline && server->grab_changed;
 	bool changed = server->grab_changed;
@@ -224,6 +233,17 @@ static void end_grab(struct server *server)
 	double px = server->cursor->x, py = server->cursor->y;
 	stop_resizing_state(server);
 	clear_grab(server);
+	if (take) {
+		finish_take(server, view, take, moved, target, server->grab_button);
+		return;
+	}
+	if (tab >= 0) {
+		tabs_show_nth(view, tab);
+		/* The second click of a double click lands on the view now shown. */
+		if (view->group && server->last_click_view == view)
+			server->last_click_view = view->group->shown;
+		return;
+	}
 	if (zone != SNAP_NONE) {
 		/* Going back later means to where it was before this drag, not to
 		 * the screen edge it was dropped on. */
@@ -279,6 +299,52 @@ static void cancel_grab(struct server *server)
 	}
 }
 
+/* What is under the pointer. */
+static struct view *view_under_pointer(struct server *server)
+{
+	struct wlr_surface *surface;
+	double sx, sy;
+	enum frame_part part;
+	uint32_t edges;
+	bool on_icon;
+	struct view *view = view_at(server, server->cursor->x, server->cursor->y, &surface,
+		&sx, &sy, &part, &edges, &on_icon);
+	return on_icon ? NULL : view;
+}
+
+/* The window that one being taken along would join if dropped here, or NULL. */
+static struct view *take_target(struct server *server, struct view *take)
+{
+	struct view *view = view_under_pointer(server);
+	return view && tabs_fit_together(take, view) ? view : NULL;
+}
+
+/* A press on a title or tab that turned out to be a click or a drag of just that window:
+ * onto another window it joins that one, within its own group nothing happens, and
+ * anywhere else it goes there, on its own. */
+static void finish_take(struct server *server, struct view *view, struct view *take,
+	bool moved, struct wlr_box target, uint32_t button)
+{
+	if (!moved) {
+		if (button == BTN_MIDDLE)
+			view_lower(view);
+		else
+			tabs_show(take);
+		return;
+	}
+	struct view *drop = take_target(server, take);
+	if (drop) {
+		tabs_join(take, drop);
+		return;
+	}
+	struct view *under = view_under_pointer(server);
+	if (take->group && under && under->group == take->group)
+		return;
+	if (take->group)
+		tabs_detach(take);
+	view_set_position(take, target.x, target.y);
+}
+
 static void process_move(struct server *server)
 {
 	struct view *view = server->grabbed_view;
@@ -292,7 +358,8 @@ static void process_move(struct server *server)
 				fabs(server->cursor->y - server->grab_py) < t)
 			return;
 		server->grab_detached = true;
-		if (view->maximized || view->snap != SNAP_NONE)
+		/* Taking one window along leaves the rest where it is. */
+		if (!server->grab_take && (view->maximized || view->snap != SNAP_NONE))
 			view_drag_free(view);
 	}
 	/* The pointer has sub-pixel positions: round, don't truncate, or the
@@ -304,6 +371,19 @@ static void process_move(struct server *server)
 		show_outline(server);
 	else
 		view_set_position(view, server->grab_target.x, server->grab_target.y);
+
+	if (server->grab_take) {
+		struct view *drop = take_target(server, server->grab_take);
+		if (drop != server->grab_drop) {
+			server->grab_drop = drop;
+			if (drop)
+				snap_preview_box(view, (struct wlr_box){ drop->x, drop->y,
+					drop->width + frame_extra_w(drop), frame_height(drop) });
+			else
+				snap_preview_hide();
+		}
+		return;
+	}
 
 	enum snap zone = snap_zone_at(view, server->cursor->x, server->cursor->y);
 	if (zone != server->grab_zone) {
@@ -498,6 +578,12 @@ static bool is_double_click(struct server *server, struct view *view,
 	return dbl;
 }
 
+static bool ctrl_held(struct server *server)
+{
+	struct wlr_keyboard *kb = wlr_seat_get_keyboard(server->seat);
+	return kb && (wlr_keyboard_get_modifiers(kb) & WLR_MODIFIER_CTRL);
+}
+
 static bool alt_held(struct server *server)
 {
 	struct wlr_keyboard *kb = wlr_seat_get_keyboard(server->seat);
@@ -545,9 +631,13 @@ static bool handle_press(struct server *server, uint32_t button,
 	 * its minimize button doesn't roll it right up again; only maximize goes on to
 	 * make it the main window. */
 	bool was_shaded = view->shaded;
+	int tab = part == PART_TAB ? frame_tab_at(view, cx - view->x) : -1;
 	view_focus(view);
-	if (was_shaded && part != PART_MAXIMIZE_BUTTON)
+	if (was_shaded && part != PART_MAXIMIZE_BUTTON) {
+		if (tab >= 0)
+			tabs_show_nth(view, tab);
 		return true;
+	}
 
 	if (alt_held(server) && part != PART_NONE) {
 		if (button == BTN_LEFT) {
@@ -577,15 +667,37 @@ static bool handle_press(struct server *server, uint32_t button,
 	case PART_CLIENT:
 	case PART_NONE:
 		return false;
+	case PART_TAB:
 	case PART_TITLE:
+		/* The middle button, or Ctrl on a touchpad without one: this one window. */
+		if (button == BTN_MIDDLE || (button == BTN_LEFT && ctrl_held(server))) {
+			view_begin_interactive(view, CURSOR_MOVE, 0, false);
+			if (server->cursor_mode == CURSOR_MOVE) {
+				struct view *one = tabs_nth(view, tab);
+				server->grab_take = one ? one : view;
+				server->grab_outline = true;
+			} else if (button == BTN_MIDDLE) {
+				view_lower(view);
+			} else if (tab >= 0) {
+				tabs_show_nth(view, tab);
+			}
+			return true;
+		}
 		if (button == BTN_RIGHT) {
 			menu_open_window(server, view, cx, cy);
 		} else if (button == BTN_LEFT) {
 			if (is_double_click(server, view, part, time)) {
 				run_action(server, ACT_TOGGLE_MAXIMIZE, view);
-			} else
+			} else {
 				view_begin_interactive(view, CURSOR_MOVE, 0,
 					false);
+				/* A tab is shown on release, unless this becomes a drag. Where
+				 * nothing can be moved, there is no drag to wait for. */
+				if (server->cursor_mode == CURSOR_MOVE)
+					server->grab_tab = tab;
+				else if (tab >= 0)
+					tabs_show_nth(view, tab);
+			}
 		} else if (button == BTN_MIDDLE) {
 			view_lower(view);
 		}
@@ -742,6 +854,31 @@ static void cursor_axis(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server, cursor_axis);
 	struct wlr_pointer_axis_event *event = data;
+	/* The wheel over the tabs of a group, one step at a time on any wheel. */
+	if (server->cursor_mode == CURSOR_PASSTHROUGH &&
+			!server->seat->pointer_state.focused_surface &&
+			event->source == WL_POINTER_AXIS_SOURCE_WHEEL &&
+			event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+		struct wlr_surface *surface;
+		double sx, sy;
+		enum frame_part part;
+		uint32_t edges;
+		bool on_icon;
+		struct view *view = view_at(server, server->cursor->x, server->cursor->y,
+			&surface, &sx, &sy, &part, &edges, &on_icon);
+		if (view && part == PART_TAB) {
+			server->tab_wheel += event->delta_discrete;
+			while (server->tab_wheel >= WLR_POINTER_AXIS_DISCRETE_STEP) {
+				server->tab_wheel -= WLR_POINTER_AXIS_DISCRETE_STEP;
+				tabs_step(view->group->shown, true);
+			}
+			while (server->tab_wheel <= -WLR_POINTER_AXIS_DISCRETE_STEP) {
+				server->tab_wheel += WLR_POINTER_AXIS_DISCRETE_STEP;
+				tabs_step(view->group->shown, false);
+			}
+			return;
+		}
+	}
 	wlr_seat_pointer_notify_axis(server->seat, event->time_msec,
 		event->orientation, event->delta, event->delta_discrete,
 		event->source, event->relative_direction);
@@ -836,8 +973,8 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		if (view && xkb_keysym_to_lower(sym) == XKB_KEY_g) {
 			if (shift)
 				tabs_detach(view);
-			else
-				tabs_join_previous(view);
+			else if (tabs_previous(view))
+				tabs_join(view, tabs_previous(view));
 			return true;
 		}
 		if (view && view->group && sym == XKB_KEY_Tab) {
@@ -1242,6 +1379,7 @@ void input_init(struct server *server)
 	server->cursor_frame.notify = cursor_frame;
 	wl_signal_add(&server->cursor->events.frame, &server->cursor_frame);
 
+	server->grab_tab = -1;
 	wl_list_init(&server->keyboards);
 	server->new_input.notify = new_input;
 	wl_signal_add(&server->backend->events.new_input, &server->new_input);

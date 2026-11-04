@@ -1,6 +1,6 @@
 # Tabbed windows: spec
 
-Status: draft for review, nothing implemented. Written against `a92332c`.
+Status: implemented on `feature/tabbed`. Kept as the record of how it is meant to work.
 
 ## Goal
 

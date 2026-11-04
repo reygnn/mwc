@@ -149,6 +149,7 @@ enum frame_part {
 	PART_NONE = 0,
 	PART_CLIENT,
 	PART_TITLE,
+	PART_TAB,   /* the title of a group; see frame_tab_at() */
 	PART_MENU_BUTTON,
 	PART_MINIMIZE_BUTTON,
 	PART_MAXIMIZE_BUTTON,
@@ -159,6 +160,7 @@ struct tab_group {
 	struct wl_list members; /* view.tab_link, in tab order */
 	struct view *shown;
 	bool busy;              /* switching: members are in between */
+	int first_visible;      /* with too many for the title bar, see frame.c */
 };
 
 struct view {
@@ -289,6 +291,10 @@ enum menu_action {
 	ACT_LOWER,
 	ACT_CLOSE,
 	ACT_NEW_WINDOW,
+	ACT_TAB_JOIN,
+	ACT_TAB_NEXT,
+	ACT_TAB_PREVIOUS,
+	ACT_TAB_DETACH,
 	ACT_SHUFFLE_UP,
 	ACT_SHUFFLE_DOWN,
 	ACT_TOGGLE_TILING,
@@ -409,6 +415,10 @@ struct server {
 	uint32_t resize_edges;
 	bool grab_until_click; /* move/size started from menu or keyboard */
 	uint32_t grab_button;  /* the press a drag or frame button goes by */
+	int grab_tab;          /* the tab pressed: shown if this doesn't become a drag */
+	struct view *grab_take; /* a drag taking only this window along, see input.c */
+	struct view *grab_drop; /* the window it would join, for the highlight */
+	int tab_wheel;         /* the wheel over tabs, in fractions of a step */
 	enum frame_part grab_part;
 	bool grab_outline;  /* wireframe: the window changes when the grab ends */
 	bool grab_detached; /* a move got going, past the drag threshold */
@@ -562,6 +572,8 @@ int frame_extra_h(struct view *view);
 int frame_height(struct view *view);
 void frame_render(struct view *view);
 enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges);
+/* Which tab is at x in the frame: its index, or -1 for none. */
+int frame_tab_at(struct view *view, int fx);
 void icon_render(struct view *view);
 void icons_arrange(struct server *server);
 #define ICON_W 72
@@ -570,10 +582,13 @@ void icons_arrange(struct server *server);
 /* ---- tabs.c ------------------------------------------------------------- */
 
 bool tabs_can_join(struct view *view);
+/* Whether one can join the other: not itself, not its own group, and they agree. */
+bool tabs_fit_together(struct view *view, struct view *target);
+/* The window Super+G would join, or NULL. */
+struct view *tabs_previous(struct view *view);
+struct view *tabs_nth(struct view *view, int n); /* NULL when there is none */
 /* The view takes the target's place, and is shown there, in its group. */
 bool tabs_join(struct view *view, struct view *target);
-/* With the window that had the focus before this one. */
-bool tabs_join_previous(struct view *view);
 /* Out of its group, as a window of its own. */
 void tabs_detach(struct view *view);
 void tabs_show(struct view *view);
@@ -658,6 +673,8 @@ struct wlr_box snap_rect(enum snap s, struct wlr_box area);
 const char *snap_name(enum snap s);
 enum snap snap_zone_at(struct view *view, double px, double py);
 void snap_preview(struct view *view, enum snap s, double px, double py);
+/* The same look around any box. */
+void snap_preview_box(struct view *view, struct wlr_box box);
 void snap_preview_hide(void);
 bool snap_preview_get(struct wlr_box *box); /* false while hidden */
 void snap_step(struct view *view, enum snap_dir dir);

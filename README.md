@@ -61,7 +61,7 @@ end the session, which is worth running against a sanitizer build too:
         LDFLAGS="-fsanitize=address,undefined" \
         ASAN_OPTIONS=detect_leaks=0 make test
 
-`make state-test` tries orderings of window states, and `make misc-test` key bindings,
+`make tabs-test` walks through tab groups, and `make state-test` tries orderings of window states, and `make misc-test` key bindings,
 autostart and settings the others don't reach. `make session-test` checks monitor and
 keyboard settings and the properties X11 programs look for.
 
@@ -90,7 +90,8 @@ Alt+F3 lower · Alt+F4 close · Alt+F5 restore · Alt+F7 move · Alt+F8 size ·
 Alt+F9 minimize · Alt+F10 maximize · Alt+F11 fullscreen ·
 Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit ·
 Super+arrows snap (see below) · Super+Shift+arrows push a floating window against
-that edge of the usable area (two in a row: a corner) · Super+T tiling on/off.
+that edge of the usable area (two in a row: a corner) · Super+T tiling on/off ·
+Super+G and more for tabs (see below).
 
 ## Configuration
 
@@ -253,6 +254,33 @@ dialogs) go above or below all floating ones, each group keeping its own order, 
 the focus follows to the group on top. Switching tiling off puts every window back
 where it was. `Mwm*tiling: true` in mwmrc or `MWC_TILING=1` starts with tiling on,
 and reloading the configuration keeps the current choice.
+
+## Tabs
+
+Several windows can share one frame and one place on the screen, with their titles as
+tabs in the title bar. The shown tab is sunken, and each of the others keeps its own
+unfocused colour, so it stays recognisable.
+
+| Key or gesture | Action |
+|---|---|
+| Super+G | Join the window that had the focus before this one |
+| Super+Shift+G | Take the shown tab out, as a window of its own |
+| Super+Tab, Super+Shift+Tab | Next or previous tab |
+| Super+1 to Super+9 | The n-th tab |
+| Click, wheel | Show a tab |
+| Drag | Move the whole group |
+| Middle drag, or Ctrl+left drag | Take just that window: dropped on another window it joins it, on the desktop it goes there on its own |
+| Middle click | Lower |
+
+The window menu offers the same. A group takes one cell in the tiling layout and leaves
+one icon when minimized, and everything else also treats it as one window: Alt+Tab
+counts it once, and maximized, snapped and tiled carry over from tab to tab. A dialog of
+a hidden tab brings that tab to the front.
+
+Normal windows with a title bar from mwc can be tabs. Windows of a fixed size, dialogs
+and programs drawing their own title bar can't. In the layout, windows can't be dragged,
+so grouping works through the keys and the menu there. Hidden X11 programs count as
+iconified while they are hidden.
 
 ## Keyboard and monitors
 

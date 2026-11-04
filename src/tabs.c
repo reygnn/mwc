@@ -203,14 +203,22 @@ void tabs_bring(struct view *view)
 		tabs_show(view);
 }
 
-bool tabs_join(struct view *view, struct view *target)
+bool tabs_fit_together(struct view *view, struct view *target)
 {
 	if (target->tab_hidden)
 		target = target->group->shown;
-	if (view == target || (view->group && view->group == target->group) ||
-			!tabs_can_join(view) || !tabs_can_join(target) ||
-			view->no_tile != target->no_tile)
+	/* A hidden tab may be taken along, and needs only to qualify as a window. */
+	return view != target && (!view->group || view->group != target->group) &&
+		(view->tab_hidden ? tab_material(view) : tabs_can_join(view)) &&
+		tabs_can_join(target) && view->no_tile == target->no_tile;
+}
+
+bool tabs_join(struct view *view, struct view *target)
+{
+	if (!tabs_fit_together(view, target))
 		return false;
+	if (target->tab_hidden)
+		target = target->group->shown;
 	if (view->group)
 		tabs_detach(view);
 
@@ -235,15 +243,26 @@ bool tabs_join(struct view *view, struct view *target)
 	return true;
 }
 
-bool tabs_join_previous(struct view *view)
+struct view *tabs_previous(struct view *view)
 {
 	struct view *v;
 	wl_list_for_each(v, &view->server->views, link) {
-		if (v != view && !v->tab_hidden && tabs_can_join(v) &&
-				tabs_join(view, v))
-			return true;
+		if (!v->tab_hidden && tabs_fit_together(view, v))
+			return v;
 	}
-	return false;
+	return NULL;
+}
+
+struct view *tabs_nth(struct view *view, int n)
+{
+	if (!view->group)
+		return NULL;
+	struct view *v;
+	wl_list_for_each(v, &view->group->members, tab_link) {
+		if (n-- == 0)
+			return v;
+	}
+	return NULL;
 }
 
 void tabs_detach(struct view *view)
@@ -321,13 +340,9 @@ void tabs_show_nth(struct view *view, int n)
 	struct tab_group *g = view->group;
 	if (!g || g->shown->fullscreen)
 		return;
-	struct view *v;
-	wl_list_for_each(v, &g->members, tab_link) {
-		if (n-- == 0) {
-			tabs_show(v);
-			return;
-		}
-	}
+	struct view *v = tabs_nth(view, n);
+	if (v)
+		tabs_show(v);
 }
 
 void tabs_after_restore(struct view *view)
