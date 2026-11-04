@@ -44,10 +44,8 @@ struct keyboard {
 	int n_swallowed;
 };
 
-void spawn(const char *cmd)
+static void spawn_argv(const char *const argv[])
 {
-	if (!cmd || !*cmd)
-		return;
 	pid_t pid = fork();
 	if (pid == 0) {
 		/* wl_event_loop_add_signal() blocks our handled signals, and
@@ -59,7 +57,7 @@ void spawn(const char *cmd)
 		/* Double fork so we never collect zombies. */
 		setsid();
 		if (fork() == 0) {
-			execl("/bin/sh", "/bin/sh", "-c", cmd, (char *)NULL);
+			execv(argv[0], (char *const *)argv);
 			_exit(127);
 		}
 		_exit(0);
@@ -67,6 +65,20 @@ void spawn(const char *cmd)
 		int status;
 		waitpid(pid, &status, 0);
 	}
+}
+
+void spawn(const char *cmd)
+{
+	if (!cmd || !*cmd)
+		return;
+	const char *argv[] = { "/bin/sh", "-c", cmd, NULL };
+	spawn_argv(argv);
+}
+
+void spawn_file(const char *path)
+{
+	const char *argv[] = { path, NULL };
+	spawn_argv(argv);
 }
 
 void cursor_set_name(struct server *server, const char *name)

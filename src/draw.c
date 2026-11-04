@@ -12,6 +12,8 @@
 #include <wlr/util/log.h>
 #include "mwc.h"
 
+#define MAX_BAR_HEIGHT 128
+
 struct mwc_theme theme;
 
 static struct mwc_color hex(uint32_t rgb)
@@ -92,7 +94,12 @@ static const char *usable_font(const char *font, const char *where)
 {
 	if (!font || !*font)
 		return NULL;
-	if (strchr(font, ':')) {
+	/* A name without a size is usually one of those too, like Sans-12, which Pango
+	 * reads as a family that doesn't exist. */
+	PangoFontDescription *desc = pango_font_description_from_string(font);
+	bool sized = pango_font_description_get_set_fields(desc) & PANGO_FONT_MASK_SIZE;
+	pango_font_description_free(desc);
+	if (strchr(font, ':') || !sized) {
 		wlr_log(WLR_ERROR, "ignoring font \"%s\" from %s: mwc takes "
 			"Pango names like \"Sans Bold 10\"", font, where);
 		return NULL;
@@ -156,6 +163,11 @@ void theme_init(void)
 	theme.bevel = 2;
 	/* Grow title bars and menus with the font. */
 	int text_h = font_height(theme.font) + 8;
+	/* A typo like "Sans Bold 1000" must leave something to fix it with. */
+	if (text_h > MAX_BAR_HEIGHT) {
+		wlr_log(WLR_ERROR, "font \"%s\" is too large for a title bar", theme.font);
+		text_h = MAX_BAR_HEIGHT;
+	}
 	theme.title_height = text_h > 22 ? text_h : 22;
 	theme.menu_item_height = text_h > 24 ? text_h : 24;
 }
@@ -263,6 +275,14 @@ struct cairo_buffer *cairo_buffer_create(int width, int height)
 	wlr_buffer_init(&buf->base, &cairo_buffer_impl, width, height);
 	buf->surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
 		width, height);
+	/* Too large for cairo, a client can ask for that. */
+	if (cairo_surface_status(buf->surface) != CAIRO_STATUS_SUCCESS) {
+		wlr_log(WLR_ERROR, "cannot create a %dx%d buffer", width, height);
+		cairo_surface_destroy(buf->surface);
+		wlr_buffer_finish(&buf->base);
+		free(buf);
+		return NULL;
+	}
 	buf->cr = cairo_create(buf->surface);
 	/* Crisp pixel edges for bevels; text sets its own antialiasing. */
 	cairo_set_antialias(buf->cr, CAIRO_ANTIALIAS_NONE);

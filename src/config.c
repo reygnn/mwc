@@ -23,6 +23,7 @@
  */
 #define _POSIX_C_SOURCE 200809L
 #include <ctype.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -65,21 +66,31 @@ static char *trim(char *s)
 
 static void add_rule(char *key, const char *value, int line)
 {
-	/* "Mwm*XTerm*activeBackground", '.' and '*' both separate. */
-	char *parts[4];
-	int n = 0;
-	for (char *tok = strtok(key, "*."); tok && n < 4;
-			tok = strtok(NULL, "*."))
-		parts[n++] = tok;
-	if (n < 2 || n > 3 || strcasecmp(parts[0], "mwm") != 0) {
+	/* "Mwm*XTerm*activeBackground": '.' and '*' both separate. The first part is
+	 * the prefix and the last the resource; all between is the client, which may
+	 * have dots of its own, as "org.gnome.Terminal" does. */
+	size_t prefix = strcspn(key, "*.");
+	char *resource = key + strlen(key);
+	while (resource > key && resource[-1] != '*' && resource[-1] != '.')
+		resource--;
+	bool ok = key[prefix] && prefix == 3 && !strncasecmp(key, "mwm", 3) && *resource;
+	/* Empty parts, as in "Mwm**resource", name nothing. */
+	char *client = NULL;
+	if (ok && resource - key > (ptrdiff_t)prefix + 1) {
+		size_t len = resource - key - prefix - 2;
+		ok = len > 0;
+		if (ok)
+			client = strndup(key + prefix + 1, len);
+	}
+	if (!ok) {
 		wlr_log(WLR_ERROR, "%s:%d: expected Mwm*resource or "
 			"Mwm*client*resource", path, line);
 		return;
 	}
 	rules = realloc(rules, sizeof(*rules) * (n_rules + 1));
 	rules[n_rules++] = (struct rule){
-		.client = n == 3 ? strdup(parts[1]) : NULL,
-		.resource = strdup(parts[n - 1]),
+		.client = client,
+		.resource = strdup(resource),
 		.value = strdup(value),
 		.line = line,
 	};
@@ -187,14 +198,13 @@ static bool parse_rgb_form(const char *value, struct mwc_color *out)
 	const char *s = value + 4;
 	float channels[3];
 	for (int i = 0; i < 3; i++) {
-		char *end;
-		unsigned long v = strtoul(s, &end, 16);
-		int digits = end - s;
-		if (digits < 1 || digits > 4 || (i < 2 && *end != '/') ||
-				(i == 2 && *end != '\0'))
+		/* Only hex digits: strtoul alone also takes spaces, signs and 0x. */
+		int digits = strspn(s, "0123456789abcdefABCDEF");
+		if (digits < 1 || digits > 4 || (i < 2 && s[digits] != '/') ||
+				(i == 2 && s[digits] != '\0'))
 			return false;
-		channels[i] = v / (float)((1ul << (4 * digits)) - 1);
-		s = end + 1;
+		channels[i] = strtoul(s, NULL, 16) / (float)((1ul << (4 * digits)) - 1);
+		s += digits + 1;
 	}
 	*out = (struct mwc_color){ channels[0], channels[1], channels[2] };
 	return true;

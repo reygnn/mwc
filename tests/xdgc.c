@@ -8,6 +8,7 @@
  *     size=WxH     default 300x200
  *     min=WxH max=WxH
  *     pre=max|full ask for that state before the first commit
+ *     csd=1        draw its own decorations: ask for no frame
  *     states=1     log the states each configure carries
  *     late_app=NAME set this app_id a moment after mapping
  *     dialog=NAME  also open a child toplevel with this app_id
@@ -31,7 +32,7 @@ static int default_w = 300, default_h = 200, min_w, min_h, max_w, max_h;
 static int open_windows;
 static const char *pre_state;
 static const char *late_app;
-static bool log_states;
+static bool log_states, client_side;
 
 struct window {
 	struct wl_surface *surface;
@@ -169,11 +170,13 @@ static struct window *open_window(const char *app, struct window *parent,
 		xdg_toplevel_set_min_size(win->toplevel, min_w, min_h);
 		xdg_toplevel_set_max_size(win->toplevel, max_w, max_h);
 	}
-	struct zxdg_toplevel_decoration_v1 *deco =
-		zxdg_decoration_manager_v1_get_toplevel_decoration(deco_manager,
-		win->toplevel);
-	zxdg_toplevel_decoration_v1_set_mode(deco,
-		ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	if (!client_side) {
+		struct zxdg_toplevel_decoration_v1 *deco =
+			zxdg_decoration_manager_v1_get_toplevel_decoration(deco_manager,
+			win->toplevel);
+		zxdg_toplevel_decoration_v1_set_mode(deco,
+			ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	}
 	if (limits && pre_state && !strcmp(pre_state, "max"))
 		xdg_toplevel_set_maximized(win->toplevel);
 	else if (limits && pre_state && !strcmp(pre_state, "full"))
@@ -207,6 +210,8 @@ int main(int argc, char *argv[])
 			dialog = v;
 		else if (!strcmp(argv[i], "pre"))
 			pre_state = v;
+		else if (!strcmp(argv[i], "csd"))
+			client_side = atoi(v);
 		else if (!strcmp(argv[i], "states"))
 			log_states = atoi(v);
 		else if (!strcmp(argv[i], "late_app"))

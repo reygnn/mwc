@@ -76,5 +76,6 @@ stop_mwc
 unset MWC_WALLPAPER
 start_mwc "sleep 120"
 pixel_is "no wallpaper: plain desktop colour" 640 360 "$ROOT"
+stop_mwc
 
 echo "PASS: wallpaper"

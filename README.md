@@ -41,7 +41,9 @@ X11 client (xterm) connect, with a screenshot in `build/smoke.png`.
 keyboard (`tests/vinput.c`) and checks geometry and focus after each move,
 resize, maximize, minimize, menu and key binding. The simulated devices and the
 state file only exist when `MWC_TEST_STATE` is set, because those protocols let
-any client type on the user's behalf.
+any client type on the user's behalf. Other protocols are always on and open to every
+client, as in most wlroots compositors: `wlr-screencopy` lets any of them read the
+screen, and `wlr-layer-shell` lets any of them cover it.
 
 `make wallpaper-test` renders generated images and checks pixels in screenshots,
 and `make config-test` does the same for `mwmrc`, including reloading it.
@@ -58,6 +60,9 @@ end the session, which is worth running against a sanitizer build too:
     CFLAGS="-O1 -g -fsanitize=address,undefined" LDFLAGS="-fsanitize=address,undefined" \
         ASAN_OPTIONS=detect_leaks=0 make test
 
+`make state-test` tries orderings of window states, and `make misc-test` key bindings,
+autostart and settings the others don't reach.
+
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
 
@@ -69,7 +74,7 @@ mwc.
 
 | Where              | Action                                              |
 |--------------------|-----------------------------------------------------|
-| Title bar          | drag: move · double-click: maximize · btn3: menu    |
+| Title bar          | drag: move · double-click: maximize · btn2: lower · btn3: menu |
 | Menu button        | click: window menu · double-click: close            |
 | Border / corners   | resize                                              |
 | Icon               | double-click: restore · btn3: window menu           |
@@ -78,11 +83,11 @@ mwc.
 
 ## Keys (mwm defaults)
 
-Alt+Tab / Alt+Shift+Tab cycle · Alt+Space or Shift+Esc window menu ·
+Alt+Tab / Alt+Shift+Tab (or Alt+Esc) cycle · Alt+Space or Shift+Esc window menu ·
 Alt+F3 lower · Alt+F4 close · Alt+F5 restore · Alt+F7 move · Alt+F8 size ·
 Alt+F9 minimize · Alt+F10 maximize · Alt+F11 fullscreen ·
 Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit ·
-Super+arrows snap (see above) · Super+Shift+arrows push a floating window against
+Super+arrows snap (see below) · Super+Shift+arrows push a floating window against
 that edge of the usable area (two in a row: a corner) · Super+T tiling on/off.
 
 ## Configuration
@@ -118,8 +123,8 @@ Mwm*wallpaper:                 ~/pictures/desk.png
 | `TileOnly` | the only programs that tile, comma-separated; the later of the two wins (global only) |
 
 Copying a file from mwm-x11 works, except that `fontList` takes Pango names
-like `Sans Bold 10`: a fontconfig pattern like `Sans:bold:size=10` is logged and
-ignored. Resources mwc doesn't know are ignored too.
+like `Sans Bold 10`: anything else, like `Sans:bold:size=10` or `Sans-12`, is logged
+and ignored. Resources mwc doesn't know are ignored too.
 
 A program with its own `activeBackground` keeps its colour when unfocused, in a
 paler shade (mixed with the global `background`), and so does its desktop icon.
@@ -127,6 +132,8 @@ Set `Mwm*Name*background` to choose the unfocused colour yourself. Colours are
 `#rrggbb`, names like `gold` or `firebrick`, or `rgb:rr/gg/bb`. Lines starting
 with `!` are comments; a `!` after a value is part of the value, so comments go
 on their own line. Later lines win.
+
+A program's `app_id` may contain dots: `Mwm*org.gnome.Terminal*activeBackground`.
 
 The file is read at startup, on `SIGHUP` and on "Restart..." in the root menu. A
 Wayland compositor can't restart and keep its windows, so "Restart..." only
@@ -145,6 +152,9 @@ The environment overrides the global entries:
 | `MWC_TILING`      | `0`            | `1`: start in tiling mode        |
 | `MWC_TILE_MAIN_WIDTH` | `55`       | main tiled window's share in %   |
 | `MWC_TERMINAL`    | first of xterm, foot, alacritty, … | "New Window"  |
+
+The cursor theme and size come from `XCURSOR_THEME` and `XCURSOR_SIZE`, the keyboard
+layout from `XKB_DEFAULT_LAYOUT` and the like. `-d` logs debug output.
 
 The wallpaper is the path of a PNG file; a leading `~/` is expanded. The image is
 scaled to cover each monitor: the aspect ratio stays and what sticks out is cut

@@ -19,17 +19,38 @@ unset MWC_ACTIVE MWC_INACTIVE MWC_ROOT MWC_FONT MWC_WALLPAPER MWC_TERMINAL
 unset MWC_MOVE_OPAQUE MWC_TILING MWC_TILE_MAIN_WIDTH
 
 pid=
+MAIN_SHELL=$$
+
+# Everything started under this test has SMOKE_DIR in its environment, which is how
+# to find what mwc started: it runs in sessions of its own, and outlives mwc.
+kill_leftovers() {
+	local p line
+	for p in /proc/[0-9]*; do
+		[ "${p#/proc/}" = "$MAIN_SHELL" ] && continue
+		while IFS= read -r -d '' line; do
+			if [ "$line" = "SMOKE_DIR=$SMOKE_DIR" ]; then
+				kill "${p#/proc/}" 2>/dev/null
+				break
+			fi
+		done 2>/dev/null <"$p/environ"
+	done
+}
+
 cleanup() {
 	if [ -n "$pid" ]; then
 		kill "$pid" 2>/dev/null
 		wait "$pid" 2>/dev/null
 	fi
+	kill_leftovers
 	rm -rf "$SMOKE_DIR"
 }
 trap cleanup EXIT
+trap 'exit 1' TERM
 
+# Inside $(...) an exit only leaves the subshell, and the test would go on.
 fail() {
 	echo "FAIL: $1 (see $LOG)"
+	[ "$BASHPID" = "$MAIN_SHELL" ] || kill -TERM "$MAIN_SHELL"
 	exit 1
 }
 
@@ -65,8 +86,18 @@ start_mwc() {
 
 # stop_mwc: SIGTERM must end it cleanly, so a crash on shutdown fails the test.
 stop_mwc() {
-	local status
+	local status i
 	kill "$pid" 2>/dev/null
+	for ((i = 0; i < TIMEOUT * 5; i++)); do
+		kill -0 "$pid" 2>/dev/null || break
+		sleep 0.2
+	done
+	if kill -0 "$pid" 2>/dev/null; then
+		kill -9 "$pid" 2>/dev/null
+		wait "$pid" 2>/dev/null
+		pid=
+		fail "mwc didn't end on SIGTERM"
+	fi
 	wait "$pid" 2>/dev/null
 	status=$?
 	pid=

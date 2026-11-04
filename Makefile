@@ -15,10 +15,12 @@ endif
 WAYLAND_PROTOCOLS = $(shell $(PKG_CONFIG) --variable=pkgdatadir wayland-protocols)
 WAYLAND_SCANNER = $(shell $(PKG_CONFIG) --variable=wayland_scanner wayland-scanner)
 
+# CFLAGS and LDLIBS stay the user's, also on the command line: `make CFLAGS=-O0` must
+# not lose the include paths.
 CFLAGS ?= -O2 -g
-CFLAGS += -std=c11 -Wall -Wextra -Wno-unused-parameter -Werror=implicit \
+MWC_CFLAGS = -std=c11 -Wall -Wextra -Wno-unused-parameter -Werror=implicit \
 	-DWLR_USE_UNSTABLE -Ibuild $(shell $(PKG_CONFIG) --cflags $(PKGS))
-LDLIBS += $(shell $(PKG_CONFIG) --libs $(PKGS))
+MWC_LIBS = $(shell $(PKG_CONFIG) --libs $(PKGS))
 
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
 	src/input.c src/draw.c src/wallpaper.c src/config.c src/layer.c \
@@ -39,15 +41,16 @@ build/wlr-layer-shell-unstable-v1-protocol.h: protocols/wlr-layer-shell-unstable
 	$(WAYLAND_SCANNER) server-header $< $@
 
 build/%.o: src/%.c src/mwc.h $(PROTO) | build
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(MWC_CFLAGS) $(CFLAGS) -c -o $@ $<
 
 mwc: $(OBJ)
-	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LDLIBS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(MWC_LIBS) $(LDLIBS)
 
 install: mwc
 	install -Dm755 mwc $(DESTDIR)$(PREFIX)/bin/mwc
-	install -Dm644 data/mwc.desktop \
-		$(DESTDIR)/usr/share/wayland-sessions/mwc.desktop
+	install -d $(DESTDIR)/usr/share/wayland-sessions
+	sed 's|^Exec=mwc$$|Exec=$(PREFIX)/bin/mwc|' data/mwc.desktop \
+		>$(DESTDIR)/usr/share/wayland-sessions/mwc.desktop
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/mwc \
@@ -133,6 +136,9 @@ build/badclient: tests/badclient.c build/xdg-shell-client.h build/xdg-shell-code
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/badclient.c \
 		build/xdg-shell-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
 
+misc-test: mwc build/vinput build/pngtool build/xclient build/xdgc
+	tests/misc.sh
+
 state-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/badclient build/layerc
 	tests/state.sh
 
@@ -164,10 +170,10 @@ config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
 test: smoke input-test wallpaper-test config-test layer-test window-test \
-	move-test snap-test outputs-test tile-test crash-test pointer-test state-test
+	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test
 
 clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN)
-.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test test clean
+.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test test clean

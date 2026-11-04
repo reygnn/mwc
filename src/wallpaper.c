@@ -16,8 +16,7 @@
 
 void wallpaper_fini(struct server *server)
 {
-	if (server->wallpaper)
-		cairo_surface_destroy(server->wallpaper);
+	free(server->wallpaper);
 	server->wallpaper = NULL;
 }
 
@@ -39,21 +38,22 @@ void wallpaper_init(struct server *server)
 	else
 		snprintf(path, sizeof(path), "%s", value);
 
+	/* Only the path is kept: decoded, a large image would stay in memory for the
+	 * whole session. It is read again when an output needs it. */
 	cairo_surface_t *image = cairo_image_surface_create_from_png(path);
 	cairo_status_t status = cairo_surface_status(image);
-	if (status != CAIRO_STATUS_SUCCESS) {
+	if (status != CAIRO_STATUS_SUCCESS)
 		wlr_log(WLR_ERROR, "cannot load wallpaper %s: %s", path,
 			cairo_status_to_string(status));
-		cairo_surface_destroy(image);
-		return;
-	}
-	server->wallpaper = image;
+	else
+		server->wallpaper = strdup(path);
+	cairo_surface_destroy(image);
 }
 
 void wallpaper_place(struct output *output, bool force)
 {
-	cairo_surface_t *image = output->server->wallpaper;
-	if (!image) {
+	const char *path = output->server->wallpaper;
+	if (!path) {
 		if (output->wallpaper)
 			wlr_scene_node_destroy(&output->wallpaper->node);
 		output->wallpaper = NULL;
@@ -77,9 +77,18 @@ void wallpaper_place(struct output *output, bool force)
 			h == output->wallpaper_h))
 		return;
 
-	struct cairo_buffer *buf = cairo_buffer_create(w, h);
-	if (!buf)
+	cairo_surface_t *image = cairo_image_surface_create_from_png(path);
+	if (cairo_surface_status(image) != CAIRO_STATUS_SUCCESS) {
+		wlr_log(WLR_ERROR, "cannot load wallpaper %s: %s", path,
+			cairo_status_to_string(cairo_surface_status(image)));
+		cairo_surface_destroy(image);
 		return;
+	}
+	struct cairo_buffer *buf = cairo_buffer_create(w, h);
+	if (!buf) {
+		cairo_surface_destroy(image);
+		return;
+	}
 	int iw = cairo_image_surface_get_width(image);
 	int ih = cairo_image_surface_get_height(image);
 	double scale = fmax((double)w / iw, (double)h / ih);
@@ -92,6 +101,9 @@ void wallpaper_place(struct output *output, bool force)
 	cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
 	cairo_pattern_set_extend(cairo_get_source(cr), CAIRO_EXTEND_PAD);
 	cairo_paint(cr);
+	/* The buffer's context must not keep the image alive. */
+	cairo_set_source_rgb(cr, 0, 0, 0);
+	cairo_surface_destroy(image);
 
 	wlr_scene_buffer_set_buffer(output->wallpaper, &buf->base);
 	cairo_buffer_drop(buf);

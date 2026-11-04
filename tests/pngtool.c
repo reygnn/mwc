@@ -4,11 +4,14 @@
  *   pngtool stripes OUT W H OUTER INNER  image with outer quarters in colour
  *                                        OUTER and the middle half in INNER
  *   pngtool pixel FILE X Y               prints the pixel as rrggbb
- *   pngtool count FILE X Y W H RRGGBB    prints how many pixels have that colour
+ *   pngtool count FILE X Y W H RRGGBB    prints how many pixels have that colour,
+ *                                        within 64 per channel: antialiased text
+ *                                        rarely reaches the exact one
  *
  * Colours are rrggbb. Each quarter is measured along the width.
  */
 #include <cairo.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -68,7 +71,13 @@ static int count(const char *file, int x, int y, int w, int h, const char *hex)
 		for (int px = x; px < x + w &&
 				px < cairo_image_surface_get_width(s); px++) {
 			uint32_t v = *(uint32_t *)(data + py * stride + px * 4);
-			n += (v & 0xffffff) == want;
+			bool near = true;
+			for (int shift = 0; shift <= 16; shift += 8) {
+				int d = (int)((v >> shift) & 0xff) -
+					(int)((want >> shift) & 0xff);
+				near = near && d > -64 && d < 64;
+			}
+			n += near;
 		}
 	}
 	printf("%d\n", n);

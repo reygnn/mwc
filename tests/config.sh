@@ -83,7 +83,7 @@ Mwm*myterm*background:          #334455
 
 this line has no colon
 Other*activeBackground:         #ffffff
-Mwm*fontList:                   Sans:bold:size=10
+Mwm*fontList:                   Sans-12
 Mwm*unknownResource:            whatever
 EOF
 
@@ -101,7 +101,7 @@ wait_for "started programs have no signals blocked" \
 
 log_has "a line without a colon is reported" "mwmrc:12: missing ':'"
 log_has "a wrong prefix is reported" "mwmrc:13: expected Mwm"
-log_has "a fontconfig pattern is reported" 'ignoring font "Sans:bold:size=10"'
+log_has "a font name without a size is reported" 'ignoring font "Sans-12"'
 log_has "an unknown colour is reported" 'unknown colour "not-a-colour"'
 
 # Move xterm next to foot, so both frames can be seen whichever has the focus.

@@ -199,7 +199,7 @@ static void run_autostart(const char *startup_cmd)
 	else
 		return;
 	if (access(path, X_OK) == 0)
-		spawn(path);
+		spawn_file(path);
 }
 
 static int handle_sighup(int signal, void *data)
@@ -223,8 +223,8 @@ static void usage(const char *argv0)
 		"  -d       debug logging\n"
 		"\n"
 		"Environment: MWC_TERMINAL, MWC_ACTIVE, MWC_INACTIVE, MWC_ROOT,\n"
-		"MWC_WALLPAPER, MWC_FONT, XCURSOR_THEME, XCURSOR_SIZE,\n"
-		"XKB_DEFAULT_LAYOUT.\n"
+		"MWC_WALLPAPER, MWC_FONT, MWC_MOVE_OPAQUE, MWC_TILING,\n"
+		"MWC_TILE_MAIN_WIDTH, XCURSOR_THEME, XCURSOR_SIZE, XKB_DEFAULT_*.\n"
 		"Without -s, ~/.config/mwc/autostart is run if executable.\n"
 		"~/.config/mwc/mwmrc is read at startup and on SIGHUP.\n",
 		argv0);

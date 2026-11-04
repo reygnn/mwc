@@ -13,6 +13,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_seat.h>
@@ -134,9 +135,12 @@ static int dump_state(int signal, void *data)
 
 void testhook_init(struct server *server)
 {
-	state_path = getenv("MWC_TEST_STATE");
-	if (!state_path || !*state_path)
+	const char *env = getenv("MWC_TEST_STATE");
+	if (!env || !*env)
 		return;
+	state_path = strdup(env);
+	/* It is for this process, not for what it starts. */
+	unsetenv("MWC_TEST_STATE");
 	wlr_log(WLR_INFO, "test hooks on, state file %s", state_path);
 	test_server = server;
 

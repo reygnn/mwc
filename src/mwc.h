@@ -414,7 +414,7 @@ struct server {
 	bool tiling;     /* tiling mode on */
 	long tile_front; /* tile_seq of the newest window, which leads */
 	const char *terminal;
-	cairo_surface_t *wallpaper; /* NULL: plain desktop colour */
+	char *wallpaper; /* path of a readable PNG, NULL: plain desktop colour */
 };
 
 struct output {
@@ -558,6 +558,8 @@ void input_pointer_changed(struct server *server);
 /* Whether a client may start a move now: only with a button down that it got. */
 bool input_button_held(struct server *server);
 void spawn(const char *cmd);
+/* The same for a program by its path, which needs no quoting. */
+void spawn_file(const char *path);
 
 /* ---- tile.c ------------------------------------------------------------- */
 

@@ -18,6 +18,6 @@ wait_for "xterm connected (XWayland)" test -e "$SMOKE_DIR/xterm-up"
 sleep 1
 WAYLAND_DISPLAY=wayland-0 grim "$PNG" || fail "grim could not take a screenshot"
 [ -s "$PNG" ] || fail "screenshot is empty"
-kill -0 "$pid" 2>/dev/null || fail "mwc died"
+stop_mwc
 
 echo "PASS: screenshot in $PNG"

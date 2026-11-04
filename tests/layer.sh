@@ -189,6 +189,7 @@ do_input click left
 check "foot is back with the keyboard" "[ \"\$(get foot kbfocus)\" = 1 ]"
 
 layerc_start nokbd layer=top anchor=right size=50x50 keyboard=none color=444444
+pixel_is "the surface is mapped" 1270 360 444444
 check "keyboard=none leaves the keyboard alone" "[ \"\$(get foot kbfocus)\" = 1 ]"
 layerc_stop nokbd
 

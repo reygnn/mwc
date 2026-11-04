@@ -149,7 +149,7 @@ cell_is "it keeps its title bar" a 8 $((8 + 696 - SHADED + 8)) "$STACK_W" "$SHAD
 cell_is "the other one takes the room" b 8 8 "$STACK_W" $((696 - SHADED))
 pixel_is "what shows below it is the desktop" 300 $((8 + 696 - SHADED + 8 + SHADED + 2)) 5b7792
 check "the client keeps its height for later" "[ \"\$(get a h)\" -gt 100 ]"
-window_menu_is "a shaded window has nothing new in the menu" c nLC
+window_menu_is "with a window shaded, the main window's menu is the same" c nLC
 click_title a
 check "a click on it unrolls it" "[ \"\$(get a shaded)\" = 0 ] && [ \"\$(get a active)\" = 1 ]"
 cell_is "back to sharing" a 8 364 "$STACK_W" 348
@@ -168,7 +168,7 @@ done
 check "Alt+Tab reaches it and unrolls it" "[ \"\$(get a shaded)\" = 0 ] && [ \"\$(get a active)\" = 1 ]"
 button a min
 button b min
-check "Alt+F5 is only for shaded ones" "[ \"\$(get b shaded)\" = 1 ]"
+check "the other stack window is shaded too" "[ \"\$(get b shaded)\" = 1 ]"
 do_input key alt+Tab
 button b max
 cell_is "maximize on a stack window makes it the main one" b "$MAIN_X" 8 "$MAIN_W" "$FULL_H"
