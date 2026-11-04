@@ -18,8 +18,13 @@
 #include <wlr/util/edges.h>
 
 struct wlr_input_device;
+struct wlr_layer_surface_v1;
+struct wlr_surface;
 struct wlr_xdg_toplevel;
 struct wlr_xwayland_surface;
+
+/* background, bottom, top, overlay: the layers of wlr-layer-shell. */
+#define MWC_SHELL_LAYERS 4
 
 /* ---- theme ------------------------------------------------------------ */
 
@@ -36,6 +41,7 @@ struct mwc_theme {
 	struct mwc_shade active, inactive, menu;
 	struct mwc_color select; /* menu item armed background */
 	struct mwc_color root;   /* desktop background */
+	bool root_none;          /* draw no desktop colour, a tool does that */
 	/* Global title text colours from mwmrc, for clients with their own
 	 * background. Unset, the text is black or white by contrast. */
 	struct mwc_color active_fg, inactive_fg;
@@ -235,10 +241,16 @@ struct server {
 
 	/* Stacking layers, bottom to top. */
 	struct wlr_scene_tree *layer_bg;
+	struct wlr_scene_tree *layer_shell[MWC_SHELL_LAYERS]; /* see main() */
 	struct wlr_scene_tree *layer_icons;
 	struct wlr_scene_tree *layer_views;
+	struct wlr_scene_tree *layer_fullscreen; /* the focused fullscreen window */
 	struct wlr_scene_tree *layer_unmanaged;
 	struct wlr_scene_tree *layer_menu;
+
+	struct wl_listener new_layer_surface;
+	struct wlr_layer_surface_v1 *focused_layer;   /* has the keyboard */
+	struct wlr_layer_surface_v1 *exclusive_layer; /* keeps the keyboard */
 
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
@@ -297,6 +309,8 @@ struct output {
 	struct wl_list link;
 	struct server *server;
 	struct wlr_output *wlr_output;
+	struct wl_list layers[MWC_SHELL_LAYERS]; /* layer_surface.link */
+	struct wlr_box usable; /* what panels leave free */
 	struct wlr_scene_rect *background;
 	struct wlr_scene_buffer *wallpaper; /* above background, may be NULL */
 	int wallpaper_w, wallpaper_h;       /* size it was rendered for */
@@ -338,7 +352,12 @@ void view_set_activated(struct view *view, bool activated);
 struct view *view_at(struct server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy,
 	enum frame_part *part, uint32_t *edges, bool *on_icon);
+/* The output there, or else the first one; NULL when there are none. */
+struct output *output_at(struct server *server, double lx, double ly);
 struct wlr_box output_usable_area(struct server *server, double lx, double ly);
+struct wlr_box output_full_area(struct server *server, double lx, double ly);
+/* Maximized windows and icons follow when panels come and go. */
+void views_usable_area_changed(struct server *server);
 
 /* ---- xwayland.c --------------------------------------------------------- */
 
@@ -377,6 +396,14 @@ void input_add_device(struct server *server, struct wlr_input_device *dev);
 void cursor_set_name(struct server *server, const char *name);
 void process_cursor_motion(struct server *server, uint32_t time);
 void spawn(const char *cmd);
+
+/* ---- layer.c ------------------------------------------------------------ */
+
+void layer_init(struct server *server);
+void layer_arrange(struct output *output);
+void layer_output_gone(struct output *output);
+void layer_handle_click(struct server *server, struct wlr_surface *surface);
+bool layer_surface_is_desktop(struct wlr_surface *surface);
 
 /* ---- wallpaper.c -------------------------------------------------------- */
 

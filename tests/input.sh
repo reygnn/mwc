@@ -279,6 +279,40 @@ test_focus() {
 		"[ \"\$(get foot kbfocus)\" = 1 ] && [ \"\$(get XTerm active)\" = 0 ]"
 }
 
+# xterm's Ctrl+btn1 menu is an override-redirect window, which no view owns. It
+# stays open only while the button is held.
+test_x11_popup() {
+	bring_to_front XTerm
+	settle
+	remember XTerm
+	local cx=$((X0 + B + W0 / 2)) cy=$((Y0 + B + T + H0 / 2))
+	do_input move "$cx" "$cy"
+	do_input hold ctrl
+	do_input down left
+	check "xterm opens its X11 popup menu" "[ \"\$(global unmanaged count)\" -gt 0 ]"
+	check "that is not the root menu" "[ \"\$(global menu open)\" = 0 ]"
+	do_input up left
+	do_input release ctrl
+	check "releasing the button closes the popup" "[ \"\$(global unmanaged count)\" = 0 ]"
+
+	# So a press that lands on it has to be a second button. What xterm makes
+	# of two buttons is up to xterm, hence the click to clean up afterwards.
+	do_input hold ctrl
+	do_input down left
+	check "xterm opens its X11 popup menu again" "[ \"\$(global unmanaged count)\" -gt 0 ]"
+	do_input move $((cx + 5)) $((cy + 5))
+	do_input down right
+	check "a press on the X11 popup doesn't open the root menu" \
+		"[ \"\$(global menu open)\" = 0 ]"
+	do_input up right
+	do_input up left
+	do_input release ctrl
+	settle
+	do_input move "$cx" "$((Y0 + H0))"
+	do_input click left
+	check "the popup is gone after a click" "[ \"\$(global unmanaged count)\" = 0 ]"
+}
+
 test_root_menu() {
 	# Minimize everything so the corner is free for the desktop.
 	bring_to_front foot
@@ -352,6 +386,7 @@ done
 test_minimize foot XTerm
 test_minimize XTerm foot
 test_focus
+test_x11_popup
 test_root_menu
 test_close
 test_quit

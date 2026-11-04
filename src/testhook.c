@@ -63,6 +63,15 @@ static int dump_state(int signal, void *data)
 	}
 	fprintf(f, "menu open=%d title=%s\n", server->menu.open,
 		server->menu.open && server->menu.title ? "yes" : "no");
+	struct output *o = output_at(server, 0, 0);
+	if (o)
+		fprintf(f, "output ux=%d uy=%d uw=%d uh=%d\n", o->usable.x,
+			o->usable.y, o->usable.width, o->usable.height);
+	int unmanaged = 0;
+	struct unmanaged *um;
+	wl_list_for_each(um, &server->unmanaged, link)
+		unmanaged += um->tree != NULL;
+	fprintf(f, "unmanaged count=%d\n", unmanaged);
 	fprintf(f, "theme border=%d title=%d\n", theme.border,
 		theme.title_height);
 	fprintf(f, "cursor x=%d y=%d mode=%d\n", (int)server->cursor->x,

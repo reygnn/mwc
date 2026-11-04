@@ -45,6 +45,8 @@ any client type on the user's behalf.
 
 `make wallpaper-test` renders generated images and checks pixels in screenshots,
 and `make config-test` does the same for `mwmrc`, including reloading it.
+`make layer-test` checks panels with a small layer-shell client
+(`tests/layerc.c`).
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
@@ -95,7 +97,7 @@ Mwm*wallpaper:                 ~/pictures/desk.png
 | `background` | frame colour while unfocused (globally: also menus and icons) |
 | `activeForeground`, `foreground` | title text; default is black or white, whichever contrasts |
 | `fontList` | Pango font name for titles and menus, title bars grow with it (global only) |
-| `rootBackground` | desktop colour (global only) |
+| `rootBackground` | desktop colour, or `none` to leave the desktop to a wallpaper tool such as `swaybg` (global only) |
 | `wallpaper` | PNG on the desktop, see below (global only) |
 
 Copying a file from mwm-x11 works, except that `fontList` takes Pango names
@@ -119,7 +121,7 @@ The environment overrides the global entries:
 |-------------------|----------------|----------------------------------|
 | `MWC_ACTIVE`      | `#7387ad`      | focused frame colour             |
 | `MWC_INACTIVE`    | `#aeb2c3`      | other frames, menus, icons       |
-| `MWC_ROOT`        | `#5b7792`      | desktop colour                   |
+| `MWC_ROOT`        | `#5b7792`      | desktop colour, `none`: not drawn |
 | `MWC_WALLPAPER`   | none           | PNG on the desktop, see below    |
 | `MWC_FONT`        | `Sans Bold 10` | Pango font for titles and menus  |
 | `MWC_TERMINAL`    | first of xterm, foot, alacritty, … | "New Window"  |
@@ -127,6 +129,18 @@ The environment overrides the global entries:
 The wallpaper is the path of a PNG file; a leading `~/` is expanded. The image is
 scaled to cover each monitor: the aspect ratio stays and what sticks out is cut
 off evenly. If it can't be read, mwc logs why and shows the desktop colour.
+
+## Panels and wallpaper tools
+
+Programs using `wlr-layer-shell` work: panels, docks, launchers and wallpaper
+tools. Space a panel reserves stays free of maximized and new windows, icons and
+menus, and maximized windows and icons follow when panels come and go.
+
+The top layer stays above windows, but a fullscreen window covers it while it has
+the focus. The overlay layer goes above everything. A click on the background
+layer counts as a click on the desktop, so a wallpaper tool doesn't cost the root
+menu. While a surface holds the keyboard exclusively, the window key bindings are
+off, except VT switching and Ctrl+Alt+Backspace.
 
 ## Decorations
 

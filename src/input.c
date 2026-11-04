@@ -289,6 +289,11 @@ static bool handle_press(struct server *server, uint32_t button,
 		&part, &edges, &on_icon);
 
 	if (!view) {
+		/* A panel or an X11 popup menu: not ours to handle. */
+		if (surface) {
+			layer_handle_click(server, surface);
+			return false;
+		}
 		/* Desktop: the root menu, as mwm binds it to buttons 1 and 3 */
 		if (button == BTN_LEFT || button == BTN_RIGHT) {
 			menu_open_root(server, cx, cy);
@@ -474,6 +479,8 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		spawn(server->terminal);
 		return true;
 	}
+	if (server->exclusive_layer)
+		return false;
 	if (shift && !alt && !ctrl && sym == XKB_KEY_Escape && view) {
 		/* mwm: Shift+Escape posts the window menu */
 		menu_open_window(server, view, view->x + theme.border,

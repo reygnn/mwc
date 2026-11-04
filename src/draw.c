@@ -5,6 +5,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <drm_fourcc.h>
 #include <pango/pangocairo.h>
 #include <wlr/interfaces/wlr_buffer.h>
@@ -22,19 +23,31 @@ static struct mwc_color hex(uint32_t rgb)
 	};
 }
 
-/* Environment first, then mwmrc, then the built-in default. */
+/* Environment first, then mwmrc, then the built-in default. With a non-NULL
+ * none, the value "none" is accepted as well: *none is set and the fallback
+ * returned. */
 static struct mwc_color setting_color(const char *env, const char *resource,
-	uint32_t fallback)
+	uint32_t fallback, bool *none)
 {
 	struct mwc_color c;
 	const char *s = getenv(env);
+	if (none)
+		*none = false;
 	if (s && *s) {
+		if (none && strcasecmp(s, "none") == 0) {
+			*none = true;
+			return hex(fallback);
+		}
 		if (config_color(s, &c))
 			return c;
 		wlr_log(WLR_ERROR, "ignoring %s=%s, not a colour", env, s);
 	}
 	s = config_get(resource);
 	if (s) {
+		if (none && strcasecmp(s, "none") == 0) {
+			*none = true;
+			return hex(fallback);
+		}
 		if (config_color(s, &c))
 			return c;
 		wlr_log(WLR_ERROR, "ignoring Mwm*%s: %s, not a colour", resource, s);
@@ -112,10 +125,13 @@ void theme_init(void)
 	 * set in mwmrc or overridden through the environment, e.g.
 	 * MWC_ACTIVE=#b24d7a. Title text picks black or white unless set. */
 	struct mwc_color inactive = setting_color("MWC_INACTIVE", "background",
-		0xaeb2c3);
+		0xaeb2c3, NULL);
 	struct mwc_color active = setting_color("MWC_ACTIVE", "activeBackground",
-		0x7387ad);
-	theme.root = setting_color("MWC_ROOT", "rootBackground", 0x5b7792);
+		0x7387ad, NULL);
+	/* "none" leaves the desktop to a wallpaper tool (swaybg); the colour
+	 * is then only used inside the default icon image. */
+	theme.root = setting_color("MWC_ROOT", "rootBackground", 0x5b7792,
+		&theme.root_none);
 
 	theme.has_inactive_fg = config_color(config_get("foreground"),
 		&theme.inactive_fg);

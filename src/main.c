@@ -61,6 +61,7 @@ static void output_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&output->request_state.link);
 	wl_list_remove(&output->destroy.link);
 	wl_list_remove(&output->link);
+	layer_output_gone(output);
 	wlr_scene_node_destroy(&output->background->node);
 	if (output->wallpaper)
 		wlr_scene_node_destroy(&output->wallpaper->node);
@@ -86,6 +87,9 @@ static void new_output(struct wl_listener *listener, void *data)
 	struct output *output = calloc(1, sizeof(*output));
 	output->server = server;
 	output->wlr_output = wlr_output;
+	wlr_output->data = output;
+	for (int i = 0; i < MWC_SHELL_LAYERS; i++)
+		wl_list_init(&output->layers[i]);
 	output->frame.notify = output_frame;
 	wl_signal_add(&wlr_output->events.frame, &output->frame);
 	output->request_state.notify = output_request_state;
@@ -95,6 +99,7 @@ static void new_output(struct wl_listener *listener, void *data)
 
 	float c[4] = { theme.root.r, theme.root.g, theme.root.b, 1 };
 	output->background = wlr_scene_rect_create(server->layer_bg, 0, 0, c);
+	wlr_scene_node_set_enabled(&output->background->node, !theme.root_none);
 	wl_list_insert(&server->outputs, &output->link);
 
 	struct wlr_output_layout_output *lo =
@@ -118,6 +123,7 @@ static void layout_change(struct wl_listener *listener, void *data)
 		wlr_scene_rect_set_size(output->background, box.width,
 			box.height);
 		wallpaper_place(output, false);
+		layer_arrange(output);
 	}
 	icons_arrange(server);
 }
@@ -283,15 +289,24 @@ int main(int argc, char *argv[])
 	server.scene = wlr_scene_create();
 	server.scene_layout = wlr_scene_attach_output_layout(server.scene,
 		server.output_layout);
-	server.layer_bg = wlr_scene_tree_create(&server.scene->tree);
-	server.layer_icons = wlr_scene_tree_create(&server.scene->tree);
-	server.layer_views = wlr_scene_tree_create(&server.scene->tree);
-	server.layer_unmanaged = wlr_scene_tree_create(&server.scene->tree);
-	server.layer_menu = wlr_scene_tree_create(&server.scene->tree);
+	/* Bottom to top. Panels in the top layer stay above windows, and only
+	 * the overlay layer goes above a fullscreen window. */
+	struct wlr_scene_tree *root = &server.scene->tree;
+	server.layer_bg = wlr_scene_tree_create(root);
+	server.layer_shell[0] = wlr_scene_tree_create(root);
+	server.layer_shell[1] = wlr_scene_tree_create(root);
+	server.layer_icons = wlr_scene_tree_create(root);
+	server.layer_views = wlr_scene_tree_create(root);
+	server.layer_shell[2] = wlr_scene_tree_create(root);
+	server.layer_fullscreen = wlr_scene_tree_create(root);
+	server.layer_unmanaged = wlr_scene_tree_create(root);
+	server.layer_shell[3] = wlr_scene_tree_create(root);
+	server.layer_menu = wlr_scene_tree_create(root);
 
 	wl_list_init(&server.views);
 	xdg_init(&server);
 	input_init(&server);
+	layer_init(&server);
 	xwayland_init(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);
@@ -321,6 +336,7 @@ int main(int argc, char *argv[])
 		wl_list_remove(&server.new_xwayland_surface.link);
 		wlr_xwayland_destroy(server.xwayland);
 	}
+	wl_list_remove(&server.new_layer_surface.link);
 	wl_list_remove(&server.new_xdg_toplevel.link);
 	wl_list_remove(&server.new_xdg_popup.link);
 	wl_list_remove(&server.new_xdg_decoration.link);

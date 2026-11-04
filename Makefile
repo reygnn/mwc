@@ -21,9 +21,10 @@ CFLAGS += -std=c11 -Wall -Wextra -Wno-unused-parameter -Werror=implicit \
 LDLIBS += $(shell $(PKG_CONFIG) --libs $(PKGS))
 
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
-	src/input.c src/draw.c src/wallpaper.c src/config.c src/testhook.c
+	src/input.c src/draw.c src/wallpaper.c src/config.c src/layer.c \
+	src/testhook.c
 OBJ = $(SRC:src/%.c=build/%.o)
-PROTO = build/xdg-shell-protocol.h
+PROTO = build/xdg-shell-protocol.h build/wlr-layer-shell-unstable-v1-protocol.h
 
 all: mwc
 
@@ -33,6 +34,9 @@ build:
 build/xdg-shell-protocol.h: | build
 	$(WAYLAND_SCANNER) server-header \
 		$(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+
+build/wlr-layer-shell-unstable-v1-protocol.h: protocols/wlr-layer-shell-unstable-v1.xml | build
+	$(WAYLAND_SCANNER) server-header $< $@
 
 build/%.o: src/%.c src/mwc.h $(PROTO) | build
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -82,13 +86,35 @@ build/pngtool: tests/pngtool.c | build
 wallpaper-test: mwc build/vinput build/pngtool
 	tests/wallpaper.sh
 
+# A layer-shell client: a panel or wallpaper tool to test against.
+LAYERC_GEN = build/wlr-layer-shell-unstable-v1-client.h \
+	build/wlr-layer-shell-unstable-v1-code.c \
+	build/xdg-shell-client.h build/xdg-shell-code.c
+
+build/xdg-shell-client.h: | build
+	$(WAYLAND_SCANNER) client-header \
+		$(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+
+build/xdg-shell-code.c: | build
+	$(WAYLAND_SCANNER) private-code \
+		$(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+
+build/layerc: tests/layerc.c $(LAYERC_GEN)
+	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
+		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/layerc.c \
+		build/wlr-layer-shell-unstable-v1-code.c build/xdg-shell-code.c \
+		$(shell $(PKG_CONFIG) --libs wayland-client)
+
+layer-test: mwc build/vinput build/pngtool build/layerc
+	tests/layer.sh
+
 config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
-test: smoke input-test wallpaper-test config-test
+test: smoke input-test wallpaper-test config-test layer-test
 
 clean:
 	rm -rf build mwc
 
-.SECONDARY: $(VINPUT_CODE)
-.PHONY: all install uninstall smoke input-test wallpaper-test config-test test clean
+.SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN)
+.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test test clean

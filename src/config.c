@@ -245,6 +245,8 @@ void config_reload(struct server *server)
 	struct output *output;
 	wl_list_for_each(output, &server->outputs, link) {
 		wlr_scene_rect_set_color(output->background, c);
+		wlr_scene_node_set_enabled(&output->background->node,
+			!theme.root_none);
 		wallpaper_place(output, true);
 	}
 	struct view *view;

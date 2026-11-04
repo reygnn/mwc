@@ -35,21 +35,31 @@ const char *view_app_id(struct view *view)
 	return t ? t : "";
 }
 
-struct wlr_box output_usable_area(struct server *server, double lx, double ly)
+struct output *output_at(struct server *server, double lx, double ly)
 {
-	struct wlr_box box = { 0, 0, 1024, 768 };
 	struct wlr_output *o = wlr_output_layout_output_at(server->output_layout,
 		lx, ly);
-	if (!o) {
-		struct output *out;
-		wl_list_for_each(out, &server->outputs, link) {
-			o = out->wlr_output;
-			break;
-		}
-	}
 	if (o)
-		wlr_output_layout_get_box(server->output_layout, o, &box);
+		return o->data;
+	struct output *out;
+	wl_list_for_each(out, &server->outputs, link)
+		return out;
+	return NULL;
+}
+
+struct wlr_box output_full_area(struct server *server, double lx, double ly)
+{
+	struct wlr_box box = { 0, 0, 1024, 768 };
+	struct output *o = output_at(server, lx, ly);
+	if (o)
+		wlr_output_layout_get_box(server->output_layout, o->wlr_output, &box);
 	return box;
+}
+
+struct wlr_box output_usable_area(struct server *server, double lx, double ly)
+{
+	struct output *o = output_at(server, lx, ly);
+	return o ? o->usable : output_full_area(server, lx, ly);
 }
 
 /* Position of the client content inside the window tree. xdg clients may
@@ -127,9 +137,20 @@ static void view_apply_size(struct view *view, int w, int h)
 	frame_render(view);
 }
 
+/* A fullscreen window covers top-layer panels only while it has the focus,
+ * or a window focused beside it would end up behind them. */
+static void view_update_layer(struct view *view)
+{
+	struct server *server = view->server;
+	wlr_scene_node_reparent(&view->tree->node,
+		view->fullscreen && view->activated ?
+		server->layer_fullscreen : server->layer_views);
+}
+
 void view_set_activated(struct view *view, bool activated)
 {
 	view->activated = activated;
+	view_update_layer(view);
 	if (view->type == VIEW_XDG) {
 		wlr_xdg_toplevel_set_activated(view->xdg_toplevel, activated);
 	} else {
@@ -173,6 +194,10 @@ void view_focus(struct view *view)
 	if (!view->activated)
 		view_set_activated(view, true);
 
+	/* An exclusive layer surface keeps the keyboard until it goes away. */
+	if (server->exclusive_layer)
+		return;
+	server->focused_layer = NULL;
 	struct wlr_surface *surface = view_surface(view);
 	struct wlr_keyboard *kb = wlr_seat_get_keyboard(seat);
 	if (surface && kb) {
@@ -195,7 +220,8 @@ static void focus_next(struct server *server, struct view *except)
 	}
 	if (except && except->activated)
 		view_set_activated(except, false);
-	wlr_seat_keyboard_notify_clear_focus(server->seat);
+	if (!server->focused_layer)
+		wlr_seat_keyboard_notify_clear_focus(server->seat);
 }
 
 void view_close(struct view *view)
@@ -212,8 +238,11 @@ void view_lower(struct view *view)
 	wlr_scene_node_lower_to_bottom(&view->tree->node);
 	wl_list_remove(&view->link);
 	wl_list_insert(server->views.prev, &view->link);
-	if (view->activated)
+	if (view->activated) {
 		focus_next(server, view);
+		/* Losing the focus may have moved it to another scene layer. */
+		wlr_scene_node_lower_to_bottom(&view->tree->node);
+	}
 }
 
 void view_set_maximized(struct view *view, bool maximized)
@@ -253,10 +282,11 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 			if (!view->maximized)
 				view->saved = (struct wlr_box){ view->x,
 					view->y, view->width, view->height };
-			struct wlr_box a = output_usable_area(view->server,
+			struct wlr_box a = output_full_area(view->server,
 				view->x + view->width / 2.0,
 				view->y + view->height / 2.0);
 			view->fullscreen = true;
+			view_update_layer(view);
 			/* Fullscreen windows lose their frame for the duration. */
 			view->decorated = false;
 			frame_render(view);
@@ -264,6 +294,7 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 			view_focus(view);
 		} else {
 			view->fullscreen = false;
+			view_update_layer(view);
 			view->decorated = view->ssd;
 			if (view->maximized) {
 				view->maximized = false;
@@ -326,6 +357,26 @@ void view_update_title(struct view *view)
 		icon_render(view);
 }
 
+/* Fill the usable area again after it, or the frame's size, has changed. */
+static void view_refit_maximized(struct view *view)
+{
+	struct wlr_box a = output_usable_area(view->server,
+		view->x + view->width / 2.0, view->y + view->height / 2.0);
+	view_set_geometry(view, a.x, a.y, a.width - frame_extra_w(view),
+		a.height - frame_extra_h(view));
+}
+
+void views_usable_area_changed(struct server *server)
+{
+	struct view *v;
+	wl_list_for_each(v, &server->views, link) {
+		v->icon_placed = false;
+		if (v->mapped && v->maximized && !v->fullscreen)
+			view_refit_maximized(v);
+	}
+	icons_arrange(server);
+}
+
 void view_theme_changed(struct view *view)
 {
 	config_view_shades(view);
@@ -334,14 +385,10 @@ void view_theme_changed(struct view *view)
 	/* The title bar grows with the font. The client keeps its size and
 	 * the frame around it changes, except where the frame's size is fixed. */
 	view_update_content_pos(view);
-	if (view->maximized && !view->fullscreen) {
-		struct wlr_box a = output_usable_area(view->server,
-			view->x + 1, view->y + 1);
-		view_set_geometry(view, a.x, a.y, a.width - frame_extra_w(view),
-			a.height - frame_extra_h(view));
-	} else {
+	if (view->maximized && !view->fullscreen)
+		view_refit_maximized(view);
+	else
 		xwayland_configure(view);
-	}
 	frame_render(view);
 	if (view->minimized)
 		icon_render(view);
@@ -441,6 +488,8 @@ struct view *view_at(struct server *server, double lx, double ly,
 		struct wlr_scene_surface *ss =
 			wlr_scene_surface_try_from_buffer(sb);
 		if (ss) {
+			if (layer_surface_is_desktop(ss->surface))
+				return NULL;
 			*surface = ss->surface;
 			*sx = nx;
 			*sy = ny;
@@ -730,6 +779,7 @@ static void new_xdg_toplevel(struct wl_listener *listener, void *data)
 /* ---- popups ------------------------------------------------------------- */
 
 struct popup {
+	struct server *server;
 	struct wlr_xdg_popup *xdg_popup;
 	struct wl_listener commit;
 	struct wl_listener destroy;
@@ -761,6 +811,14 @@ static void popup_commit(struct wl_listener *listener, void *data)
 		/* The box is relative to the popup's parent toplevel only
 		 * for first-level popups; nested ones are close enough. */
 		wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup, &a);
+	} else if (tree) {
+		/* A layer surface's popup: its parent's position is all we need. */
+		int lx, ly;
+		wlr_scene_node_coords(&tree->node.parent->node, &lx, &ly);
+		struct wlr_box a = output_full_area(popup->server, lx, ly);
+		a.x -= lx;
+		a.y -= ly;
+		wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup, &a);
 	}
 	wlr_xdg_surface_schedule_configure(popup->xdg_popup->base);
 }
@@ -775,20 +833,26 @@ static void popup_destroy(struct wl_listener *listener, void *data)
 
 static void new_xdg_popup(struct wl_listener *listener, void *data)
 {
+	struct server *server = wl_container_of(listener, server, new_xdg_popup);
 	struct wlr_xdg_popup *xdg_popup = data;
 	struct popup *popup = calloc(1, sizeof(*popup));
+	popup->server = server;
 	popup->xdg_popup = xdg_popup;
 
-	struct wlr_xdg_surface *parent =
-		wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
-	if (!parent || !parent->data) {
-		wlr_log(WLR_ERROR, "popup without a known xdg parent");
-		free(popup);
-		return;
+	/* Without a parent it belongs to a layer surface, whose new_popup event
+	 * follows and adds it to the scene. */
+	if (xdg_popup->parent) {
+		struct wlr_xdg_surface *parent =
+			wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
+		if (!parent || !parent->data) {
+			wlr_log(WLR_ERROR, "popup without a known xdg parent");
+			free(popup);
+			return;
+		}
+		struct wlr_scene_tree *parent_tree = parent->data;
+		xdg_popup->base->data = wlr_scene_xdg_surface_create(parent_tree,
+			xdg_popup->base);
 	}
-	struct wlr_scene_tree *parent_tree = parent->data;
-	xdg_popup->base->data = wlr_scene_xdg_surface_create(parent_tree,
-		xdg_popup->base);
 
 	popup->commit.notify = popup_commit;
 	wl_signal_add(&xdg_popup->base->surface->events.commit, &popup->commit);
