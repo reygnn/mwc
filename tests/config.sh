@@ -171,13 +171,8 @@ do_input move 1270 700
 do_input click right
 check "the root menu is open" "[ \"\$(global menu open)\" = 1 ]"
 do_input key r
-check "Restart... asks first" "[ \"\$(global menu open)\" = 1 ] && [ \"\$(global menu title)\" = yes ]"
-do_input key c
-pixel_is "Restart... then Cancel keeps the old settings" 1270 700 445566
-do_input click right
-do_input key r
-do_input key o
-pixel_is "Restart... then OK: wallpaper from the file" 1270 700 ff0000
+check "Reload asks nothing" "[ \"\$(global menu open)\" = 0 ]"
+pixel_is "Reload: wallpaper from the file" 1270 700 ff0000
 check "the window is still there" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get XTerm x)\" ]"
 
 rm "$RC"

@@ -138,8 +138,8 @@ on their own line. Later lines win.
 
 A program's `app_id` may contain dots: `Mwm*org.gnome.Terminal*activeBackground`.
 
-The file is read at startup, on `SIGHUP` and on "Restart..." in the root menu. A
-Wayland compositor can't restart and keep its windows, so "Restart..." only
+The file is read at startup, on `SIGHUP` and on "Reload" in the root menu. A
+Wayland compositor can't restart and keep its windows, so "Reload" only
 applies the file to what is running.
 
 The environment overrides the global entries:
@@ -345,7 +345,7 @@ Mwm*HDMI-A-1*outputTransform: 90
 | `Name*outputTransform` | `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180`, `flipped-270` |
 
 mwc logs each monitor's name and modes when it appears. All of this also applies on
-"Restart..." and `SIGHUP`. Tools like `wlr-randr` and `kanshi` don't work: mwc doesn't
+"Reload" and `SIGHUP`. Tools like `wlr-randr` and `kanshi` don't work: mwc doesn't
 offer their protocol.
 
 ## Window behaviour

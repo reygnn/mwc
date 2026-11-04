@@ -302,7 +302,7 @@ enum menu_action {
 	ACT_RAISE_TILED,
 	ACT_LOWER_TILED,
 	ACT_RUN,      /* the item's command */
-	ACT_RESTART,
+	ACT_RELOAD,
 	ACT_QUIT,
 };
 
@@ -737,7 +737,7 @@ int config_bool(const char *name, const char *value);
 void config_view_shades(struct view *view);
 /* Whether the tiling layout may take it, from DoNotTile or TileOnly. */
 void config_view_tiling(struct view *view);
-/* "Restart..." and SIGHUP: a Wayland compositor can't re-exec and keep its
+/* "Reload" and SIGHUP: a Wayland compositor can't re-exec and keep its
  * clients, so this reads mwmrc again and applies it to what is running. */
 void config_reload(struct server *server);
 

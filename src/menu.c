@@ -21,7 +21,6 @@
 
 enum menu_action_private {
 	ACT_QUIT_CONFIRM = ACT_QUIT + 1,
-	ACT_RESTART_CONFIRM,
 };
 
 static PangoLayout *make_layout(cairo_t *cr, const char *text, char mnemonic)
@@ -331,12 +330,12 @@ void menu_open_root(struct server *server, int x, int y)
 			add(m, "Raise Tiled Windows", 'a', NULL, ACT_RAISE_TILED, top == 0);
 	}
 	add(m, NULL, 0, NULL, ACT_NONE, false);
-	add(m, "Restart...", 'R', NULL, ACT_RESTART_CONFIRM, true);
+	add(m, "Reload", 'R', NULL, ACT_RELOAD, true);
 	add(m, "Quit...", 'Q', NULL, ACT_QUIT_CONFIRM, true);
 	open_at(server, x, y);
 }
 
-/* mwm asks before f.restart and f.quit_mwm. */
+/* mwm asks before f.quit_mwm. A reload closes nothing, so it needs no such question. */
 static void open_confirm(struct server *server, const char *title,
 	enum menu_action action, int x, int y)
 {
@@ -399,8 +398,6 @@ static void activate(struct server *server, int idx, uint32_t time_msec)
 		spawn(command);
 	else if ((int)action == ACT_QUIT_CONFIRM)
 		open_confirm(server, "QUIT Mwc?", ACT_QUIT, x, y);
-	else if ((int)action == ACT_RESTART_CONFIRM)
-		open_confirm(server, "Restart Mwc?", ACT_RESTART, x, y);
 	else
 		run_action(server, action, target);
 	(void)time_msec;
@@ -607,7 +604,7 @@ void run_action(struct server *server, enum menu_action action,
 		break;
 	case ACT_RUN: /* activate() has the command */
 		break;
-	case ACT_RESTART:
+	case ACT_RELOAD:
 		config_reload(server);
 		break;
 	case ACT_QUIT:
