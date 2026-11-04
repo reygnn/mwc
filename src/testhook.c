@@ -96,8 +96,8 @@ static int dump_state(int signal, void *data)
 		}
 	}
 	sensitive[n] = '\0';
-	fprintf(f, "menu open=%d x=%d y=%d title=%s sensitive=%s\n", server->menu.open,
-		server->menu.x, server->menu.y,
+	fprintf(f, "menu open=%d x=%d y=%d items=%d title=%s sensitive=%s\n",
+		server->menu.open, server->menu.x, server->menu.y, server->menu.n_items,
 		server->menu.open && server->menu.title ? "yes" : "no", sensitive);
 	struct output *o = output_at(server, 0, 0);
 	if (o)

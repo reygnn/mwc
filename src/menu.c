@@ -169,7 +169,7 @@ static void add(struct menu *m, const char *label, char mnemonic,
 	if (m->n_items >= MENU_MAX_ITEMS)
 		return;
 	m->items[m->n_items++] = (struct menu_item){
-		label, mnemonic, accel, (enum menu_action)action, sensitive,
+		label, mnemonic, accel, (enum menu_action)action, sensitive, NULL,
 	};
 }
 
@@ -276,6 +276,38 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 	open_at(server, x, y);
 }
 
+/* The first letter of the label that is free: the menu's own letters are taken, as are
+ * those of the items above. Case doesn't count, a key means either. */
+static char free_mnemonic(const struct menu *m, const char *label)
+{
+	static const char own[] = "nudtlarq";
+	for (const char *c = label; *c; c++) {
+		if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z')))
+			continue;
+		char lower = *c | 0x20;
+		bool taken = strchr(own, lower);
+		for (int i = 0; i < m->n_items && !taken; i++)
+			taken = (m->items[i].mnemonic | 0x20) == lower;
+		if (!taken)
+			return *c;
+	}
+	return 0;
+}
+
+/* The programs from mwmrc, on top and set off from the rest. */
+static void add_root_items(struct menu *m)
+{
+	int n = config_root_items();
+	for (int i = 0; i < n; i++) {
+		const char *label, *command;
+		config_root_item(i, &label, &command);
+		add(m, label, free_mnemonic(m, label), NULL, ACT_RUN, true);
+		m->items[m->n_items - 1].command = command;
+	}
+	if (n)
+		add(m, NULL, 0, NULL, ACT_NONE, false);
+}
+
 void menu_open_root(struct server *server, int x, int y)
 {
 	struct menu *m = &server->menu;
@@ -285,6 +317,7 @@ void menu_open_root(struct server *server, int x, int y)
 	m->n_items = 0;
 	m->target = NULL;
 	m->from_button = false;
+	add_root_items(m);
 	add(m, "New Window", 'N', NULL, ACT_NEW_WINDOW, true);
 	add(m, "Shuffle Up", 'U', NULL, ACT_SHUFFLE_UP, true);
 	add(m, "Shuffle Down", 'D', NULL, ACT_SHUFFLE_DOWN, true);
@@ -358,10 +391,13 @@ static void activate(struct server *server, int idx, uint32_t time_msec)
 {
 	struct menu *m = &server->menu;
 	enum menu_action action = m->items[idx].action;
+	const char *command = m->items[idx].command;
 	struct view *target = m->target;
 	int x = m->x, y = m->y;
 	menu_close(server);
-	if ((int)action == ACT_QUIT_CONFIRM)
+	if (action == ACT_RUN)
+		spawn(command);
+	else if ((int)action == ACT_QUIT_CONFIRM)
 		open_confirm(server, "QUIT Mwc?", ACT_QUIT, x, y);
 	else if ((int)action == ACT_RESTART_CONFIRM)
 		open_confirm(server, "Restart Mwc?", ACT_RESTART, x, y);
@@ -568,6 +604,8 @@ void run_action(struct server *server, enum menu_action action,
 	case ACT_TAB_DETACH:
 		if (view)
 			tabs_detach(view);
+		break;
+	case ACT_RUN: /* activate() has the command */
 		break;
 	case ACT_RESTART:
 		config_reload(server);

@@ -233,6 +233,100 @@ check "MWC_FONT beats Mwm*fontList" "[ \"\$(global theme title)\" = $T ]"
 stop_mwc
 unset MWC_ROOT MWC_ACTIVE MWC_FONT
 
+# ---- programs in the root menu ------------------------------------------------------
+
+ran() { test -e "$SMOKE_DIR/ran-$1"; }
+root_menu_open() {
+	do_input move 1279 719
+	do_input click right
+	check "the root menu is open" "[ \"\$(global menu open)\" = 1 ]"
+}
+cat >"$RC" <<EOF
+Mwm*rootMenuItem:   Firefox: touch "$SMOKE_DIR/ran-first"
+Mwm*rootMenuItem:   Dateien: touch "$SMOKE_DIR/ran-second:with-a-colon"
+Mwm*rootMenuItem:   Fotos: touch "$SMOKE_DIR/ran-fotos"
+Mwm*rootMenuItem:   Quant: touch "$SMOKE_DIR/ran-noletter"
+Mwm*rootMenuItem:   no command here
+Mwm*rootMenuItem:   : touch "$SMOKE_DIR/ran-nolabel"
+Mwm*rootMenuItem:   Nothing:
+Mwm*foot*rootMenuItem: Client: touch "$SMOKE_DIR/ran-client"
+EOF
+start_mwc "exec sleep 120"
+start_vinput
+log_has "a line without a command is reported" "mwmrc:5: expected Mwm\*rootMenuItem"
+log_has "a line without a label" "mwmrc:6: expected Mwm\*rootMenuItem"
+log_has "an empty command" "mwmrc:7: expected Mwm\*rootMenuItem"
+root_menu_open
+check "on top with the first free letters of each, in order, without those that are bad" \
+	"[ \"\$(global menu sensitive | cut -c1-4)\" = FeoN ]"
+do_input key f
+wait_for "the key of the first item runs it" ran first
+check "and the menu closes" "[ \"\$(global menu open)\" = 0 ]"
+root_menu_open
+do_input key e
+wait_for "a letter that wasn't taken yet, and a command with a colon" ran second:with-a-colon
+root_menu_open
+do_input key o
+wait_for "a first letter taken by the item above moves on" ran fotos
+root_menu_open
+do_input key Down
+do_input key Down
+do_input key Down
+do_input key Down
+do_input key Return
+wait_for "with all of its letters taken, it can still be chosen" ran noletter
+rm -f "$SMOKE_DIR/ran-first"
+root_menu_open
+do_input key Down
+do_input key Return
+wait_for "the arrow keys reach them too" ran first
+
+# A reload takes up changes.
+rm -f "$SMOKE_DIR"/ran-*
+cat >"$RC" <<EOF
+Mwm*rootMenuItem:   Zebra: touch "$SMOKE_DIR/ran-zebra"
+EOF
+kill -HUP "$pid"
+sleep 0.3
+root_menu_open
+check "a reload changes the items" "[ \"\$(global menu sensitive | cut -c1-2)\" = ZN ]"
+WITH=$(global menu items)
+do_input key z
+wait_for "which run" ran zebra
+rm "$RC"
+kill -HUP "$pid"
+sleep 0.3
+root_menu_open
+check "without any, the menu is as before" "[ \"\$(global menu sensitive | cut -c1)\" = N ]"
+[ "$WITH" = $(($(global menu items) + 2)) ] || fail "there is no separator below the items"
+echo "ok: with one item there were two more: the item and a separator"
+do_input key Escape
+stop_vinput
+stop_mwc
+
+# More than there is room for.
+rm -f "$SMOKE_DIR"/ran-*
+for i in $(seq 1 25); do
+	echo "Mwm*rootMenuItem: Item$i: touch \"$SMOKE_DIR/ran-$i\""
+done >"$RC"
+start_mwc "exec sleep 120"
+start_vinput
+log_has "more than can be used is reported" "only the first 20"
+root_menu_open
+for i in $(seq 1 20); do do_input key Down; done
+do_input key Return
+wait_for "the twentieth is there" ran 20
+root_menu_open
+for i in $(seq 1 21); do do_input key Down; done
+check "and after it the menu goes on" "[ \"\$(global menu open)\" = 1 ]"
+do_input key Return
+sleep 0.5
+ran 21 && fail "the twenty-first is there"
+echo "ok: the twenty-first isn't"
+stop_vinput
+stop_mwc
+rm "$RC"
+
 # ---- later lines win, and a reload redoes everything ----------------------------------
 
 build/pngtool stripes "$SMOKE_DIR/same.png" 1280 720 ff0000 ff0000

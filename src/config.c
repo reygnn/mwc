@@ -8,6 +8,7 @@
  *   Mwm*fontList:                  Sans Bold 10
  *   Mwm*rootBackground:            #5b7792
  *   Mwm*wallpaper:                 ~/pictures/desk.png
+ *   Mwm*rootMenuItem:              Files: mfm   a program in the root menu, repeatable
  *   Mwm*moveOpaque:                true       drag windows, not an outline
  *   Mwm*keyboardLayout:            de         also keyboardVariant, keyboardOptions,
  *                                             keyboardModel
@@ -57,6 +58,11 @@ static char path[4096];
 static enum { FILTER_NONE, FILTER_DENY, FILTER_ONLY } tile_filter;
 static char **tile_names;
 static int n_tile_names;
+
+static struct {
+	char *label, *command;
+} root_items[CONFIG_MAX_ROOT_ITEMS];
+static int n_root_items;
 
 static char *trim(char *s)
 {
@@ -135,6 +141,50 @@ static void load_tile_filter(void)
 			FILTER_ONLY;
 }
 
+/* Unlike other resources, every line counts. "Label: command", split at the first colon,
+ * as a command may well have colons of its own. The menu is closed before these go away. */
+static void load_root_items(void)
+{
+	for (int i = 0; i < n_root_items; i++) {
+		free(root_items[i].label);
+		free(root_items[i].command);
+	}
+	n_root_items = 0;
+	for (int i = 0; i < n_rules; i++) {
+		if (rules[i].client || strcasecmp(rules[i].resource, "rootMenuItem"))
+			continue;
+		char *value = strdup(rules[i].value);
+		char *colon = strchr(value, ':');
+		char *label = value, *command = colon ? colon + 1 : NULL;
+		if (colon)
+			*colon = '\0';
+		label = trim(label);
+		command = command ? trim(command) : NULL;
+		if (!*label || !command || !*command) {
+			wlr_log(WLR_ERROR, "%s:%d: expected Mwm*rootMenuItem: label: command",
+				path, rules[i].line);
+		} else if (n_root_items == CONFIG_MAX_ROOT_ITEMS) {
+			wlr_log(WLR_ERROR, "%s:%d: only the first %d of Mwm*rootMenuItem are used",
+				path, rules[i].line, CONFIG_MAX_ROOT_ITEMS);
+		} else {
+			root_items[n_root_items].label = strdup(label);
+			root_items[n_root_items++].command = strdup(command);
+		}
+		free(value);
+	}
+}
+
+int config_root_items(void)
+{
+	return n_root_items;
+}
+
+void config_root_item(int i, const char **label, const char **command)
+{
+	*label = root_items[i].label;
+	*command = root_items[i].command;
+}
+
 void config_load(void)
 {
 	for (int i = 0; i < n_rules; i++) {
@@ -157,6 +207,7 @@ void config_load(void)
 	FILE *f = fopen(path, "r");
 	if (!f) {
 		load_tile_filter();
+		load_root_items();
 		return;
 	}
 
@@ -180,6 +231,7 @@ void config_load(void)
 	fclose(f);
 	wlr_log(WLR_DEBUG, "%s: %d rules", path, n_rules);
 	load_tile_filter();
+	load_root_items();
 }
 
 /* Global value of a resource, NULL when unset. */

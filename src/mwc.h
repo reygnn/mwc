@@ -300,6 +300,7 @@ enum menu_action {
 	ACT_TOGGLE_TILING,
 	ACT_RAISE_TILED,
 	ACT_LOWER_TILED,
+	ACT_RUN,      /* the item's command */
 	ACT_RESTART,
 	ACT_QUIT,
 };
@@ -310,9 +311,10 @@ struct menu_item {
 	const char *accel;     /* right-aligned accelerator text */
 	enum menu_action action;
 	bool sensitive;
+	const char *command;   /* for ACT_RUN, owned by config.c */
 };
 
-#define MENU_MAX_ITEMS 16
+#define MENU_MAX_ITEMS 32
 
 struct menu {
 	bool open;
@@ -718,6 +720,10 @@ void config_load(void);
 const char *config_get(const char *resource);
 /* The value of Mwm*client*resource, NULL when unset. */
 const char *config_get_for(const char *client, const char *resource);
+/* The programs of the root menu, Mwm*rootMenuItem, in the order of the file. */
+#define CONFIG_MAX_ROOT_ITEMS 20
+int config_root_items(void);
+void config_root_item(int i, const char **label, const char **command);
 bool config_color(const char *value, struct mwc_color *out);
 /* 1 or 0, or -1 when value is unset or no boolean; name is for the log. */
 int config_bool(const char *name, const char *value);

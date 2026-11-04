@@ -282,6 +282,21 @@ and programs drawing their own title bar can't. In the layout, windows can't be 
 so grouping works through the keys and the menu there. Hidden X11 programs count as
 iconified while they are hidden.
 
+## Programs in the root menu
+
+`Mwm*rootMenuItem` adds a program to the top of the root menu, above a separator. Unlike
+other resources, every line counts, in the order of the file:
+
+```
+Mwm*rootMenuItem:   Firefox: firefox
+Mwm*rootMenuItem:   Files: mfm
+Mwm*rootMenuItem:   Notes: xterm -e sh -c "vi ~/notes.txt"
+```
+
+The label ends at the first colon, and the rest is a shell command. Up to 20 are used;
+others are reported in the log, as are lines without a label or command. Each gets the
+first letter of its label that is still free as its key. A reload takes up changes.
+
 ## Keyboard and monitors
 
 mwc reads these from mwmrc as well, which also reaches a session started from GDM. In
