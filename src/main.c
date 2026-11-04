@@ -19,8 +19,11 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_idle_inhibit_v1.h>
+#include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_screencopy_v1.h>
@@ -53,6 +56,66 @@ static void output_request_state(struct wl_listener *listener, void *data)
 		request_state);
 	const struct wlr_output_event_request_state *event = data;
 	wlr_output_commit_state(output->wlr_output, event->state);
+}
+
+/* A client asks to switch a monitor off or on. The output stays in the layout, so
+ * windows keep their places, and any client can ask: that is what the protocol is. */
+static void output_power_set_mode(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server,
+		output_power_set_mode);
+	struct wlr_output_power_v1_set_mode_event *event = data;
+	bool on = event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON;
+	if (event->output->enabled == on)
+		return;
+	struct wlr_output_state state;
+	wlr_output_state_init(&state);
+	wlr_output_state_set_enabled(&state, on);
+	bool ok = wlr_output_commit_state(event->output, &state);
+	wlr_output_state_finish(&state);
+	if (!ok) {
+		wlr_log(WLR_ERROR, "can't switch output %s %s", event->output->name,
+			on ? "on" : "off");
+		return;
+	}
+	if (!on)
+		return;
+	wlr_output_schedule_frame(event->output);
+	/* The output lost its cursor. Setting the same image again would do nothing. */
+	if (server->cursor_name) {
+		wlr_cursor_unset_image(server->cursor);
+		wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr,
+			server->cursor_name);
+	}
+	input_pointer_changed_soon(server);
+}
+
+/* One per inhibitor; while any exists, nobody counts as idle. */
+struct idle_inhibitor {
+	struct wl_listener destroy;
+	struct server *server;
+};
+
+static void idle_inhibitor_destroy(struct wl_listener *listener, void *data)
+{
+	struct idle_inhibitor *inhibitor = wl_container_of(listener, inhibitor, destroy);
+	struct server *server = inhibitor->server;
+	/* It is still in the list while it says that it goes. */
+	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier,
+		wl_list_length(&server->idle_inhibit->inhibitors) > 1);
+	wl_list_remove(&inhibitor->destroy.link);
+	free(inhibitor);
+}
+
+static void new_idle_inhibitor(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server, new_idle_inhibitor);
+	struct wlr_idle_inhibitor_v1 *wlr_inhibitor = data;
+	struct idle_inhibitor *inhibitor = calloc(1, sizeof(*inhibitor));
+	inhibitor->server = server;
+	inhibitor->destroy.notify = idle_inhibitor_destroy;
+	wl_signal_add(&wlr_inhibitor->events.destroy, &inhibitor->destroy);
+	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, true);
 }
 
 static void output_destroy(struct wl_listener *listener, void *data)
@@ -441,6 +504,15 @@ int main(int argc, char *argv[])
 	wlr_single_pixel_buffer_manager_v1_create(server.display);
 	wlr_presentation_create(server.display, server.backend, 2);
 	wlr_screencopy_manager_v1_create(server.display);
+	server.idle_notifier = wlr_idle_notifier_v1_create(server.display);
+	server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display);
+	server.new_idle_inhibitor.notify = new_idle_inhibitor;
+	wl_signal_add(&server.idle_inhibit->events.new_inhibitor,
+		&server.new_idle_inhibitor);
+	struct wlr_output_power_manager_v1 *output_power =
+		wlr_output_power_manager_v1_create(server.display);
+	server.output_power_set_mode.notify = output_power_set_mode;
+	wl_signal_add(&output_power->events.set_mode, &server.output_power_set_mode);
 
 	server.output_layout = wlr_output_layout_create(server.display);
 	wlr_xdg_output_manager_v1_create(server.display, server.output_layout);
@@ -512,6 +584,8 @@ int main(int argc, char *argv[])
 		wlr_xwayland_destroy(server.xwayland);
 		server.xwayland = NULL;
 	}
+	wl_list_remove(&server.new_idle_inhibitor.link);
+	wl_list_remove(&server.output_power_set_mode.link);
 	wl_list_remove(&server.new_layer_surface.link);
 	wl_list_remove(&server.new_xdg_toplevel.link);
 	wl_list_remove(&server.new_xdg_popup.link);

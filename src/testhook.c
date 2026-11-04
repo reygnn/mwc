@@ -101,8 +101,9 @@ static int dump_state(int signal, void *data)
 		server->menu.open && server->menu.title ? "yes" : "no", sensitive);
 	struct output *o = output_at(server, 0, 0);
 	if (o)
-		fprintf(f, "output ux=%d uy=%d uw=%d uh=%d\n", o->usable.x,
-			o->usable.y, o->usable.width, o->usable.height);
+		fprintf(f, "output ux=%d uy=%d uw=%d uh=%d on=%d\n", o->usable.x,
+			o->usable.y, o->usable.width, o->usable.height,
+			o->wlr_output->enabled);
 	int unmanaged = 0;
 	struct unmanaged *um;
 	wl_list_for_each(um, &server->unmanaged, link)

@@ -262,7 +262,9 @@ static void layer_map(struct wl_listener *listener, void *data)
 	layer_arrange(ls->output);
 	ls->keyboard_interactive = ls->wlr->current.keyboard_interactive;
 	update_keyboard(ls);
-	input_pointer_changed(ls->server);
+	/* Soon: the scene gets its buffer only after this signal, and a pointer resting
+	 * here would see nothing yet. */
+	input_pointer_changed_soon(ls->server);
 }
 
 static void layer_unmap(struct wl_listener *listener, void *data)

@@ -449,6 +449,10 @@ struct server {
 	bool tiling;     /* tiling mode on */
 	long tile_front; /* tile_seq of the newest window, which leads */
 	const char *terminal;
+	struct wlr_idle_notifier_v1 *idle_notifier;
+	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
+	struct wl_listener new_idle_inhibitor;
+	struct wl_listener output_power_set_mode;
 	char *wallpaper; /* path of a readable PNG, NULL: plain desktop colour */
 };
 

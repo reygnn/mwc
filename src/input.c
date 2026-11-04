@@ -15,6 +15,7 @@
 #include <xkbcommon/xkbcommon.h>
 #include <wlr/backend.h>
 #include <wlr/backend/session.h>
+#include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_input_device.h>
@@ -546,10 +547,17 @@ void process_cursor_motion(struct server *server, uint32_t time)
 	wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
 }
 
+/* What the idle notifier counts as somebody being there. */
+static void input_activity(struct server *server)
+{
+	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
+}
+
 static void cursor_motion(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server, cursor_motion);
 	struct wlr_pointer_motion_event *event = data;
+	input_activity(server);
 	wlr_cursor_move(server->cursor, &event->pointer->base,
 		event->delta_x, event->delta_y);
 	process_cursor_motion(server, event->time_msec);
@@ -560,6 +568,7 @@ static void cursor_motion_absolute(struct wl_listener *listener, void *data)
 	struct server *server = wl_container_of(listener, server,
 		cursor_motion_absolute);
 	struct wlr_pointer_motion_absolute_event *event = data;
+	input_activity(server);
 	wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
 		event->x, event->y);
 	process_cursor_motion(server, event->time_msec);
@@ -782,6 +791,7 @@ static void cursor_button(struct wl_listener *listener, void *data)
 	struct server *server = wl_container_of(listener, server, cursor_button);
 	struct wlr_pointer_button_event *event = data;
 	struct wlr_seat *seat = server->seat;
+	input_activity(server);
 	bool pressed = event->state == WL_POINTER_BUTTON_STATE_PRESSED;
 	double cx = server->cursor->x, cy = server->cursor->y;
 
@@ -854,6 +864,7 @@ static void cursor_axis(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server, cursor_axis);
 	struct wlr_pointer_axis_event *event = data;
+	input_activity(server);
 	/* The wheel over the tabs of a group, one step at a time on any wheel. */
 	if (server->cursor_mode == CURSOR_PASSTHROUGH &&
 			!server->seat->pointer_state.focused_surface &&
@@ -965,6 +976,11 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	if ((ctrl && alt && sym == XKB_KEY_Return) ||
 			(logo && sym == XKB_KEY_Return)) {
 		spawn(server->terminal);
+		return true;
+	}
+	if (logo && !alt && !ctrl && !shift && sym == XKB_KEY_Escape) {
+		const char *saver = config_get("screenSaver");
+		spawn(saver ? saver : "displayOff --stars");
 		return true;
 	}
 	if (logo && !alt && !ctrl) {
@@ -1085,6 +1101,7 @@ static void keyboard_key(struct wl_listener *listener, void *data)
 	struct server *server = kb->server;
 	struct wlr_keyboard_key_event *event = data;
 	struct wlr_seat *seat = server->seat;
+	input_activity(server);
 
 	/* No keymap at all, not even the fallback: nothing can be looked up. */
 	if (!kb->wlr_keyboard->xkb_state)

@@ -91,7 +91,7 @@ Alt+F9 minimize · Alt+F10 maximize · Alt+F11 fullscreen ·
 Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit ·
 Super+arrows snap (see below) · Super+Shift+arrows push a floating window against
 that edge of the usable area (two in a row: a corner) · Super+T tiling on/off ·
-Super+G and more for tabs (see below).
+Super+Esc screen saver (see below) · Super+G and more for tabs (see below).
 
 ## Configuration
 
@@ -296,6 +296,20 @@ Mwm*rootMenuItem:   Notes: xterm -e sh -c "vi ~/notes.txt"
 The label ends at the first colon, and the rest is a shell command. Up to 20 are used;
 others are reported in the log, as are lines without a label or command. Each gets the
 first letter of its label that is still free as its key. A reload takes up changes.
+
+## Screen saver and monitor power
+
+Super+Esc runs `Mwm*screenSaver`, by default `displayOff --stars`:
+
+```
+Mwm*screenSaver:   displayOff --stars
+```
+
+mwc offers `ext-idle-notify-v1`, `idle-inhibit-unstable-v1` and
+`wlr-output-power-management-unstable-v1`, for tools that switch monitors off when nobody
+is there, such as [displayOff](https://github.com/reygnn/displayOff). A monitor that is
+off stays in the layout, so windows keep their places. Any window asking not to be idle,
+such as a video player, counts, also when it is minimized.
 
 ## Keyboard and monitors
 
