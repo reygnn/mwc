@@ -220,7 +220,8 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 	m->n_items = 0;
 	m->target = view;
 	view_update_properties(view);
-	bool normal = !view->minimized && !view->maximized && !view->fullscreen;
+	bool normal = !view->minimized && !view->maximized && !view->fullscreen &&
+		view->snap == SNAP_NONE;
 	unsigned f = view->funcs;
 	add(m, "Restore", 'R', "Alt+F5", ACT_RESTORE, !normal);
 	add(m, "Move", 'M', "Alt+F7", ACT_MOVE,

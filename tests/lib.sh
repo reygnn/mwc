@@ -90,8 +90,10 @@ pixel_is() {
 
 # ---- simulated input and window state (needs MWC_TEST_STATE) -----------------
 
+# start_vinput [width height]: the size of the whole layout, default one output.
 start_vinput() {
-	coproc VINPUT { WAYLAND_DISPLAY=wayland-0 build/vinput 1280 720 2>&1; }
+	local w=${1:-1280} h=${2:-720}
+	coproc VINPUT { WAYLAND_DISPLAY=wayland-0 build/vinput "$w" "$h" 2>&1; }
 }
 
 stop_vinput() {

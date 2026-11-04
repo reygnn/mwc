@@ -123,6 +123,26 @@ enum window_type {
 	WT_NOTIFICATION,
 };
 
+/* Snap positions. SNAP_MAXIMIZE is only a target: a window maximized that way
+ * has SNAP_NONE and view.maximized. */
+enum snap {
+	SNAP_NONE,
+	SNAP_LEFT,
+	SNAP_RIGHT,
+	SNAP_TOP_LEFT,
+	SNAP_TOP_RIGHT,
+	SNAP_BOTTOM_LEFT,
+	SNAP_BOTTOM_RIGHT,
+	SNAP_MAXIMIZE,
+};
+
+enum snap_dir {
+	SNAP_DIR_LEFT,
+	SNAP_DIR_RIGHT,
+	SNAP_DIR_UP,
+	SNAP_DIR_DOWN,
+};
+
 /* Frame regions, used for hit testing, cursor shapes and button state. */
 enum frame_part {
 	PART_NONE = 0,
@@ -168,13 +188,15 @@ struct view {
 	bool maximized;
 	bool minimized;
 	bool fullscreen;
+	enum snap snap;
 	struct mwc_shade shade_active, shade_inactive; /* frame and icon colours */
-	struct wlr_box saved;  /* geometry before maximize/fullscreen */
+	struct wlr_box saved;  /* geometry before maximize/snap/fullscreen */
 	/* xdg clients answer a size request later, possibly after the button
 	 * was released: these edges stay put until the client has caught up. */
 	uint32_t anchor_edges;
 	int anchor_right, anchor_bottom;
 	uint32_t anchor_serial; /* last configure sent with a new size */
+	int requested_w, requested_h; /* xdg: the client's size once it has caught up */
 	int icon_x, icon_y;
 	bool icon_placed;
 
@@ -343,6 +365,8 @@ struct server {
 	double grab_px, grab_py;    /* pointer where the grab began */
 	struct wlr_box grab_orig;   /* x/y of the frame, client size: for Escape */
 	bool grab_orig_maximized;
+	enum snap grab_orig_snap;
+	enum snap grab_zone;        /* snap target under the pointer */
 	struct wlr_box grab_target; /* same, where the window is to go */
 
 	/* Double-click detection */
@@ -390,8 +414,11 @@ void view_minimize(struct view *view);
 void view_restore(struct view *view);
 void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	uint32_t edges, bool until_click);
-/* Un-maximizes under the pointer, keeping the grab point proportional. */
-void view_drag_unmaximize(struct view *view);
+/* Back to its free size under the pointer, keeping the grab point proportional. */
+void view_drag_free(struct view *view);
+/* Snap to a position on the output at (px, py). SNAP_NONE goes back to the
+ * geometry from before. */
+void view_snap(struct view *view, enum snap s, double px, double py);
 void view_update_title(struct view *view);
 /* The frame's size changed: move the client and redraw. */
 void view_frame_changed(struct view *view);
@@ -474,6 +501,17 @@ void input_add_device(struct server *server, struct wlr_input_device *dev);
 void cursor_set_name(struct server *server, const char *name);
 void process_cursor_motion(struct server *server, uint32_t time);
 void spawn(const char *cmd);
+
+/* ---- snap.c ------------------------------------------------------------- */
+
+struct wlr_box snap_rect(enum snap s, struct wlr_box area);
+const char *snap_name(enum snap s);
+enum snap snap_zone_at(struct view *view, double px, double py);
+void snap_preview(struct view *view, enum snap s, double px, double py);
+void snap_preview_hide(void);
+bool snap_preview_get(struct wlr_box *box); /* false while hidden */
+void snap_step(struct view *view, enum snap_dir dir);
+void view_move_to_edge(struct view *view, enum snap_dir dir);
 
 /* ---- outline.c ---------------------------------------------------------- */
 

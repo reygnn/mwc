@@ -23,6 +23,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
+#include <wlr/xwayland.h>
 #include "mwc.h"
 
 #define DOUBLE_CLICK_MS 400
@@ -101,7 +102,9 @@ static void update_feedback(struct server *server)
 	struct view *view = server->grabbed_view;
 	const struct wlr_box *t = &server->grab_target;
 	char buf[64];
-	if (server->cursor_mode == CURSOR_MOVE) {
+	if (server->cursor_mode == CURSOR_MOVE && server->grab_zone != SNAP_NONE) {
+		snprintf(buf, sizeof(buf), "%s", snap_name(server->grab_zone));
+	} else if (server->cursor_mode == CURSOR_MOVE) {
 		snprintf(buf, sizeof(buf), "%+d %+d", t->x, t->y);
 	} else {
 		/* Sizes in the client's own units, e.g. 80 x 24 for xterm. */
@@ -139,8 +142,10 @@ static void clear_grab(struct server *server)
 	server->grabbed_view = NULL;
 	server->grab_until_click = false;
 	server->cursor_name = NULL;
+	server->grab_zone = SNAP_NONE;
 	outline_hide();
 	feedback_hide();
+	snap_preview_hide();
 }
 
 /* No more configures for a window going away: its surface may be half gone. */
@@ -172,9 +177,33 @@ static void end_grab(struct server *server)
 	struct view *view = server->grabbed_view;
 	enum cursor_mode mode = server->cursor_mode;
 	bool apply = server->grab_outline && server->grab_changed;
-	struct wlr_box target = server->grab_target;
+	bool changed = server->grab_changed;
+	struct wlr_box target = server->grab_target, orig = server->grab_orig;
+	enum snap zone = server->grab_zone, orig_snap = server->grab_orig_snap;
+	bool orig_max = server->grab_orig_maximized;
+	double px = server->cursor->x, py = server->cursor->y;
 	stop_resizing_state(server);
 	clear_grab(server);
+	if (zone != SNAP_NONE) {
+		/* Going back later means to where it was before this drag, not to
+		 * the screen edge it was dropped on. */
+		struct wlr_box before = view->saved;
+		view->x = orig.x;
+		view->y = orig.y;
+		view_snap(view, zone, px, py);
+		view->saved = orig_snap != SNAP_NONE || orig_max ? before : orig;
+		return;
+	}
+	/* A resized window is no longer snapped. */
+	if (mode == CURSOR_RESIZE && changed && view->snap != SNAP_NONE) {
+		struct wlr_box current = target;
+		view->saved = current;
+		view->snap = SNAP_NONE;
+		if (view->type == VIEW_XWAYLAND)
+			wlr_xwayland_surface_set_maximized(view->xsurface, false, false);
+		else
+			wlr_xdg_toplevel_set_tiled(view->xdg_toplevel, WLR_EDGE_NONE);
+	}
 	if (!apply)
 		return;
 	if (mode == CURSOR_MOVE)
@@ -190,13 +219,16 @@ static void cancel_grab(struct server *server)
 	enum cursor_mode mode = server->cursor_mode;
 	bool opaque = !server->grab_outline;
 	bool was_maximized = server->grab_orig_maximized;
+	enum snap was_snapped = server->grab_orig_snap;
 	struct wlr_box orig = server->grab_orig;
 	stop_resizing_state(server);
 	clear_grab(server);
-	if (was_maximized && !view->maximized) {
+	if ((was_maximized && !view->maximized) ||
+			(was_snapped != SNAP_NONE && view->snap == SNAP_NONE)) {
 		/* What it restores to must survive this round trip. */
 		struct wlr_box saved = view->saved;
-		view_set_maximized(view, true);
+		view_snap(view, was_maximized ? SNAP_MAXIMIZE : was_snapped,
+			orig.x + orig.width / 2.0, orig.y + orig.height / 2.0);
 		view->saved = saved;
 	} else if (opaque && mode == CURSOR_MOVE) {
 		view_set_position(view, orig.x, orig.y);
@@ -218,8 +250,8 @@ static void process_move(struct server *server)
 				fabs(server->cursor->y - server->grab_py) < t)
 			return;
 		server->grab_detached = true;
-		if (view->maximized)
-			view_drag_unmaximize(view);
+		if (view->maximized || view->snap != SNAP_NONE)
+			view_drag_free(view);
 	}
 	/* The pointer has sub-pixel positions: round, don't truncate, or the
 	 * window ends up a pixel off and jumps when crossing zero. */
@@ -230,6 +262,12 @@ static void process_move(struct server *server)
 		show_outline(server);
 	else
 		view_set_position(view, server->grab_target.x, server->grab_target.y);
+
+	enum snap zone = snap_zone_at(view, server->cursor->x, server->cursor->y);
+	if (zone != server->grab_zone) {
+		server->grab_zone = zone;
+		snap_preview(view, zone, server->cursor->x, server->cursor->y);
+	}
 	update_feedback(server);
 }
 
@@ -625,6 +663,30 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	}
 	if (server->exclusive_layer)
 		return false;
+	if (logo && !alt && !ctrl) {
+		enum snap_dir dir;
+		switch (sym) {
+		case XKB_KEY_Left:
+			dir = SNAP_DIR_LEFT;
+			break;
+		case XKB_KEY_Right:
+			dir = SNAP_DIR_RIGHT;
+			break;
+		case XKB_KEY_Up:
+			dir = SNAP_DIR_UP;
+			break;
+		case XKB_KEY_Down:
+			dir = SNAP_DIR_DOWN;
+			break;
+		default:
+			return false;
+		}
+		if (shift)
+			view_move_to_edge(view, dir);
+		else
+			snap_step(view, dir);
+		return true;
+	}
 	if (shift && !alt && !ctrl && sym == XKB_KEY_Escape && view) {
 		/* mwm: Shift+Escape posts the window menu */
 		menu_open_window(server, view, view->x + frame_border(view),

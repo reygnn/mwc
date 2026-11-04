@@ -57,14 +57,14 @@ static int dump_state(int signal, void *data)
 			continue;
 		fprintf(f, "view app=%s x=%d y=%d w=%d h=%d active=%d kbfocus=%d "
 			"max=%d min=%d full=%d frame=%d icon_x=%d icon_y=%d hidden=%d "
-			"bw=%d th=%d above=%d below=%d\n",
+			"bw=%d th=%d above=%d below=%d snap=%d\n",
 			view_app_id(v), v->x, v->y, v->width, v->height,
 			v->activated, kb_focus && kb_focus == view_surface(v),
 			v->maximized, v->minimized, v->fullscreen, v->decorated,
 			v->icon_x, v->icon_y, v->hidden_with_parent,
 			frame_border(v), frame_title(v),
 			v->type == VIEW_XWAYLAND && v->xsurface->above,
-			v->type == VIEW_XWAYLAND && v->xsurface->below);
+			v->type == VIEW_XWAYLAND && v->xsurface->below, v->snap);
 	}
 	/* The mnemonics of what can be chosen, without spaces for the parser. */
 	char sensitive[MENU_MAX_ITEMS + 1];
@@ -91,6 +91,9 @@ static int dump_state(int signal, void *data)
 	struct wlr_box box;
 	bool outline = outline_get(&box);
 	fprintf(f, "outline shown=%d x=%d y=%d w=%d h=%d\n", outline, box.x, box.y,
+		box.width, box.height);
+	bool zone = snap_preview_get(&box);
+	fprintf(f, "preview shown=%d x=%d y=%d w=%d h=%d\n", zone, box.x, box.y,
 		box.width, box.height);
 	/* Spaces become _, for the parser. */
 	const char *text = feedback_get(&box);

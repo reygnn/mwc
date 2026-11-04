@@ -48,7 +48,8 @@ and `make config-test` does the same for `mwmrc`, including reloading it.
 `make layer-test` checks panels with a small layer-shell client
 (`tests/layerc.c`), and `make window-test` window behaviour with clients that can
 ask for any hint (`tests/xclient.c`, `tests/xdgc.c`). `make move-test` checks the
-outline, the box and the keys during a move or resize.
+outline, the box and the keys during a move or resize, and `make snap-test` the
+snap zones and every way back out of them. `make outputs-test` runs on two outputs.
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
@@ -73,7 +74,9 @@ mwc.
 Alt+Tab / Alt+Shift+Tab cycle · Alt+Space or Shift+Esc window menu ·
 Alt+F3 lower · Alt+F4 close · Alt+F5 restore · Alt+F7 move · Alt+F8 size ·
 Alt+F9 minimize · Alt+F10 maximize · Alt+F11 fullscreen ·
-Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit.
+Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit ·
+Super+arrows snap (see above) · Super+Shift+arrows push a floating window against
+that edge of the usable area (two in a row: a corner).
 
 ## Configuration
 
@@ -161,6 +164,26 @@ During a move or resize, also a drag, the arrow keys nudge the window (Shift for
 1 px steps), Return confirms and Escape cancels, which also maximizes again a window
 that was dragged out of its maximized state. Alt+F7 and Alt+F8 start one from the
 keyboard.
+
+## Snapping (as in Windows 11)
+
+Drag a window by its title (or with Alt+btn1) until the pointer touches an edge of
+the monitor. An outline in the window's colour shows where it will go, and it snaps
+there when you let go:
+
+| Pointer at …            | Window fills …                     |
+|-------------------------|------------------------------------|
+| left / right edge       | left / right half                  |
+| a corner (64 px zone)   | that quarter                       |
+| top edge                | the whole usable area (maximized)  |
+
+Dragging a snapped or maximized window away gives it back its previous size, still
+under the pointer, and Escape during the drag puts it back. Panels stay uncovered.
+
+Keyboard: Super+Left/Right snap to a half (pressing the other direction restores
+the window). Super+Up goes from a half to its top quarter, or maximizes. Super+Down
+goes from a half to its bottom quarter, from a maximized window back to normal, and
+from a normal window to its icon.
 
 ## Window behaviour
 

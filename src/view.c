@@ -99,6 +99,8 @@ void view_send_size(struct view *view, int w, int h)
 	if (view->type == VIEW_XDG) {
 		view->anchor_serial = wlr_xdg_toplevel_set_size(
 			view->xdg_toplevel, w, h);
+		view->requested_w = w;
+		view->requested_h = h;
 	} else {
 		wlr_xwayland_surface_configure(view->xsurface,
 			view->x + frame_left(view), view->y + frame_top(view),
@@ -296,6 +298,108 @@ static void focus_next(struct server *server, struct view *except)
 		wlr_seat_keyboard_notify_clear_focus(server->seat);
 }
 
+static void view_maximize_at(struct view *view, bool maximized, double px,
+	double py);
+
+/* Fill what its state says on the output at (px, py), as far as the client's
+ * limits allow: all of the usable area, or a snap position in it. */
+static void view_fit_state(struct view *view, double px, double py)
+{
+	struct wlr_box a = output_usable_area(view->server, px, py);
+	if (view->snap != SNAP_NONE)
+		a = snap_rect(view->snap, a);
+	int w = a.width - frame_extra_w(view), h = a.height - frame_extra_h(view);
+	view_apply_size_hints(view, &w, &h, false);
+	view_set_geometry(view, a.x, a.y, w, h);
+}
+
+static void view_refit(struct view *view)
+{
+	view_fit_state(view, view->x + view->width / 2.0,
+		view->y + view->height / 2.0);
+}
+
+/* What the client should know about it. Snapped halves count as maximized
+ * vertically for X11 programs, as in mwm-x11; xdg clients hear which of their
+ * edges touch something. */
+static void view_publish_snap(struct view *view)
+{
+	bool half = view->snap == SNAP_LEFT || view->snap == SNAP_RIGHT;
+	if (view->type == VIEW_XWAYLAND) {
+		wlr_xwayland_surface_set_maximized(view->xsurface, view->maximized,
+			view->maximized || half);
+		return;
+	}
+	if (!view->xdg_toplevel->base->initialized)
+		return;
+	uint32_t edges = WLR_EDGE_NONE;
+	switch (view->snap) {
+	case SNAP_LEFT:
+		edges = WLR_EDGE_LEFT | WLR_EDGE_TOP | WLR_EDGE_BOTTOM;
+		break;
+	case SNAP_RIGHT:
+		edges = WLR_EDGE_RIGHT | WLR_EDGE_TOP | WLR_EDGE_BOTTOM;
+		break;
+	case SNAP_TOP_LEFT:
+		edges = WLR_EDGE_LEFT | WLR_EDGE_TOP;
+		break;
+	case SNAP_TOP_RIGHT:
+		edges = WLR_EDGE_RIGHT | WLR_EDGE_TOP;
+		break;
+	case SNAP_BOTTOM_LEFT:
+		edges = WLR_EDGE_LEFT | WLR_EDGE_BOTTOM;
+		break;
+	case SNAP_BOTTOM_RIGHT:
+		edges = WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM;
+		break;
+	default:
+		break;
+	}
+	wlr_xdg_toplevel_set_tiled(view->xdg_toplevel, edges);
+}
+
+/* What it goes back to is only recorded while it is free. The size is the one last
+ * asked for: right after a change, the client may not have committed it yet. */
+static void view_save_free(struct view *view)
+{
+	if (view->snap != SNAP_NONE || view->maximized)
+		return;
+	view->saved = (struct wlr_box){ view->x, view->y, view->width, view->height };
+	if (view->type == VIEW_XWAYLAND) {
+		view->saved.width = view->xsurface->width;
+		view->saved.height = view->xsurface->height;
+	} else {
+		view->saved.width = view->requested_w;
+		view->saved.height = view->requested_h;
+	}
+}
+
+void view_snap(struct view *view, enum snap s, double px, double py)
+{
+	if (view->fullscreen)
+		return;
+	if (s == SNAP_MAXIMIZE) {
+		view_maximize_at(view, true, px, py);
+		return;
+	}
+	if (s == SNAP_NONE) {
+		if (view->snap == SNAP_NONE) {
+			view_set_maximized(view, false);
+			return;
+		}
+		view->snap = SNAP_NONE;
+		view_set_geometry(view, view->saved.x, view->saved.y,
+			view->saved.width, view->saved.height);
+	} else {
+		view_save_free(view);
+		view->snap = s;
+		view->maximized = false;
+		view_fit_state(view, px, py);
+	}
+	view_publish_snap(view);
+	frame_render(view);
+}
+
 void view_close(struct view *view)
 {
 	if (view->type == VIEW_XDG)
@@ -317,33 +421,32 @@ void view_lower(struct view *view)
 	}
 }
 
-/* Fill the usable area, as far as the client's limits allow. */
-static void view_refit_maximized(struct view *view)
+void view_set_maximized(struct view *view, bool maximized)
 {
-	struct wlr_box a = output_usable_area(view->server,
-		view->x + view->width / 2.0, view->y + view->height / 2.0);
-	int w = a.width - frame_extra_w(view), h = a.height - frame_extra_h(view);
-	view_apply_size_hints(view, &w, &h, false);
-	view_set_geometry(view, a.x, a.y, w, h);
+	view_maximize_at(view, maximized, view->x + view->width / 2.0,
+		view->y + view->height / 2.0);
 }
 
-void view_set_maximized(struct view *view, bool maximized)
+static void view_maximize_at(struct view *view, bool maximized, double px,
+	double py)
 {
 	if (view->maximized == maximized || view->fullscreen)
 		goto ack;
 	if (maximized && !(view->funcs & FUNC_MAXIMIZE))
 		goto ack;
 	if (maximized) {
-		view->saved = (struct wlr_box){ view->x, view->y,
-			view->width, view->height };
+		view_save_free(view);
+		view->snap = SNAP_NONE;
 		view->maximized = true;
-		view_refit_maximized(view);
+		view_fit_state(view, px, py);
 	} else {
 		view->maximized = false;
 		view_set_geometry(view, view->saved.x, view->saved.y,
 			view->saved.width, view->saved.height);
 	}
 	frame_render(view);
+	if (view->type == VIEW_XDG)
+		view_publish_snap(view);
 ack:
 	if (view->type == VIEW_XDG) {
 		if (view->xdg_toplevel->base->initialized)
@@ -359,9 +462,7 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 {
 	if (view->fullscreen != fullscreen) {
 		if (fullscreen) {
-			if (!view->maximized)
-				view->saved = (struct wlr_box){ view->x,
-					view->y, view->width, view->height };
+			view_save_free(view);
 			struct wlr_box a = output_full_area(view->server,
 				view->x + view->width / 2.0,
 				view->y + view->height / 2.0);
@@ -376,9 +477,8 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 			view->fullscreen = false;
 			views_update_layers(view->server);
 			view->decorated = view->ssd;
-			if (view->maximized) {
-				view->maximized = false;
-				view_set_maximized(view, true);
+			if (view->maximized || view->snap != SNAP_NONE) {
+				view_refit(view);
 			} else {
 				view_set_geometry(view, view->saved.x,
 					view->saved.y, view->saved.width,
@@ -468,6 +568,8 @@ void view_restore(struct view *view)
 		view_set_fullscreen(view, false);
 	} else if (view->maximized) {
 		view_set_maximized(view, false);
+	} else if (view->snap != SNAP_NONE) {
+		view_snap(view, SNAP_NONE, 0, 0);
 	}
 }
 
@@ -485,8 +587,9 @@ void views_usable_area_changed(struct server *server)
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
 		v->icon_placed = false;
-		if (v->mapped && v->maximized && !v->fullscreen)
-			view_refit_maximized(v);
+		if (v->mapped && (v->maximized || v->snap != SNAP_NONE) &&
+				!v->fullscreen)
+			view_refit(v);
 	}
 	icons_arrange(server);
 }
@@ -496,8 +599,8 @@ void view_frame_changed(struct view *view)
 	/* The client keeps its size and the frame around it changes, except
 	 * where the frame's size is fixed. */
 	view_update_content_pos(view);
-	if (view->maximized && !view->fullscreen)
-		view_refit_maximized(view);
+	if ((view->maximized || view->snap != SNAP_NONE) && !view->fullscreen)
+		view_refit(view);
 	else
 		xwayland_configure(view);
 	frame_render(view);
@@ -561,6 +664,8 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	server->grab_orig = (struct wlr_box){ view->x, view->y, view->width,
 		view->height };
 	server->grab_orig_maximized = view->maximized;
+	server->grab_orig_snap = view->snap;
+	server->grab_zone = SNAP_NONE;
 	server->grab_target = server->grab_orig;
 	server->grab_geobox = (struct wlr_box){ view->x, view->y,
 		view->width + frame_extra_w(view),
@@ -592,12 +697,12 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	grab_started(server);
 }
 
-void view_drag_unmaximize(struct view *view)
+void view_drag_free(struct view *view)
 {
 	struct server *server = view->server;
 	double frac = (server->cursor->x - view->x) /
 		(double)(view->width + frame_extra_w(view));
-	view_set_maximized(view, false);
+	view_snap(view, SNAP_NONE, 0, 0);
 	int nw = view->saved.width + frame_extra_w(view);
 	view_set_position(view, server->cursor->x - frac * nw,
 		server->cursor->y - frame_border(view) - frame_title(view) / 2);
@@ -817,6 +922,12 @@ static void xdg_commit(struct wl_listener *listener, void *data)
 	if (!view->mapped)
 		return;
 	view_apply_size(view, base->geometry.width, base->geometry.height);
+	/* Caught up: from now on what it committed is what counts, even if that
+	 * isn't quite what it was asked for. */
+	if (base->current.configure_serial >= view->anchor_serial) {
+		view->requested_w = view->width;
+		view->requested_h = view->height;
+	}
 	/* Its limits may have changed. */
 	view_update_properties(view);
 
@@ -833,8 +944,8 @@ static void xdg_map(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, map);
 	struct wlr_box *g = &view->xdg_toplevel->base->geometry;
-	view->width = g->width;
-	view->height = g->height;
+	view->width = view->requested_w = g->width;
+	view->height = view->requested_h = g->height;
 	view_handle_map(view);
 }
 
