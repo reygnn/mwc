@@ -67,8 +67,8 @@ static void apply_struts(struct output *output, struct wlr_box *usable)
 
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (v->type != VIEW_XWAYLAND || !v->mapped || v->minimized ||
-				v->hidden_with_parent || !v->xsurface->strut_partial)
+		if (v->type != VIEW_XWAYLAND || !v->mapped || view_hidden(v) ||
+				!v->xsurface->strut_partial)
 			continue;
 		const xcb_ewmh_wm_strut_partial_t *s = v->xsurface->strut_partial;
 		if ((int)s->left > m.x && ranges_overlap(s->left_start_y,

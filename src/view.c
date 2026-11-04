@@ -692,8 +692,7 @@ void view_minimize(struct view *view)
 	/* Dialogs go away with the window they belong to, without icons. */
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (v->mapped && !v->minimized && !v->hidden_with_parent &&
-				view_is_transient_of(v, view)) {
+		if (v->mapped && !view_hidden(v) && view_is_transient_of(v, view)) {
 			had_focus |= v->activated;
 			v->hidden_with_parent = true;
 			view_show(v, false);
@@ -905,7 +904,7 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	struct server *server = view->server;
 	/* A client can ask for this at any time: before it is mapped, while minimized,
 	 * or during another grab. Only something visible and free can be grabbed. */
-	if (!view->mapped || view->minimized || view->hidden_with_parent ||
+	if (!view->mapped || view_hidden(view) ||
 			server->cursor_mode != CURSOR_PASSTHROUGH)
 		return;
 	if (view->fullscreen)

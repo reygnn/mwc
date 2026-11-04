@@ -332,7 +332,7 @@ static void xw_request_minimize(struct wl_listener *listener, void *data)
 	if (ev->minimize)
 		view_minimize(view);
 	/* Back from an icon, nothing more: it isn't asking to be un-maximized as well. */
-	else if (view->minimized || view->hidden_with_parent)
+	else if (view_hidden(view))
 		view_restore(view);
 }
 

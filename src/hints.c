@@ -57,7 +57,7 @@ struct view *view_transient_root(struct view *view)
 
 bool view_focusable(struct view *view)
 {
-	if (!view->mapped || view->minimized || view->hidden_with_parent ||
+	if (!view->mapped || view_hidden(view) ||
 			view->wtype == WT_DOCK || view->wtype == WT_DESKTOP ||
 			view->wtype == WT_NOTIFICATION)
 		return false;

@@ -94,8 +94,8 @@ bool tile_can_shade(struct view *view)
  * doesn't fit their cell) float for this round. */
 static bool tileable(struct view *view)
 {
-	return view->mapped && view->wtype == WT_NORMAL && !view->minimized &&
-		!view->hidden_with_parent && !view->fullscreen && !view_fixed(view) &&
+	return view->mapped && view->wtype == WT_NORMAL && !view_hidden(view) &&
+		!view->fullscreen && !view_fixed(view) &&
 		(view->base_funcs & FUNC_RESIZE) && !view_parent(view) &&
 		!view->tile_nofit && !view->no_tile;
 }
@@ -378,7 +378,7 @@ int tile_stacking(struct server *server)
 	bool tiled = false, floating = false;
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (!v->mapped || v->minimized || v->hidden_with_parent ||
+		if (!v->mapped || view_hidden(v) ||
 				v->tree->node.parent != server->layer_views)
 			continue;
 		bool t = in_layout(v);

@@ -185,6 +185,7 @@ struct view {
 	float min_aspect, max_aspect;
 	int gravity;
 	bool hidden_with_parent; /* a dialog gone with its minimized window */
+	bool tab_hidden; /* in a tab group, and not the one shown; see tabs.c */
 	void *deco;     /* xdg-decoration object, if any */
 	bool activated;
 	bool maximized;
@@ -244,6 +245,12 @@ struct view {
 	struct wl_listener request_below;
 	struct wl_listener set_override_redirect;
 };
+
+/* Not on the screen right now, whatever the reason. */
+static inline bool view_hidden(const struct view *view)
+{
+	return view->minimized || view->hidden_with_parent || view->tab_hidden;
+}
 
 /* Unmanaged XWayland windows: override-redirect menus, tooltips, DnD icons. */
 struct unmanaged {
