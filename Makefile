@@ -49,7 +49,10 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/mwc \
 		$(DESTDIR)/usr/share/wayland-sessions/mwc.desktop
 
+smoke: mwc
+	tests/smoke.sh
+
 clean:
 	rm -rf build mwc
 
-.PHONY: all install uninstall clean
+.PHONY: all install uninstall smoke clean

@@ -23,6 +23,25 @@ and get the same frame.
 
 `~/.config/mwc/autostart` (executable) runs on startup unless `-s` is given.
 
+## Develop and test in a container
+
+`distrobox.ini` defines a rootless box with all dependencies, so nothing has to
+be installed on the host except Podman and Distrobox:
+
+    sudo apt install podman distrobox uidmap
+    distrobox assemble create --replace --file distrobox.ini
+    distrobox enter mwc-dev
+    make smoke          # headless test, screenshot in build/smoke.png
+    ./mwc -s xterm      # nested, opens as a window
+
+`make smoke` starts mwc headless and checks that a Wayland client (foot) and an
+X11 client (xterm) connect. It doesn't test real input, DRM/KMS or VT switching:
+use a VM or a free TTY for those.
+
+Inside the box, the host's X server isn't reachable: `/tmp/.X11-unix` is a
+private tmpfs because XWayland won't start without it. X11 apps only run inside
+mwc.
+
 ## Mouse
 
 | Where              | Action                                              |
