@@ -56,6 +56,12 @@ int frame_extra_h(struct view *view)
 	return 2 * frame_border(view) + frame_title(view);
 }
 
+int frame_height(struct view *view)
+{
+	return view->shaded && view->tiled && frame_title(view) ? frame_extra_h(view) :
+		view->height + frame_extra_h(view);
+}
+
 struct title_layout {
 	int menu_x, title_x, title_w, min_x, max_x;
 };
@@ -158,7 +164,7 @@ static void draw_button(cairo_t *cr, struct view *view, enum frame_part part,
 	case PART_MAXIMIZE_BUTTON:
 		g = size * 11 / 20;
 		draw_bevel(cr, x + (size - g) / 2, y + (size - g) / 2,
-			g, g, 1, s, view->maximized);
+			g, g, 1, s, view->maximized && !view->tiled);
 		break;
 	default:
 		break;
@@ -177,7 +183,7 @@ void frame_render(struct view *view)
 	const int bv = theme.bevel < B ? theme.bevel : B;
 	const bool full = B == theme.border;
 	const int W = view->width + 2 * B;
-	const int H = view->height + 2 * B + T;
+	const int H = frame_height(view);
 	const struct mwc_shade *s = view->activated ?
 		&view->shade_active : &view->shade_inactive;
 
@@ -198,7 +204,9 @@ void frame_render(struct view *view)
 	}
 
 	/* Resize corner grooves, cutting the border at title-bar distance. */
-	if (full && (view->funcs & FUNC_RESIZE) && !view->maximized) {
+	/* Tiled windows keep them: the decoration stays, inactive. */
+	if (full && ((view->funcs & FUNC_RESIZE) || view->tiled) &&
+			(!view->maximized || view->tiled)) {
 		int kx, ky;
 		corner_reach(W, H, &kx, &ky);
 		draw_groove_v(cr, kx, bv, B - bv - 1, s);
@@ -239,7 +247,7 @@ enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges)
 	if (!B && !T)
 		return PART_CLIENT;
 	const int W = view->width + 2 * B;
-	const int H = view->height + 2 * B + T;
+	const int H = frame_height(view);
 
 	if (fx < 0 || fy < 0 || fx >= W || fy >= H)
 		return PART_NONE;

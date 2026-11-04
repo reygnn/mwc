@@ -248,6 +248,7 @@ int main(int argc, char *argv[])
 	theme_init();
 	server.terminal = pick_terminal();
 	wallpaper_init(&server);
+	tile_init(&server);
 	server.backend = wlr_backend_autocreate(server.event_loop,
 		&server.session);
 	if (!server.backend) {

@@ -196,6 +196,16 @@ void views_update_layers(struct server *server)
 	}
 }
 
+void view_raise_one(struct view *view)
+{
+	wlr_scene_node_raise_to_top(&view->tree->node);
+	wl_list_remove(&view->link);
+	wl_list_insert(&view->server->views, &view->link);
+	if (view->type == VIEW_XWAYLAND)
+		wlr_xwayland_surface_restack(view->xsurface, NULL,
+			XCB_STACK_MODE_ABOVE);
+}
+
 void view_set_activated(struct view *view, bool activated)
 {
 	view->activated = activated;
@@ -207,21 +217,11 @@ void view_set_activated(struct view *view, bool activated)
 	frame_render(view);
 }
 
-static void raise_one(struct view *view)
-{
-	wlr_scene_node_raise_to_top(&view->tree->node);
-	wl_list_remove(&view->link);
-	wl_list_insert(&view->server->views, &view->link);
-	if (view->type == VIEW_XWAYLAND)
-		wlr_xwayland_surface_restack(view->xsurface, NULL,
-			XCB_STACK_MODE_ABOVE);
-}
-
 /* Dialogs stay above the window they belong to, in their own order. */
 static void view_raise(struct view *view)
 {
 	struct server *server = view->server;
-	raise_one(view);
+	view_raise_one(view);
 	int n = 0, count = wl_list_length(&server->views);
 	struct view **kids = calloc(count, sizeof(*kids));
 	struct view *v;
@@ -230,7 +230,7 @@ static void view_raise(struct view *view)
 			kids[n++] = v;
 	}
 	for (int i = 0; i < n; i++)
-		raise_one(kids[i]);
+		view_raise_one(kids[i]);
 	free(kids);
 }
 
@@ -280,14 +280,19 @@ void view_focus(struct view *view)
 	} else if (surface) {
 		wlr_seat_keyboard_notify_enter(seat, surface, NULL, 0, NULL);
 	}
+	/* Typing into a window that can't be seen helps no one. Focused first, so a
+	 * full stack shades another one to make room. */
+	if (view->shaded)
+		tile_unshade(view);
 }
 
-/* Give the focus to the topmost remaining window, or to nobody. */
+/* Give the focus to the topmost remaining window, or to nobody. A shaded window
+ * only gets it when asked for by name. */
 static void focus_next(struct server *server, struct view *except)
 {
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (v != except && view_focusable(v)) {
+		if (v != except && view_focusable(v) && !v->shaded) {
 			view_focus(v);
 			return;
 		}
@@ -326,14 +331,16 @@ static void view_publish_snap(struct view *view)
 {
 	bool half = view->snap == SNAP_LEFT || view->snap == SNAP_RIGHT;
 	if (view->type == VIEW_XWAYLAND) {
-		wlr_xwayland_surface_set_maximized(view->xsurface, view->maximized,
-			view->maximized || half);
+		/* Maximized or snapped is kept while tiled, not shown. */
+		bool shown = !view->tiled;
+		wlr_xwayland_surface_set_maximized(view->xsurface,
+			shown && view->maximized, shown && (view->maximized || half));
 		return;
 	}
 	if (!view->xdg_toplevel->base->initialized)
 		return;
 	uint32_t edges = WLR_EDGE_NONE;
-	switch (view->snap) {
+	switch (view->tiled ? SNAP_NONE : view->snap) {
 	case SNAP_LEFT:
 		edges = WLR_EDGE_LEFT | WLR_EDGE_TOP | WLR_EDGE_BOTTOM;
 		break;
@@ -355,6 +362,8 @@ static void view_publish_snap(struct view *view)
 	default:
 		break;
 	}
+	if (view->tiled)
+		edges = WLR_EDGE_LEFT | WLR_EDGE_RIGHT | WLR_EDGE_TOP | WLR_EDGE_BOTTOM;
 	wlr_xdg_toplevel_set_tiled(view->xdg_toplevel, edges);
 }
 
@@ -376,7 +385,7 @@ static void view_save_free(struct view *view)
 
 void view_snap(struct view *view, enum snap s, double px, double py)
 {
-	if (view->fullscreen)
+	if (view->fullscreen || view->tiled)
 		return;
 	if (s == SNAP_MAXIMIZE) {
 		view_maximize_at(view, true, px, py);
@@ -398,6 +407,11 @@ void view_snap(struct view *view, enum snap s, double px, double py)
 	}
 	view_publish_snap(view);
 	frame_render(view);
+}
+
+void view_focus_next(struct view *except)
+{
+	focus_next(except->server, except);
 }
 
 void view_close(struct view *view)
@@ -430,7 +444,8 @@ void view_set_maximized(struct view *view, bool maximized)
 static void view_maximize_at(struct view *view, bool maximized, double px,
 	double py)
 {
-	if (view->maximized == maximized || view->fullscreen)
+	/* In the layout, the layout decides; see tile_promote(). */
+	if (view->maximized == maximized || view->fullscreen || view->tiled)
 		goto ack;
 	if (maximized && !(view->funcs & FUNC_MAXIMIZE))
 		goto ack;
@@ -448,21 +463,88 @@ static void view_maximize_at(struct view *view, bool maximized, double px,
 	if (view->type == VIEW_XDG)
 		view_publish_snap(view);
 ack:
+	/* Maximized or snapped is kept while tiled, not shown. */
+	bool shown = view->maximized && !view->tiled;
 	if (view->type == VIEW_XDG) {
 		if (view->xdg_toplevel->base->initialized)
-			wlr_xdg_toplevel_set_maximized(view->xdg_toplevel,
-				view->maximized);
+			wlr_xdg_toplevel_set_maximized(view->xdg_toplevel, shown);
 	} else {
-		wlr_xwayland_surface_set_maximized(view->xsurface,
-			view->maximized, view->maximized);
+		wlr_xwayland_surface_set_maximized(view->xsurface, shown, shown);
 	}
+}
+
+/* Back to the geometry or state it floated in, on the output it came from. */
+static void view_apply_floating(struct view *view)
+{
+	double px = view->saved.x + view->saved.width / 2.0;
+	double py = view->saved.y + view->saved.height / 2.0;
+	if (view->maximized || view->snap != SNAP_NONE)
+		view_fit_state(view, px, py);
+	else
+		view_set_geometry(view, view->saved.x, view->saved.y,
+			view->saved.width, view->saved.height);
+}
+
+/* Only a client that is shown should be seen. */
+static void view_show_content(struct view *view)
+{
+	if (view->content_tree)
+		wlr_scene_node_set_enabled(&view->content_tree->node, !view->shaded);
+}
+
+void view_set_tiled(struct view *view, bool on, bool apply)
+{
+	if (view->tiled == on)
+		return;
+	if (on && !view->tile_back)
+		view_save_free(view);
+	view->shaded = false;
+	view_show_content(view);
+	view->tile_back = false;
+	view->tiled = on;
+	view->tile_main = false;
+	view_update_decorations(view);
+	/* What it tells the client depends on being tiled. */
+	view_maximize_at(view, view->maximized, 0, 0);
+	view_publish_snap(view);
+	if (!on && apply)
+		view_apply_floating(view);
+	frame_render(view);
+}
+
+void view_apply_tile(struct view *view)
+{
+	const struct wlr_box r = view->tile;
+	int w = r.width - frame_extra_w(view), h = r.height - frame_extra_h(view);
+	if (view->shaded) {
+		/* It keeps its client height for when it unrolls. */
+		h = view->type == VIEW_XDG ? view->requested_h : view->xsurface->height;
+	}
+	view_apply_size_hints(view, &w, &h, true);
+	/* The main window keeps to the right edge, the stack to the left. */
+	int x = view->tile_main ? r.x + r.width - (w + frame_extra_w(view)) : r.x;
+	view_set_geometry(view, x, r.y, w, h);
+	if (view->tile_main && view->type == VIEW_XDG) {
+		/* Also if the client decides on a size of its own. */
+		view->anchor_edges = WLR_EDGE_LEFT;
+		view->anchor_right = r.x + r.width;
+	}
+	view_show_content(view);
+	frame_render(view);
 }
 
 void view_set_fullscreen(struct view *view, bool fullscreen)
 {
 	if (view->fullscreen != fullscreen) {
 		if (fullscreen) {
-			view_save_free(view);
+			/* A tiled window leaves the layout for fullscreen and goes back
+			 * into it afterwards; saved still holds its floating geometry. */
+			if (view->tiled) {
+				view_set_tiled(view, false, false);
+				view->tile_back = true;
+			} else {
+				view_save_free(view);
+			}
 			struct wlr_box a = output_full_area(view->server,
 				view->x + view->width / 2.0,
 				view->y + view->height / 2.0);
@@ -477,15 +559,18 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 			view->fullscreen = false;
 			views_update_layers(view->server);
 			view->decorated = view->ssd;
-			if (view->maximized || view->snap != SNAP_NONE) {
-				view_refit(view);
-			} else {
-				view_set_geometry(view, view->saved.x,
-					view->saved.y, view->saved.width,
-					view->saved.height);
+			if (view->tile_back && view->server->tiling)
+				tile_arrange(view->server); /* places it, saved untouched */
+			if (!view->tiled) {
+				/* Floating, or no longer fit for the layout. */
+				view->tile_back = false;
+				view_apply_floating(view);
 			}
 			frame_render(view);
 		}
+		/* Into fullscreen the others close the gap; out of it a window fit
+		 * for the layout joins it, wherever it came from. */
+		tile_arrange(view->server);
 	}
 	if (view->type == VIEW_XDG) {
 		if (view->xdg_toplevel->base->initialized)
@@ -537,6 +622,7 @@ void view_minimize(struct view *view)
 	if (had_focus)
 		focus_next(server, view);
 	struts_changed(view);
+	tile_arrange(server);
 }
 
 void view_restore(struct view *view)
@@ -563,9 +649,16 @@ void view_restore(struct view *view)
 			}
 		}
 		struts_changed(view);
+		/* Back from an icon it is the newest window of the layout. */
+		view->tile_seq = --view->server->tile_front;
+		tile_arrange(view->server);
 		view_focus(view);
+	} else if (view->shaded) {
+		tile_unshade(view);
 	} else if (view->fullscreen) {
 		view_set_fullscreen(view, false);
+	} else if (view->tiled) {
+		return;
 	} else if (view->maximized) {
 		view_set_maximized(view, false);
 	} else if (view->snap != SNAP_NONE) {
@@ -588,10 +681,11 @@ void views_usable_area_changed(struct server *server)
 	wl_list_for_each(v, &server->views, link) {
 		v->icon_placed = false;
 		if (v->mapped && (v->maximized || v->snap != SNAP_NONE) &&
-				!v->fullscreen)
+				!v->fullscreen && !v->tiled)
 			view_refit(v);
 	}
 	icons_arrange(server);
+	tile_arrange(server);
 }
 
 void view_frame_changed(struct view *view)
@@ -599,7 +693,8 @@ void view_frame_changed(struct view *view)
 	/* The client keeps its size and the frame around it changes, except
 	 * where the frame's size is fixed. */
 	view_update_content_pos(view);
-	if ((view->maximized || view->snap != SNAP_NONE) && !view->fullscreen)
+	if ((view->maximized || view->snap != SNAP_NONE) && !view->fullscreen &&
+			!view->tiled)
 		view_refit(view);
 	else
 		xwayland_configure(view);
@@ -825,6 +920,8 @@ void view_handle_map(struct view *view)
 {
 	view->mapped = true;
 	config_view_shades(view); /* the class or app_id is known by now */
+	config_view_tiling(view);
+	view->tile_seq = --view->server->tile_front; /* a new window leads the layout */
 	view_update_properties(view);
 	wlr_scene_node_set_enabled(&view->tree->node, true);
 	view_update_content_pos(view);
@@ -835,6 +932,8 @@ void view_handle_map(struct view *view)
 	frame_render(view);
 	views_update_layers(view->server);
 	struts_changed(view);
+	/* Into the layout before it gets the focus, so it doesn't jump. */
+	tile_arrange(view->server);
 	if (view->wtype != WT_SPLASH)
 		view_focus(view);
 	else
@@ -866,11 +965,17 @@ void view_handle_unmap(struct view *view)
 	view->activated = false;
 	view->minimized = false;
 	view->hidden_with_parent = false;
+	view->tiled = false;
+	view->tile_main = false;
+	view->tile_back = false;
+	view->shaded = false;
+	view_show_content(view);
 	wlr_scene_node_set_enabled(&view->tree->node, false);
 	wlr_scene_node_set_enabled(&view->icon_node->node, false);
 	if (was_active)
 		focus_next(server, view);
 	struts_changed(view);
+	tile_arrange(server);
 }
 
 void view_handle_destroy(struct view *view)

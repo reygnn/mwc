@@ -156,7 +156,13 @@ static unsigned motif_mask(uint32_t hint, unsigned all)
 	return (hint & 1) ? all & ~hint : hint & all;
 }
 
-static void update_decorations(struct view *view)
+bool view_fixed(struct view *view)
+{
+	return view->max_w && view->max_h && view->max_w == view->min_w &&
+		view->max_h == view->min_h;
+}
+
+void view_update_decorations(struct view *view)
 {
 	unsigned d = DECOR_ALL, f = FUNC_ALL;
 	switch (view->wtype) {
@@ -183,8 +189,7 @@ static void update_decorations(struct view *view)
 		f &= motif_mask(view->motif_funcs, FUNC_ALL);
 	if (view->motif_flags & MWM_HINTS_DECORATIONS)
 		d &= motif_mask(view->motif_decor, DECOR_ALL);
-	if (view->max_w && view->max_h && view->max_w == view->min_w &&
-			view->max_h == view->min_h)
+	if (view_fixed(view))
 		f &= ~(FUNC_RESIZE | FUNC_MAXIMIZE);
 
 	/* Decorations follow the functions they trigger. */
@@ -194,6 +199,12 @@ static void update_decorations(struct view *view)
 		d &= ~DECOR_MINIMIZE;
 	if (!(f & FUNC_MAXIMIZE))
 		d &= ~DECOR_MAXIMIZE;
+
+	/* Tiled: the full decoration stays, only moving and resizing do nothing;
+	 * the layout places the window. */
+	view->base_funcs = f;
+	if (view->tiled)
+		f &= ~(FUNC_MOVE | FUNC_RESIZE);
 
 	bool changed = d != view->decor;
 	view->decor = d;
@@ -205,6 +216,10 @@ static void update_decorations(struct view *view)
 void view_update_properties(struct view *view)
 {
 	enum window_type old_type = view->wtype;
+	int old_min_w = view->min_w, old_min_h = view->min_h;
+	int old_max_w = view->max_w, old_max_h = view->max_h;
+	bool old_fixed = view_fixed(view);
+	struct view *old_parent = view_parent(view);
 	if (view->type == VIEW_XDG) {
 		read_xdg_size_hints(view);
 		view->wtype = view->xdg_toplevel->parent ? WT_DIALOG : WT_NORMAL;
@@ -212,9 +227,15 @@ void view_update_properties(struct view *view)
 		read_xwayland_size_hints(view);
 		view->wtype = xwayland_type(view->xsurface);
 	}
-	update_decorations(view);
+	view_update_decorations(view);
 	if (view->wtype != old_type)
 		views_update_layers(view->server);
+	/* Whether it fits the layout, or takes part at all, may have changed. */
+	if (view->mapped && view->server->tiling && (view->wtype != old_type ||
+			view_fixed(view) != old_fixed || view_parent(view) != old_parent ||
+			view->min_w != old_min_w || view->min_h != old_min_h ||
+			view->max_w != old_max_w || view->max_h != old_max_h))
+		tile_arrange(view->server);
 }
 
 void view_apply_size_hints(struct view *view, int *pw, int *ph, bool incr)

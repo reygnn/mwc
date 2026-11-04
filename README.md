@@ -49,7 +49,8 @@ and `make config-test` does the same for `mwmrc`, including reloading it.
 (`tests/layerc.c`), and `make window-test` window behaviour with clients that can
 ask for any hint (`tests/xclient.c`, `tests/xdgc.c`). `make move-test` checks the
 outline, the box and the keys during a move or resize, and `make snap-test` the
-snap zones and every way back out of them. `make outputs-test` runs on two outputs.
+snap zones and every way back out of them. `make outputs-test` runs on two outputs,
+and `make tile-test` walks through tiling.
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
@@ -76,7 +77,7 @@ Alt+F3 lower · Alt+F4 close · Alt+F5 restore · Alt+F7 move · Alt+F8 size ·
 Alt+F9 minimize · Alt+F10 maximize · Alt+F11 fullscreen ·
 Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit ·
 Super+arrows snap (see above) · Super+Shift+arrows push a floating window against
-that edge of the usable area (two in a row: a corner).
+that edge of the usable area (two in a row: a corner) · Super+T tiling on/off.
 
 ## Configuration
 
@@ -105,6 +106,10 @@ Mwm*wallpaper:                 ~/pictures/desk.png
 | `rootBackground` | desktop colour, or `none` to leave the desktop to a wallpaper tool such as `swaybg` (global only) |
 | `wallpaper` | PNG on the desktop, see below (global only) |
 | `moveOpaque` | `true`: drag windows themselves instead of an outline (global only) |
+| `tiling` | `true`: start in tiling mode (global only) |
+| `tileMainWidth` | share of the width for the main tiled window, `10` to `90` (`%` optional), default `55` (global only) |
+| `DoNotTile` | programs that always float in tiling mode, comma-separated (global only) |
+| `TileOnly` | the only programs that tile, comma-separated; the later of the two wins (global only) |
 
 Copying a file from mwm-x11 works, except that `fontList` takes Pango names
 like `Sans Bold 10`: a fontconfig pattern like `Sans:bold:size=10` is logged and
@@ -131,6 +136,8 @@ The environment overrides the global entries:
 | `MWC_WALLPAPER`   | none           | PNG on the desktop, see below    |
 | `MWC_FONT`        | `Sans Bold 10` | Pango font for titles and menus  |
 | `MWC_MOVE_OPAQUE` | `0`            | `1`: opaque move/resize          |
+| `MWC_TILING`      | `0`            | `1`: start in tiling mode        |
+| `MWC_TILE_MAIN_WIDTH` | `55`       | main tiled window's share in %   |
 | `MWC_TERMINAL`    | first of xterm, foot, alacritty, … | "New Window"  |
 
 The wallpaper is the path of a PNG file; a leading `~/` is expanded. The image is
@@ -184,6 +191,50 @@ Keyboard: Super+Left/Right snap to a half (pressing the other direction restores
 the window). Super+Up goes from a half to its top quarter, or maximizes. Super+Down
 goes from a half to its bottom quarter, from a maximized window back to normal, and
 from a normal window to its icon.
+
+## Tiling
+
+Super+T, or "Tile Windows" in the root menu, switches to tiling: the main window
+takes the right part of the screen (55 %, or `Mwm*tileMainWidth`; all of it while it
+is the only one), the other windows share the left part, one above the other. Gaps
+around and between them keep the desktop and its root menu within reach. A new
+window, or one back from an icon, becomes the main window.
+
+The decoration stays, but tiled windows cannot be moved or resized. The title bar
+buttons do this instead:
+
+| Button   | Main window (right)              | Stack window (left)            |
+|----------|----------------------------------|--------------------------------|
+| Minimize | goes into the stack; the top stack window takes its place (nothing while it is alone) | shades: rolls up to its title bar |
+| Maximize | nothing                          | becomes the main window        |
+
+A click on a shaded window, focusing it (Alt+Tab) or Restore (Alt+F5) unrolls it.
+When the stack runs out of room, its lower windows are shaded, and when even that is
+not enough the oldest become icons. The layout ends above the row of icons. Dialogs,
+windows that cannot be resized, windows too large for their place, fullscreen and
+minimized windows float as usual; a window that leaves fullscreen joins the layout.
+The layout covers the first monitor.
+
+`Mwm*DoNotTile` in mwmrc keeps the listed programs out of the layout: they float
+above or between the tiled windows. `Mwm*TileOnly` is the reverse: only the listed
+programs tile. Programs go by `WM_CLASS` (instance or class name) or `app_id`,
+ignoring case, separated by commas. When both are set, the later line wins; an empty
+value switches the filter off.
+
+```
+! Firefox floats (app_id "firefox")
+Mwm*DoNotTile:   firefox
+
+! or the other way round: only these tile
+Mwm*TileOnly:    XTerm, foot
+```
+
+While tiling is on, the root menu offers "Raise Tiled Windows" when a floating window
+lies on top, and "Lower Tiled Windows" otherwise: all tiled windows (with their
+dialogs) go above or below all floating ones, each group keeping its own order, and
+the focus follows to the group on top. Switching tiling off puts every window back
+where it was. `Mwm*tiling: true` in mwmrc or `MWC_TILING=1` starts with tiling on,
+and reloading the configuration keeps the current choice.
 
 ## Window behaviour
 

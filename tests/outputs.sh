@@ -125,6 +125,21 @@ do_input key Escape
 do_input up left
 kill "$PID_panel"
 wait "$PID_panel" 2>/dev/null
+
+# ---- the tiling layout covers the first output --------------------------------------
+
+refresh
+X=$(get win x) Y=$(get win y)
+do_input key super+t
+check "tiling: the window goes to the first output" \
+	"[ \"\$(get win tiled)\" = 1 ] && [ \"\$(get win x)\" = 8 ] && \
+	[ \$((\$(get win w) + 2 * B)) = 1264 ]"
+do_input key super+t
+client_is "tiling off: back on the output it came from" win "$X" "$Y" 300 200
+do_input key super+Right
+do_input key super+t
+do_input key super+t
+frame_is "snapped there, it comes back snapped there" win 1920 0 640 720
 kill "$PID_win"
 wait "$PID_win" 2>/dev/null
 check "the window is gone" "[ -z \"\$(get win x)\" ]"

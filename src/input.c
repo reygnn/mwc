@@ -449,7 +449,13 @@ static bool handle_press(struct server *server, uint32_t button,
 		return true;
 	}
 
+	/* A click on a shaded window unrolls it (focusing does), and does no more, so
+	 * its minimize button doesn't roll it right up again; only maximize goes on to
+	 * make it the main window. */
+	bool was_shaded = view->shaded;
 	view_focus(view);
+	if (was_shaded && part != PART_MAXIMIZE_BUTTON)
+		return true;
 
 	if (alt_held(server) && part != PART_NONE) {
 		if (button == BTN_LEFT) {
@@ -484,8 +490,7 @@ static bool handle_press(struct server *server, uint32_t button,
 			menu_open_window(server, view, cx, cy);
 		} else if (button == BTN_LEFT) {
 			if (is_double_click(server, view, part, time)) {
-				if (view->maximized || (view->funcs & FUNC_MAXIMIZE))
-					view_set_maximized(view, !view->maximized);
+				run_action(server, ACT_TOGGLE_MAXIMIZE, view);
 			} else
 				view_begin_interactive(view, CURSOR_MOVE, 0,
 					false);
@@ -535,10 +540,9 @@ static void handle_button_release(struct server *server)
 	if (!inside)
 		return;
 	if (part == PART_MINIMIZE_BUTTON)
-		view_minimize(v);
-	else if (part == PART_MAXIMIZE_BUTTON && (v->maximized ||
-			(v->funcs & FUNC_MAXIMIZE)))
-		view_set_maximized(v, !v->maximized);
+		run_action(server, ACT_MINIMIZE, v);
+	else if (part == PART_MAXIMIZE_BUTTON)
+		run_action(server, ACT_TOGGLE_MAXIMIZE, v);
 }
 
 static void cursor_button(struct wl_listener *listener, void *data)
@@ -666,6 +670,11 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	if (logo && !alt && !ctrl) {
 		enum snap_dir dir;
 		switch (sym) {
+		case XKB_KEY_t:
+			if (shift)
+				return false;
+			tile_toggle(server);
+			return true;
 		case XKB_KEY_Left:
 			dir = SNAP_DIR_LEFT;
 			break;
@@ -731,8 +740,7 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		run_action(server, ACT_MINIMIZE, view);
 		return true;
 	case XKB_KEY_F10:
-		if (view && (view->maximized || (view->funcs & FUNC_MAXIMIZE)))
-			view_set_maximized(view, !view->maximized);
+		run_action(server, ACT_TOGGLE_MAXIMIZE, view);
 		return true;
 	case XKB_KEY_F11:
 		if (view)

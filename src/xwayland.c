@@ -210,8 +210,10 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 			ev->width, ev->height);
 		return;
 	}
-	if (view->maximized || view->fullscreen) {
-		view_send_size(view, view->width, view->height);
+	/* Fullscreen, maximized, snapped and tiled windows keep their place. */
+	if (view->maximized || view->fullscreen || view->snap != SNAP_NONE ||
+			view->tiled) {
+		view_send_size(view, view->xsurface->width, view->xsurface->height);
 		return;
 	}
 	view_set_geometry(view, ev->x - frame_left(view),

@@ -66,12 +66,6 @@ resize_by() { # app dx dy
 	drag "$x" "$y" $((x + $2)) $((y + $3))
 }
 
-# The window's position in the stacking order, 0 is the front.
-stack_pos() {
-	awk -v app="app=$1" 'BEGIN { n = 0 } $1 == "view" { if ($2 == app) { print n; exit } n++ }' \
-		"$MWC_TEST_STATE"
-}
-
 sensitive_is() { # description window expected
 	do_input key alt+space
 	check "$1" "[ \"\$(global menu sensitive)\" = $3 ]"

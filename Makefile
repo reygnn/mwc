@@ -22,7 +22,7 @@ LDLIBS += $(shell $(PKG_CONFIG) --libs $(PKGS))
 
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
 	src/input.c src/draw.c src/wallpaper.c src/config.c src/layer.c \
-	src/hints.c src/outline.c src/snap.c src/testhook.c
+	src/hints.c src/outline.c src/snap.c src/tile.c src/testhook.c
 OBJ = $(SRC:src/%.c=build/%.o)
 PROTO = build/xdg-shell-protocol.h build/wlr-layer-shell-unstable-v1-protocol.h
 
@@ -131,6 +131,9 @@ build/xdgc: tests/xdgc.c $(XDGC_GEN)
 outputs-test: mwc build/vinput build/pngtool build/xclient build/layerc
 	tests/outputs.sh
 
+tile-test: mwc build/vinput build/pngtool build/xclient build/xdgc
+	tests/tile.sh
+
 snap-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 	tests/snap.sh
 
@@ -147,10 +150,10 @@ config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
 test: smoke input-test wallpaper-test config-test layer-test window-test \
-	move-test snap-test outputs-test
+	move-test snap-test outputs-test tile-test
 
 clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN)
-.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test test clean
+.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test test clean

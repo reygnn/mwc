@@ -9,6 +9,10 @@
  *   Mwm*rootBackground:            #5b7792
  *   Mwm*wallpaper:                 ~/pictures/desk.png
  *   Mwm*moveOpaque:                true       drag windows, not an outline
+ *   Mwm*tiling:                    true       start in tiling mode
+ *   Mwm*tileMainWidth:             60         the main window's share, in %
+ *   Mwm*DoNotTile:                 Navigator  Firefox floats in tiling mode
+ *   Mwm*TileOnly:                  XTerm, mfm only these tile
  *   Mwm*XTerm*activeBackground:    #8a0303    per client
  *   Mwm*foot*activeBackground:     gold
  *
@@ -44,6 +48,11 @@ static struct rule *rules;
 static int n_rules;
 static char path[4096];
 
+/* DoNotTile or TileOnly, whichever comes last, with its programs. */
+static enum { FILTER_NONE, FILTER_DENY, FILTER_ONLY } tile_filter;
+static char **tile_names;
+static int n_tile_names;
+
 static char *trim(char *s)
 {
 	while (isspace((unsigned char)*s))
@@ -76,6 +85,41 @@ static void add_rule(char *key, const char *value, int line)
 	};
 }
 
+/* The last global DoNotTile or TileOnly line decides, and an empty one switches the
+ * filter off again. Programs are separated by commas; WM_CLASS names may contain
+ * spaces. */
+static void load_tile_filter(void)
+{
+	for (int i = 0; i < n_tile_names; i++)
+		free(tile_names[i]);
+	free(tile_names);
+	tile_names = NULL;
+	n_tile_names = 0;
+	tile_filter = FILTER_NONE;
+
+	const struct rule *r = NULL;
+	for (int i = 0; i < n_rules; i++) {
+		if (!rules[i].client && (!strcasecmp(rules[i].resource, "DoNotTile") ||
+				!strcasecmp(rules[i].resource, "TileOnly")))
+			r = &rules[i];
+	}
+	if (!r)
+		return;
+	char *list = strdup(r->value), *save = NULL;
+	for (char *tok = strtok_r(list, ",", &save); tok;
+			tok = strtok_r(NULL, ",", &save)) {
+		char *name = trim(tok);
+		if (!*name)
+			continue;
+		tile_names = realloc(tile_names, sizeof(*tile_names) * (n_tile_names + 1));
+		tile_names[n_tile_names++] = strdup(name);
+	}
+	free(list);
+	if (n_tile_names)
+		tile_filter = strcasecmp(r->resource, "TileOnly") ? FILTER_DENY :
+			FILTER_ONLY;
+}
+
 void config_load(void)
 {
 	for (int i = 0; i < n_rules; i++) {
@@ -96,8 +140,10 @@ void config_load(void)
 	else
 		return;
 	FILE *f = fopen(path, "r");
-	if (!f)
+	if (!f) {
+		load_tile_filter();
 		return;
+	}
 
 	char *buf = NULL;
 	size_t cap = 0;
@@ -118,6 +164,7 @@ void config_load(void)
 	free(buf);
 	fclose(f);
 	wlr_log(WLR_DEBUG, "%s: %d rules", path, n_rules);
+	load_tile_filter();
 }
 
 /* Global value of a resource, NULL when unset. */
@@ -210,6 +257,21 @@ static bool rule_color(const struct rule *r, struct mwc_color *out)
 	return false;
 }
 
+void config_view_tiling(struct view *view)
+{
+	view->no_tile = false;
+	if (tile_filter == FILTER_NONE)
+		return;
+	const char *name = view_app_id(view), *class = name;
+	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
+		name = view->xsurface->instance;
+	bool listed = false;
+	for (int i = 0; i < n_tile_names && !listed; i++)
+		listed = !strcasecmp(tile_names[i], name) ||
+			!strcasecmp(tile_names[i], class);
+	view->no_tile = tile_filter == FILTER_DENY ? listed : !listed;
+}
+
 /* Pick the frame colours for a window from its class or app_id. */
 void config_view_shades(struct view *view)
 {
@@ -271,4 +333,5 @@ void config_reload(struct server *server)
 	struct view *view;
 	wl_list_for_each(view, &server->views, link)
 		view_theme_changed(view);
+	tile_config_changed(server);
 }

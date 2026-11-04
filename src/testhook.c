@@ -57,14 +57,16 @@ static int dump_state(int signal, void *data)
 			continue;
 		fprintf(f, "view app=%s x=%d y=%d w=%d h=%d active=%d kbfocus=%d "
 			"max=%d min=%d full=%d frame=%d icon_x=%d icon_y=%d hidden=%d "
-			"bw=%d th=%d above=%d below=%d snap=%d\n",
+			"bw=%d th=%d above=%d below=%d snap=%d tiled=%d tile_main=%d shaded=%d "
+			"fh=%d\n",
 			view_app_id(v), v->x, v->y, v->width, v->height,
 			v->activated, kb_focus && kb_focus == view_surface(v),
 			v->maximized, v->minimized, v->fullscreen, v->decorated,
 			v->icon_x, v->icon_y, v->hidden_with_parent,
 			frame_border(v), frame_title(v),
 			v->type == VIEW_XWAYLAND && v->xsurface->above,
-			v->type == VIEW_XWAYLAND && v->xsurface->below, v->snap);
+			v->type == VIEW_XWAYLAND && v->xsurface->below, v->snap,
+			v->tiled, v->tile_main, v->shaded, frame_height(v));
 	}
 	/* The mnemonics of what can be chosen, without spaces for the parser. */
 	char sensitive[MENU_MAX_ITEMS + 1];
@@ -88,6 +90,11 @@ static int dump_state(int signal, void *data)
 	wl_list_for_each(um, &server->unmanaged, link)
 		unmanaged += um->tree != NULL;
 	fprintf(f, "unmanaged count=%d\n", unmanaged);
+	fprintf(f, "tiling on=%d\n", server->tiling);
+	int focused = 0;
+	wl_list_for_each(v, &server->views, link)
+		focused += v->activated;
+	fprintf(f, "focus any=%d\n", focused);
 	struct wlr_box box;
 	bool outline = outline_get(&box);
 	fprintf(f, "outline shown=%d x=%d y=%d w=%d h=%d\n", outline, box.x, box.y,

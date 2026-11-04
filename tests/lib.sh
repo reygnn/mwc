@@ -16,6 +16,7 @@ export SMOKE_DIR
 # Don't let the developer's own settings change what the tests see.
 export XDG_CONFIG_HOME=$SMOKE_DIR/config
 unset MWC_ACTIVE MWC_INACTIVE MWC_ROOT MWC_FONT MWC_WALLPAPER MWC_TERMINAL
+unset MWC_MOVE_OPAQUE MWC_TILING MWC_TILE_MAIN_WIDTH
 
 pid=
 cleanup() {
@@ -134,6 +135,12 @@ global() {
 		for (i = 2; i <= NF; i++)
 			if (index($i, key) == 1) { print substr($i, length(key) + 1); exit }
 	}' "$MWC_TEST_STATE"
+}
+
+# The window's position in the stacking order, 0 is the front.
+stack_pos() {
+	awk -v app="app=$1" 'BEGIN { n = 0 } $1 == "view" { if ($2 == app) { print n; exit } n++ }' \
+		"$MWC_TEST_STATE"
 }
 
 # check <description> <shell condition>: poll, because clients resize

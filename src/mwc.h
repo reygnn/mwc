@@ -177,6 +177,7 @@ struct view {
 	bool decorated; /* frame currently drawn: ssd && !fullscreen */
 	enum window_type wtype;
 	unsigned decor, funcs; /* see view_update_properties() */
+	unsigned base_funcs;   /* the same, before tiling takes some away */
 	uint32_t motif_flags, motif_funcs, motif_decor; /* X11 only */
 	/* Size limits of the client: 0 means none. */
 	int min_w, min_h, max_w, max_h, base_w, base_h, inc_w, inc_h;
@@ -189,6 +190,15 @@ struct view {
 	bool minimized;
 	bool fullscreen;
 	enum snap snap;
+	/* Tiling, see tile.c. */
+	bool tiled;
+	bool tile_main;  /* the main window on the right */
+	bool shaded;     /* in the stack, rolled up to its title bar */
+	bool tile_back;  /* fullscreen from the layout: back into it after */
+	bool tile_nofit; /* this round: too big for its cell, floats */
+	bool no_tile;    /* DoNotTile or not in TileOnly: always floats */
+	long tile_seq;   /* layout order, lowest first (the main window) */
+	struct wlr_box tile; /* its cell: the frame's box */
 	struct mwc_shade shade_active, shade_inactive; /* frame and icon colours */
 	struct wlr_box saved;  /* geometry before maximize/snap/fullscreen */
 	/* xdg clients answer a size request later, possibly after the button
@@ -251,11 +261,15 @@ enum menu_action {
 	ACT_SIZE,
 	ACT_MINIMIZE,
 	ACT_MAXIMIZE,
+	ACT_TOGGLE_MAXIMIZE,
 	ACT_LOWER,
 	ACT_CLOSE,
 	ACT_NEW_WINDOW,
 	ACT_SHUFFLE_UP,
 	ACT_SHUFFLE_DOWN,
+	ACT_TOGGLE_TILING,
+	ACT_RAISE_TILED,
+	ACT_LOWER_TILED,
 	ACT_RESTART,
 	ACT_QUIT,
 };
@@ -382,6 +396,8 @@ struct server {
 	struct wl_listener layout_change;
 
 	int cascade;
+	bool tiling;     /* tiling mode on */
+	long tile_front; /* tile_seq of the newest window, which leads */
 	const char *terminal;
 	cairo_surface_t *wallpaper; /* NULL: plain desktop colour */
 };
@@ -439,6 +455,13 @@ struct view *view_at(struct server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy,
 	enum frame_part *part, uint32_t *edges, bool *on_icon);
 /* The output there, or else the first one; NULL when there are none. */
+/* Into the layout or out of it, back to its floating geometry or state if apply. */
+void view_set_tiled(struct view *view, bool on, bool apply);
+/* Into its cell, as far as the client's limits allow. */
+void view_apply_tile(struct view *view);
+void view_focus_next(struct view *except);
+/* To the front of its scene layer, alone. */
+void view_raise_one(struct view *view);
 /* Puts every window into its scene layer, by type, state and focus. */
 void views_update_layers(struct server *server);
 struct output *output_at(struct server *server, double lx, double ly);
@@ -451,6 +474,8 @@ void views_usable_area_changed(struct server *server);
 
 /* Reads type and size limits from the client, derives decor and funcs. */
 void view_update_properties(struct view *view);
+void view_update_decorations(struct view *view);
+bool view_fixed(struct view *view);
 void view_apply_size_hints(struct view *view, int *w, int *h, bool incr);
 void view_gravity_to_frame(struct view *view, int x, int y, int *fx, int *fy);
 struct view *view_parent(struct view *view);
@@ -470,6 +495,8 @@ int frame_left(struct view *view);
 int frame_top(struct view *view);
 int frame_extra_w(struct view *view);
 int frame_extra_h(struct view *view);
+/* Outer frame height; a shaded window keeps only its title bar. */
+int frame_height(struct view *view);
 void frame_render(struct view *view);
 enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges);
 void icon_render(struct view *view);
@@ -501,6 +528,26 @@ void input_add_device(struct server *server, struct wlr_input_device *dev);
 void cursor_set_name(struct server *server, const char *name);
 void process_cursor_motion(struct server *server, uint32_t time);
 void spawn(const char *cmd);
+
+/* ---- tile.c ------------------------------------------------------------- */
+
+void tile_init(struct server *server);
+void tile_config_changed(struct server *server);
+void tile_toggle(struct server *server);
+void tile_arrange(struct server *server);
+bool tile_can_shade(struct view *view);
+bool tile_has_stack(struct server *server);
+/* Minimize in the layout: the main window goes into the stack, its place taken by
+ * the first stack window; a stack window shades or unshades. */
+void tile_iconify(struct view *view);
+/* Maximize in the layout: a stack window trades places with the main window. */
+void tile_promote(struct view *view);
+void tile_unshade(struct view *view);
+/* 1 when the topmost visible window of the normal layer belongs to the layout, 0
+ * when it floats; -1 when there are not both kinds. */
+int tile_stacking(struct server *server);
+/* All tiled windows (with their dialogs) above or below all floating ones. */
+void tile_stack(struct server *server, bool raise);
 
 /* ---- snap.c ------------------------------------------------------------- */
 
@@ -549,6 +596,8 @@ bool config_color(const char *value, struct mwc_color *out);
 /* 1 or 0, or -1 when value is unset or no boolean; name is for the log. */
 int config_bool(const char *name, const char *value);
 void config_view_shades(struct view *view);
+/* Whether the tiling layout may take it, from DoNotTile or TileOnly. */
+void config_view_tiling(struct view *view);
 /* "Restart..." and SIGHUP: a Wayland compositor can't re-exec and keep its
  * clients, so this reads mwmrc again and applies it to what is running. */
 void config_reload(struct server *server);

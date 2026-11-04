@@ -223,6 +223,24 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 	bool normal = !view->minimized && !view->maximized && !view->fullscreen &&
 		view->snap == SNAP_NONE;
 	unsigned f = view->funcs;
+	if (view->tiled) {
+		/* In the layout: Minimize moves the main window into the stack or
+		 * shades a stack window, Maximize makes a stack window the main one,
+		 * Restore unshades. */
+		bool is_main = view->tile_main;
+		add(m, "Restore", 'R', "Alt+F5", ACT_RESTORE, view->shaded);
+		add(m, "Move", 'M', "Alt+F7", ACT_MOVE, false);
+		add(m, "Size", 'S', "Alt+F8", ACT_SIZE, false);
+		add(m, "Minimize", 'n', "Alt+F9", ACT_MINIMIZE, (f & FUNC_MINIMIZE) &&
+			(is_main ? tile_has_stack(server) : tile_can_shade(view)));
+		add(m, "Maximize", 'x', "Alt+F10", ACT_MAXIMIZE,
+			(f & FUNC_MAXIMIZE) && !is_main);
+		add(m, "Lower", 'L', "Alt+F3", ACT_LOWER, true);
+		add(m, NULL, 0, NULL, ACT_NONE, false);
+		add(m, "Close", 'C', "Alt+F4", ACT_CLOSE, f & FUNC_CLOSE);
+		open_at(server, x, y);
+		return;
+	}
 	add(m, "Restore", 'R', "Alt+F5", ACT_RESTORE, !normal);
 	add(m, "Move", 'M', "Alt+F7", ACT_MOVE,
 		(f & FUNC_MOVE) && !view->fullscreen);
@@ -248,6 +266,15 @@ void menu_open_root(struct server *server, int x, int y)
 	add(m, "New Window", 'N', NULL, ACT_NEW_WINDOW, true);
 	add(m, "Shuffle Up", 'U', NULL, ACT_SHUFFLE_UP, true);
 	add(m, "Shuffle Down", 'D', NULL, ACT_SHUFFLE_DOWN, true);
+	add(m, server->tiling ? "Untile Windows" : "Tile Windows",
+		server->tiling ? 't' : 'T', "Super+T", ACT_TOGGLE_TILING, true);
+	if (server->tiling) {
+		int top = tile_stacking(server);
+		if (top == 1)
+			add(m, "Lower Tiled Windows", 'L', NULL, ACT_LOWER_TILED, true);
+		else
+			add(m, "Raise Tiled Windows", 'a', NULL, ACT_RAISE_TILED, top == 0);
+	}
 	add(m, NULL, 0, NULL, ACT_NONE, false);
 	add(m, "Restart...", 'R', NULL, ACT_RESTART_CONFIRM, true);
 	add(m, "Quit...", 'Q', NULL, ACT_QUIT_CONFIRM, true);
@@ -439,15 +466,33 @@ void run_action(struct server *server, enum menu_action action,
 			WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT, true);
 		break;
 	case ACT_MINIMIZE:
-		if (view && (view->funcs & FUNC_MINIMIZE))
+		if (view && view->tiled && (view->funcs & FUNC_MINIMIZE))
+			tile_iconify(view);
+		else if (view && (view->funcs & FUNC_MINIMIZE))
 			view_minimize(view);
 		break;
 	case ACT_MAXIMIZE:
-		if (view) {
+		if (view && view->tiled && (view->funcs & FUNC_MAXIMIZE)) {
+			tile_promote(view);
+		} else if (view && (view->funcs & FUNC_MAXIMIZE)) {
 			if (view->minimized)
 				view_restore(view);
 			view_set_maximized(view, true);
 		}
+		break;
+	case ACT_TOGGLE_MAXIMIZE:
+		if (view && view->tiled && (view->funcs & FUNC_MAXIMIZE))
+			tile_promote(view);
+		else if (view && !view->tiled && !view->minimized &&
+				(view->maximized || (view->funcs & FUNC_MAXIMIZE)))
+			view_set_maximized(view, !view->maximized);
+		break;
+	case ACT_TOGGLE_TILING:
+		tile_toggle(server);
+		break;
+	case ACT_RAISE_TILED:
+	case ACT_LOWER_TILED:
+		tile_stack(server, action == ACT_RAISE_TILED);
 		break;
 	case ACT_LOWER:
 		if (view)
