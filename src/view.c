@@ -251,6 +251,9 @@ void view_focus(struct view *view)
 	struct server *server = view->server;
 	struct wlr_seat *seat = server->seat;
 
+	/* Asked for by name, a hidden tab comes to the front. */
+	if (view->tab_hidden)
+		tabs_bring(view);
 	if (view->minimized || view->hidden_with_parent) {
 		view_restore(view);
 		return;
@@ -330,7 +333,7 @@ static void view_fit_state(struct view *view, double px, double py)
 	view_set_geometry(view, a.x, a.y, w, h);
 }
 
-static void view_refit(struct view *view)
+void view_refit(struct view *view)
 {
 	view_fit_state(view, view->x + view->width / 2.0,
 		view->y + view->height / 2.0);
@@ -380,6 +383,16 @@ static void view_publish_snap(struct view *view)
 	/* From maximized straight to snapped, it must stop thinking it is. */
 	wlr_xdg_toplevel_set_maximized(view->xdg_toplevel,
 		view->maximized && !view->tiled);
+}
+
+void view_publish_state(struct view *view)
+{
+	if (view->type == VIEW_XDG) {
+		view_publish_snap(view);
+	} else {
+		bool shown = view->maximized && !view->tiled;
+		wlr_xwayland_surface_set_maximized(view->xsurface, shown, shown);
+	}
 }
 
 /* What it goes back to is only recorded while it is free. The size is the one last
@@ -501,8 +514,10 @@ static void view_maximize_at(struct view *view, bool maximized, double px,
 		view->maximized = maximized;
 		return;
 	}
-	/* In the layout, the layout decides; see tile_promote(). */
-	if (view->maximized == maximized || view->fullscreen || view->tiled)
+	/* In the layout, the layout decides; see tile_promote(). A hidden tab has no
+	 * state until it is shown. */
+	if (view->maximized == maximized || view->fullscreen || view->tiled ||
+			view->tab_hidden)
 		goto ack;
 	if (maximized && !(view->funcs & FUNC_MAXIMIZE))
 		goto ack;
@@ -542,7 +557,7 @@ static void view_apply_floating(struct view *view)
 }
 
 /* Only a client that is shown should be seen. */
-static void view_show_content(struct view *view)
+void view_show_content(struct view *view)
 {
 	if (view->content_tree)
 		wlr_scene_node_set_enabled(&view->content_tree->node, !view->shaded);
@@ -598,6 +613,8 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 		view->decorated = view->ssd && !fullscreen;
 		return;
 	}
+	if (view->tab_hidden)
+		fullscreen = false; /* no state until it is shown */
 	if (view->fullscreen != fullscreen) {
 		grab_give_way(view);
 		if (fullscreen) {
@@ -659,7 +676,7 @@ static void struts_changed(struct view *view)
 		layers_arrange_all(view->server);
 }
 
-static void view_show(struct view *view, bool show)
+void view_show(struct view *view, bool show)
 {
 	wlr_scene_node_set_enabled(&view->tree->node, show);
 	if (view->type == VIEW_XWAYLAND)
@@ -673,7 +690,7 @@ void view_parent_changed(struct view *view)
 	/* Hidden with a window it no longer belongs to, nothing would bring it back. */
 	struct view *parent = view_parent(view);
 	if (view->hidden_with_parent &&
-			!(parent && (parent->minimized || parent->hidden_with_parent))) {
+			!(parent && view_hidden(parent))) {
 		view->hidden_with_parent = false;
 		view_show(view, true);
 	}
@@ -682,7 +699,7 @@ void view_parent_changed(struct view *view)
 
 void view_minimize(struct view *view)
 {
-	if (view->minimized || !view->mapped)
+	if (view->minimized || !view->mapped || view->tab_hidden)
 		return;
 	struct server *server = view->server;
 	grab_give_way(view);
@@ -713,6 +730,10 @@ void view_minimize(struct view *view)
 
 void view_restore(struct view *view)
 {
+	if (view->tab_hidden) {
+		view_focus(view);
+		return;
+	}
 	if (view->hidden_with_parent) {
 		/* It comes back with the nearest window up the chain that was
 		 * minimized itself. */
@@ -739,6 +760,7 @@ void view_restore(struct view *view)
 		view->tile_seq = --view->server->tile_front;
 		tile_arrange(view->server);
 		view_focus(view);
+		tabs_after_restore(view);
 	} else if (view->shaded) {
 		tile_unshade(view);
 	} else if (view->fullscreen) {
@@ -786,7 +808,7 @@ void views_layout_changed(struct server *server)
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
 		v->icon_placed = false;
-		if (!v->mapped)
+		if (!v->mapped || v->tab_hidden)
 			continue;
 		struct wlr_box box = { v->x, v->y, v->width + frame_extra_w(v),
 			frame_height(v) };
@@ -1053,7 +1075,7 @@ void view_init_common(struct view *view)
 
 /* New windows cascade from the top-left of the output under the pointer. A
  * dialog goes over the window it belongs to, or to the centre. */
-static void view_place(struct view *view)
+void view_place(struct view *view)
 {
 	struct server *server = view->server;
 	struct wlr_box a = output_usable_area(server, server->cursor->x,
@@ -1101,9 +1123,13 @@ void view_handle_map(struct view *view)
 	view_update_properties(view);
 	wlr_scene_node_set_enabled(&view->tree->node, true);
 	view_update_content_pos(view);
-	/* A dialog of a window that is an icon by now comes back with it. */
+	/* A prompt must not stay out of sight in a hidden tab, unless the group is an icon:
+	 * then it waits, as any dialog of a window that is an icon by now. */
+	struct view *root = view_transient_root(view);
+	if (root != view && root->tab_hidden && !root->group->shown->minimized)
+		tabs_bring(root);
 	struct view *parent = view_parent(view);
-	bool hide = parent && (parent->minimized || parent->hidden_with_parent);
+	bool hide = parent && view_hidden(parent);
 	if (view->placed)
 		view_set_position(view, view->x, view->y);
 	else if (!view->maximized && !view->fullscreen)
@@ -1134,6 +1160,7 @@ void view_handle_unmap(struct view *view)
 		menu_close(server);
 	if (server->last_click_view == view)
 		server->last_click_view = NULL;
+	tabs_view_gone(view);
 	/* Dialogs hidden with it have nothing left to come back with. */
 	struct view *v, *shown = NULL;
 	wl_list_for_each(v, &server->views, link) {
@@ -1215,6 +1242,7 @@ static void xdg_send_first_configure(struct view *view)
 	wlr_xdg_toplevel_set_fullscreen(top, view->fullscreen);
 	wlr_xdg_toplevel_set_tiled(top, WLR_EDGE_NONE);
 	wlr_xdg_toplevel_set_resizing(top, false);
+	wlr_xdg_toplevel_set_suspended(top, false);
 	/* The output it goes back to, leaving a state. */
 	view->fit_px = server->cursor->x;
 	view->fit_py = server->cursor->y;
@@ -1274,6 +1302,7 @@ static void xdg_commit(struct wl_listener *listener, void *data)
 	}
 	/* Its limits may have changed. */
 	view_update_properties(view);
+	tabs_sync_sizes(view);
 
 	/* The drag is over and the client has answered the last size request. */
 	struct server *server = view->server;

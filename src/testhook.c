@@ -73,7 +73,7 @@ static int dump_state(int signal, void *data)
 		fprintf(f, "view app=%s x=%d y=%d w=%d h=%d active=%d kbfocus=%d "
 			"max=%d min=%d full=%d frame=%d icon_x=%d icon_y=%d hidden=%d "
 			"bw=%d th=%d above=%d below=%d snap=%d tiled=%d tile_main=%d shaded=%d "
-			"fh=%d\n",
+			"fh=%d tab=%d tab_hidden=%d visible=%d\n",
 			view_app_id(v), v->x, v->y, v->width, v->height,
 			v->activated, kb_focus && kb_focus == view_surface(v),
 			v->maximized, v->minimized, v->fullscreen, v->decorated,
@@ -81,7 +81,8 @@ static int dump_state(int signal, void *data)
 			frame_border(v), frame_title(v),
 			v->type == VIEW_XWAYLAND && v->xsurface->above,
 			v->type == VIEW_XWAYLAND && v->xsurface->below, v->snap,
-			v->tiled, v->tile_main, v->shaded, frame_height(v));
+			v->tiled, v->tile_main, v->shaded, frame_height(v), tabs_index(v),
+			v->tab_hidden, v->tree->node.enabled);
 	}
 	/* The mnemonics of what can be chosen, without spaces for the parser. */
 	char sensitive[MENU_MAX_ITEMS + 1];

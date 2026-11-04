@@ -54,6 +54,7 @@ static void xw_commit(struct wl_listener *listener, void *data)
 	view->width = s->current.width;
 	view->height = s->current.height;
 	frame_render(view);
+	tabs_sync_sizes(view);
 }
 
 /* wlroots parses only the decoration part of _MOTIF_WM_HINTS. Reading it here
@@ -261,7 +262,7 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 	}
 	/* Fullscreen, maximized, snapped and tiled windows keep their place. */
 	if (view->maximized || view->fullscreen || view->snap != SNAP_NONE ||
-			view->tiled) {
+			view->tiled || view->tab_hidden) {
 		view_send_size(view, view->xsurface->width, view->xsurface->height);
 		return;
 	}

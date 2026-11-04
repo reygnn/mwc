@@ -235,6 +235,7 @@ void view_update_properties(struct view *view)
 			view->min_w != old_min_w || view->min_h != old_min_h ||
 			view->max_w != old_max_w || view->max_h != old_max_h))
 		tile_arrange(view->server);
+	tabs_view_changed(view);
 }
 
 void view_apply_size_hints(struct view *view, int *pw, int *ph, bool incr)

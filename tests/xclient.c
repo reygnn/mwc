@@ -14,6 +14,7 @@
  *     input=0             WM_HINTS without input focus
  *     state=above|below|fullscreen|maximized   initial _NET_WM_STATE
  *     ask_before=fullscreen|maximized  ask with a _NET_WM_STATE message, while unmapped
+ *     ask_later=fullscreen|maximized   ask with one 2 s after mapping
  *     ask_after=fullscreen|maximized   ask with one right after XMapWindow, unsynced,
  *                         as xterm -fullscreen does
  *     strut=L,R,T,B       _NET_WM_STRUT_PARTIAL along the whole edge
@@ -78,7 +79,7 @@ static void ask_state(Window win, const char *state)
 }
 
 struct options {
-	const char *class, *type, *state, *dialog, *gravity, *ask_before, *ask_after;
+	const char *class, *type, *state, *dialog, *gravity, *ask_before, *ask_after, *ask_later;
 	int w, h, x, y;
 	bool has_pos;
 	int min_w, min_h, max_w, max_h, inc_w, inc_h, base_w, base_h;
@@ -418,6 +419,8 @@ int main(int argc, char *argv[])
 			o.dialog_ms = atoi(v);
 		else if (!strcmp(k, "ask_before"))
 			o.ask_before = v;
+		else if (!strcmp(k, "ask_later"))
+			o.ask_later = v;
 		else if (!strcmp(k, "ask_after"))
 			o.ask_after = v;
 		else if (!strcmp(k, "state"))
@@ -562,6 +565,13 @@ int main(int argc, char *argv[])
 			CurrentTime);
 		XSync(dpy, False);
 		printf("owner\n");
+	}
+	if (o.ask_later) {
+		XSync(dpy, False);
+		usleep(2000000);
+		ask_state(main_win, o.ask_later);
+		XSync(dpy, False);
+		printf("asked\n");
 	}
 	if (o.latin1_title)
 		XStoreName(dpy, main_win, "M\xfcller \xc4rger");

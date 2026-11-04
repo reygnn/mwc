@@ -214,6 +214,7 @@ static void resize_to(struct view *view, const struct wlr_box *b)
 static void end_grab(struct server *server)
 {
 	struct view *view = server->grabbed_view;
+	struct view *resized = server->cursor_mode == CURSOR_RESIZE ? view : NULL;
 	enum cursor_mode mode = server->cursor_mode;
 	bool apply = server->grab_outline && server->grab_changed;
 	bool changed = server->grab_changed;
@@ -249,6 +250,8 @@ static void end_grab(struct server *server)
 		view_set_position(view, target.x, target.y);
 	else
 		resize_to(view, &target);
+	if (resized)
+		tabs_sync_sizes(resized);
 }
 
 /* Escape: back to where it was, including out of a maximized state. */
@@ -829,6 +832,26 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	}
 	if (logo && !alt && !ctrl) {
 		enum snap_dir dir;
+		/* Tabs, while there are any: otherwise these are the client's. */
+		if (view && xkb_keysym_to_lower(sym) == XKB_KEY_g) {
+			if (shift)
+				tabs_detach(view);
+			else
+				tabs_join_previous(view);
+			return true;
+		}
+		if (view && view->group && sym == XKB_KEY_Tab) {
+			tabs_step(view, true);
+			return true;
+		}
+		if (view && view->group && sym == XKB_KEY_ISO_Left_Tab) {
+			tabs_step(view, false);
+			return true;
+		}
+		if (view && view->group && !shift && sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
+			tabs_show_nth(view, sym - XKB_KEY_1);
+			return true;
+		}
 		/* Letters by their lower case, or Caps Lock would turn them off. */
 		switch (xkb_keysym_to_lower(sym)) {
 		case XKB_KEY_t:

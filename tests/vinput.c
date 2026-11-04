@@ -50,6 +50,7 @@ static const struct {
 	{ "F1", KEY_F1 }, { "F2", KEY_F2 }, { "F3", KEY_F3 }, { "F4", KEY_F4 },
 	{ "F5", KEY_F5 }, { "F6", KEY_F6 }, { "F7", KEY_F7 }, { "F8", KEY_F8 },
 	{ "F9", KEY_F9 }, { "F10", KEY_F10 }, { "F11", KEY_F11 },
+	{ "1", KEY_1 }, { "2", KEY_2 }, { "3", KEY_3 }, { "9", KEY_9 },
 	{ "a", KEY_A }, { "b", KEY_B }, { "c", KEY_C }, { "d", KEY_D },
 	{ "e", KEY_E }, { "f", KEY_F }, { "g", KEY_G }, { "h", KEY_H },
 	{ "i", KEY_I }, { "j", KEY_J }, { "k", KEY_K }, { "l", KEY_L },

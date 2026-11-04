@@ -155,6 +155,12 @@ enum frame_part {
 	PART_RESIZE, /* see resize edges */
 };
 
+struct tab_group {
+	struct wl_list members; /* view.tab_link, in tab order */
+	struct view *shown;
+	bool busy;              /* switching: members are in between */
+};
+
 struct view {
 	struct wl_list link; /* server.views, front to back */
 	struct server *server;
@@ -185,7 +191,9 @@ struct view {
 	float min_aspect, max_aspect;
 	int gravity;
 	bool hidden_with_parent; /* a dialog gone with its minimized window */
-	bool tab_hidden; /* in a tab group, and not the one shown; see tabs.c */
+	struct tab_group *group; /* NULL when alone; see tabs.c */
+	struct wl_list tab_link; /* tab_group.members */
+	bool tab_hidden;         /* in a group, and not the one shown */
 	void *deco;     /* xdg-decoration object, if any */
 	bool activated;
 	bool maximized;
@@ -516,6 +524,13 @@ void view_apply_size_hints(struct view *view, int *w, int *h, bool incr);
 void view_gravity_to_frame(struct view *view, int x, int y, int w, int h, int *fx,
 	int *fy);
 struct view *view_parent(struct view *view);
+/* Hidden or shown, without any other consequence. */
+void view_show(struct view *view, bool show);
+void view_show_content(struct view *view);
+/* Tells the client what it is: maximized, tiled, snapped. */
+void view_publish_state(struct view *view);
+void view_refit(struct view *view);
+void view_place(struct view *view);
 void view_parent_changed(struct view *view);
 bool view_is_transient_of(struct view *view, struct view *ancestor);
 struct view *view_transient_root(struct view *view);
@@ -551,6 +566,29 @@ void icon_render(struct view *view);
 void icons_arrange(struct server *server);
 #define ICON_W 72
 #define ICON_H 72
+
+/* ---- tabs.c ------------------------------------------------------------- */
+
+bool tabs_can_join(struct view *view);
+/* The view takes the target's place, and is shown there, in its group. */
+bool tabs_join(struct view *view, struct view *target);
+/* With the window that had the focus before this one. */
+bool tabs_join_previous(struct view *view);
+/* Out of its group, as a window of its own. */
+void tabs_detach(struct view *view);
+void tabs_show(struct view *view);
+/* Shows it whatever the group is doing: an icon or fullscreen comes back first. */
+void tabs_bring(struct view *view);
+void tabs_step(struct view *view, bool forward);
+void tabs_show_nth(struct view *view, int n);
+/* Being unmapped: the next one takes over without its help. */
+void tabs_view_gone(struct view *view);
+/* Its properties changed: it may not qualify any more. */
+void tabs_view_changed(struct view *view);
+/* The shown view has a new size: the others follow, so a switch needn't wait. */
+void tabs_sync_sizes(struct view *view);
+void tabs_after_restore(struct view *view);
+int tabs_index(struct view *view); /* -1 when alone */
 
 /* ---- menu.c ------------------------------------------------------------- */
 
