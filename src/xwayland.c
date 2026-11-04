@@ -16,6 +16,16 @@
 #include <xcb/xcb_icccm.h>
 #include "mwc.h"
 
+static struct view *new_managed(struct server *server,
+	struct wlr_xwayland_surface *xs);
+static struct unmanaged *new_unmanaged(struct server *server,
+	struct wlr_xwayland_surface *xs);
+static void um_associate(struct wl_listener *listener, void *data);
+static void um_dissociate(struct wl_listener *listener, void *data);
+static void um_map(struct wl_listener *listener, void *data);
+static void um_unmap(struct wl_listener *listener, void *data);
+static void um_destroy(struct wl_listener *listener, void *data);
+
 /* ---- managed windows -------------------------------------------------- */
 
 static void xw_commit(struct wl_listener *listener, void *data)
@@ -197,6 +207,7 @@ static void xw_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&view->set_strut_partial.link);
 	wl_list_remove(&view->request_above.link);
 	wl_list_remove(&view->request_below.link);
+	wl_list_remove(&view->set_override_redirect.link);
 	view_handle_destroy(view);
 }
 
@@ -310,7 +321,32 @@ static void xw_request_below(struct wl_listener *listener, void *data)
 	views_update_layers(view->server);
 }
 
-static void new_managed(struct server *server, struct wlr_xwayland_surface *xs)
+/* A window can stop being managed: toolkits set override-redirect on a window that
+ * already exists. Everything starts over as the other kind of window. */
+static void xw_set_override_redirect(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, set_override_redirect);
+	struct wlr_xwayland_surface *xs = view->xsurface;
+	struct server *server = view->server;
+	if (!xs->override_redirect)
+		return;
+	struct wlr_surface *surface = xs->surface;
+	bool mapped = surface && surface->mapped;
+	if (mapped)
+		xw_unmap(&view->unmap, NULL);
+	if (surface)
+		xw_dissociate(&view->dissociate, NULL);
+	xw_destroy(&view->destroy, NULL);
+
+	struct unmanaged *um = new_unmanaged(server, xs);
+	if (surface) {
+		um_associate(&um->associate, NULL);
+		if (mapped)
+			um_map(&um->map, NULL);
+	}
+}
+
+static struct view *new_managed(struct server *server, struct wlr_xwayland_surface *xs)
 {
 	struct view *view = calloc(1, sizeof(*view));
 	view->server = server;
@@ -340,8 +376,10 @@ static void new_managed(struct server *server, struct wlr_xwayland_surface *xs)
 	LISTEN(set_strut_partial, set_strut_partial, xw_set_strut_partial);
 	LISTEN(request_above, request_above, xw_request_above);
 	LISTEN(request_below, request_below, xw_request_below);
+	LISTEN(set_override_redirect, set_override_redirect, xw_set_override_redirect);
 #undef LISTEN
 	read_initial_state(view);
+	return view;
 }
 
 /* ---- unmanaged (override-redirect) windows ------------------------------ */
@@ -427,11 +465,36 @@ static void um_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&um->dissociate.link);
 	wl_list_remove(&um->destroy.link);
 	wl_list_remove(&um->request_configure.link);
+	wl_list_remove(&um->set_override_redirect.link);
 	wl_list_remove(&um->link);
 	free(um);
 }
 
-static void new_unmanaged(struct server *server,
+/* See xw_set_override_redirect(). */
+static void um_set_override_redirect(struct wl_listener *listener, void *data)
+{
+	struct unmanaged *um = wl_container_of(listener, um, set_override_redirect);
+	struct wlr_xwayland_surface *xs = um->xsurface;
+	struct server *server = um->server;
+	if (xs->override_redirect)
+		return;
+	struct wlr_surface *surface = xs->surface;
+	bool mapped = surface && surface->mapped;
+	if (mapped)
+		um_unmap(&um->unmap, NULL);
+	if (surface)
+		um_dissociate(&um->dissociate, NULL);
+	um_destroy(&um->destroy, NULL);
+
+	struct view *view = new_managed(server, xs);
+	if (surface) {
+		xw_associate(&view->associate, NULL);
+		if (mapped)
+			xw_map(&view->map, NULL);
+	}
+}
+
+static struct unmanaged *new_unmanaged(struct server *server,
 	struct wlr_xwayland_surface *xs)
 {
 	struct unmanaged *um = calloc(1, sizeof(*um));
@@ -446,6 +509,9 @@ static void new_unmanaged(struct server *server,
 	wl_signal_add(&xs->events.destroy, &um->destroy);
 	um->request_configure.notify = um_request_configure;
 	wl_signal_add(&xs->events.request_configure, &um->request_configure);
+	um->set_override_redirect.notify = um_set_override_redirect;
+	wl_signal_add(&xs->events.set_override_redirect, &um->set_override_redirect);
+	return um;
 }
 
 /* ---- setup -------------------------------------------------------------- */
@@ -487,7 +553,6 @@ static void xwayland_ready(struct wl_listener *listener, void *data)
 		"_NET_WM_STATE_MAXIMIZED_VERT");
 	server->atom_state_max_horz = intern_atom(conn,
 		"_NET_WM_STATE_MAXIMIZED_HORZ");
-	server->xwayland_up = true;
 	layer_publish_workarea(server);
 
 	/* X clients that never set a cursor get the default arrow. */

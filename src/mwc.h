@@ -20,6 +20,7 @@
 struct wlr_input_device;
 struct wlr_layer_surface_v1;
 struct wlr_surface;
+struct wlr_xdg_surface;
 struct wlr_xdg_toplevel;
 struct wlr_xwayland_surface;
 
@@ -235,6 +236,7 @@ struct view {
 	struct wl_listener set_strut_partial;
 	struct wl_listener request_above;
 	struct wl_listener request_below;
+	struct wl_listener set_override_redirect;
 };
 
 /* Unmanaged XWayland windows: override-redirect menus, tooltips, DnD icons. */
@@ -250,6 +252,7 @@ struct unmanaged {
 	struct wl_listener destroy;
 	struct wl_listener request_configure;
 	struct wl_listener set_geometry;
+	struct wl_listener set_override_redirect;
 };
 
 /* ---- menus -------------------------------------------------------------- */
@@ -345,7 +348,6 @@ struct server {
 	struct wlr_xwayland *xwayland;
 	struct wl_listener xwayland_ready;
 	struct wl_listener new_xwayland_surface;
-	bool xwayland_up;
 	uint32_t atom_motif_hints;
 	uint32_t atom_net_wm_state, atom_state_above, atom_state_below;
 	uint32_t atom_state_fullscreen, atom_state_max_vert, atom_state_max_horz;
@@ -419,6 +421,9 @@ struct output {
 /* ---- view.c ------------------------------------------------------------- */
 
 void xdg_init(struct server *server);
+/* Remembers the scene tree of an xdg surface in its data, for popups to find, for
+ * exactly as long as the tree lives: a surface can outlast its role. */
+void xdg_surface_set_tree(struct wlr_xdg_surface *base, struct wlr_scene_tree *tree);
 void view_focus(struct view *view);
 void view_set_position(struct view *view, int x, int y);
 void view_set_geometry(struct view *view, int x, int y, int w, int h);

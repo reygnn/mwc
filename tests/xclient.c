@@ -17,8 +17,13 @@
  *     color=rrggbb        background
  *     dialog=NAME         also open a transient dialog with this WM_CLASS
  *     workarea=1          print the root's _NET_WORKAREA whenever it changes
+ *     moveresize=1        don't map; ask for _NET_WM_MOVERESIZE, destroy the window
+ *     override=late       create it normal, set override-redirect, then map
+ *     override=clear      create it override-redirect, clear that, then map
+ *     override=mapped     map it normal, set override-redirect afterwards
+ *     clipboard=1         own CLIPBOARD and answer with 200 KB of text
  */
-#define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -26,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static Display *dpy;
 static Atom wm_delete, wm_protocols;
@@ -39,7 +45,8 @@ struct options {
 	int aspect_n, aspect_d;
 	long motif_funcs, motif_decor;
 	bool has_motif;
-	bool no_input, workarea;
+	bool no_input, workarea, moveresize, clipboard;
+	const char *override;
 	long strut[4];
 	bool has_strut;
 	unsigned long color;
@@ -169,8 +176,61 @@ static Window create_window(const struct options *o, const char *class,
 	}
 	if (transient_for)
 		XSetTransientForHint(dpy, win, transient_for);
-	XMapWindow(dpy, win);
 	return win;
+}
+
+static void set_override_redirect(Window win, bool on)
+{
+	XSetWindowAttributes a = { .override_redirect = on };
+	XChangeWindowAttributes(dpy, win, CWOverrideRedirect, &a);
+	XSync(dpy, False);
+}
+
+/* What a client in a toolkit does for a window-manager-driven move. */
+static void ask_moveresize(Window win)
+{
+	XEvent e = { 0 };
+	e.xclient.type = ClientMessage;
+	e.xclient.window = win;
+	e.xclient.message_type = XInternAtom(dpy, "_NET_WM_MOVERESIZE", False);
+	e.xclient.format = 32;
+	e.xclient.data.l[0] = 10;
+	e.xclient.data.l[1] = 10;
+	e.xclient.data.l[2] = 8; /* _NET_WM_MOVERESIZE_MOVE */
+	e.xclient.data.l[3] = 1;
+	e.xclient.data.l[4] = 1;
+	XSendEvent(dpy, DefaultRootWindow(dpy), False,
+		SubstructureRedirectMask | SubstructureNotifyMask, &e);
+	XSync(dpy, False);
+}
+
+static void answer_selection(XSelectionRequestEvent *r)
+{
+	static char *text;
+	const size_t size = 200000;
+	if (!text) {
+		text = malloc(size);
+		memset(text, 'x', size);
+	}
+	Atom targets = XInternAtom(dpy, "TARGETS", False);
+	Atom utf8 = XInternAtom(dpy, "UTF8_STRING", False);
+	XSelectionEvent s = {
+		.type = SelectionNotify, .display = dpy, .requestor = r->requestor,
+		.selection = r->selection, .target = r->target, .property = r->property,
+		.time = r->time,
+	};
+	if (r->target == targets) {
+		Atom list[] = { targets, utf8 };
+		XChangeProperty(dpy, r->requestor, r->property, XA_ATOM, 32,
+			PropModeReplace, (unsigned char *)list, 2);
+	} else if (r->target == utf8) {
+		XChangeProperty(dpy, r->requestor, r->property, utf8, 8, PropModeReplace,
+			(unsigned char *)text, size);
+	} else {
+		s.property = None;
+	}
+	XSendEvent(dpy, r->requestor, False, 0, (XEvent *)&s);
+	XFlush(dpy);
 }
 
 static void print_workarea(void)
@@ -236,6 +296,12 @@ int main(int argc, char *argv[])
 			o.dialog = v;
 		else if (!strcmp(k, "workarea"))
 			o.workarea = atoi(v);
+		else if (!strcmp(k, "moveresize"))
+			o.moveresize = atoi(v);
+		else if (!strcmp(k, "clipboard"))
+			o.clipboard = atoi(v);
+		else if (!strcmp(k, "override"))
+			o.override = v;
 	}
 	if (!o.class) {
 		fprintf(stderr, "xclient: class= is required\n");
@@ -256,6 +322,33 @@ int main(int argc, char *argv[])
 	}
 
 	Window main_win = create_window(&o, o.class, None);
+	if (o.moveresize) {
+		XSync(dpy, False);
+		usleep(300000);
+		ask_moveresize(main_win);
+		usleep(300000);
+		XDestroyWindow(dpy, main_win);
+		XSync(dpy, False);
+		printf("done\n");
+		for (;;)
+			pause();
+	}
+	if (o.override && !strcmp(o.override, "late"))
+		set_override_redirect(main_win, true);
+	if (o.override && !strcmp(o.override, "clear")) {
+		set_override_redirect(main_win, true);
+		usleep(100000);
+		set_override_redirect(main_win, false);
+	}
+	XMapWindow(dpy, main_win);
+	if (o.override && !strcmp(o.override, "mapped")) {
+		XSync(dpy, False);
+		usleep(500000);
+		set_override_redirect(main_win, true);
+		/* wlroots hears of it with the next configure. */
+		XMoveWindow(dpy, main_win, o.x + 1, o.y);
+		XSync(dpy, False);
+	}
 	Window dialog_win = None;
 	if (o.dialog) {
 		struct options d = o;
@@ -265,6 +358,15 @@ int main(int argc, char *argv[])
 		d.h = 80;
 		d.x = d.y = 0;
 		dialog_win = create_window(&d, o.dialog, main_win);
+		XMapWindow(dpy, dialog_win);
+	}
+	if (o.clipboard) {
+		XSync(dpy, False);
+		usleep(500000);
+		XSetSelectionOwner(dpy, XInternAtom(dpy, "CLIPBOARD", False), main_win,
+			CurrentTime);
+		XSync(dpy, False);
+		printf("owner\n");
 	}
 	XFlush(dpy);
 	printf("up\n");
@@ -276,6 +378,9 @@ int main(int argc, char *argv[])
 		switch (e.type) {
 		case FocusIn:
 			printf("focus-in %s\n", e.xfocus.window == main_win ? "main" : "dialog");
+			break;
+		case SelectionRequest:
+			answer_selection(&e.xselectionrequest);
 			break;
 		case PropertyNotify:
 			if (o.workarea && e.xproperty.atom ==

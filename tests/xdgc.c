@@ -7,6 +7,7 @@
  *     app=NAME     app_id, required
  *     size=WxH     default 300x200
  *     min=WxH max=WxH
+ *     pre=max|full ask for that state before the first commit
  *     dialog=NAME  also open a child toplevel with this app_id
  */
 #define _GNU_SOURCE
@@ -26,13 +27,18 @@ static struct xdg_wm_base *wm_base;
 static struct zxdg_decoration_manager_v1 *deco_manager;
 static int default_w = 300, default_h = 200, min_w, min_h, max_w, max_h;
 static int open_windows;
+static const char *pre_state;
 
 struct window {
 	struct wl_surface *surface;
 	struct xdg_surface *xdg;
 	struct xdg_toplevel *toplevel;
 	int w, h;
+	int natural_w, natural_h; /* what it takes when the choice is its own */
 };
+
+static struct wl_display *the_display;
+#define wl_proxy_get_display_of(p) the_display
 
 static void draw(struct window *win)
 {
@@ -70,10 +76,8 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t, int32_t w,
 	int32_t h, struct wl_array *states)
 {
 	struct window *win = data;
-	if (w > 0)
-		win->w = w;
-	if (h > 0)
-		win->h = h;
+	win->w = w > 0 ? w : win->natural_w;
+	win->h = h > 0 ? h : win->natural_h;
 }
 
 static void toplevel_close(void *data, struct xdg_toplevel *t)
@@ -138,8 +142,8 @@ static struct window *open_window(const char *app, struct window *parent,
 	int w, int h, bool limits)
 {
 	struct window *win = calloc(1, sizeof(*win));
-	win->w = w;
-	win->h = h;
+	win->w = win->natural_w = w;
+	win->h = win->natural_h = h;
 	win->surface = wl_compositor_create_surface(compositor);
 	win->xdg = xdg_wm_base_get_xdg_surface(wm_base, win->surface);
 	xdg_surface_add_listener(win->xdg, &xdg_listener, win);
@@ -158,6 +162,12 @@ static struct window *open_window(const char *app, struct window *parent,
 		win->toplevel);
 	zxdg_toplevel_decoration_v1_set_mode(deco,
 		ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	if (limits && pre_state && !strcmp(pre_state, "max"))
+		xdg_toplevel_set_maximized(win->toplevel);
+	else if (limits && pre_state && !strcmp(pre_state, "full"))
+		xdg_toplevel_set_fullscreen(win->toplevel, NULL);
+	if (pre_state)
+		wl_display_roundtrip(wl_proxy_get_display_of(win->toplevel));
 	wl_surface_commit(win->surface);
 	open_windows++;
 	return win;
@@ -183,6 +193,8 @@ int main(int argc, char *argv[])
 			sscanf(v, "%dx%d", &max_w, &max_h);
 		else if (!strcmp(argv[i], "dialog"))
 			dialog = v;
+		else if (!strcmp(argv[i], "pre"))
+			pre_state = v;
 	}
 	if (!app) {
 		fprintf(stderr, "xdgc: app= is required\n");
@@ -193,6 +205,7 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "xdgc: cannot connect to the compositor\n");
 		return 1;
 	}
+	the_display = display;
 	struct wl_registry *registry = wl_display_get_registry(display);
 	wl_registry_add_listener(registry, &registry_listener, NULL);
 	wl_display_roundtrip(display);

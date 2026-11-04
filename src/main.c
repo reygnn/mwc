@@ -230,6 +230,9 @@ int main(int argc, char *argv[])
 		}
 	}
 	wlr_log_init(log_level, NULL);
+	/* wlroots writes to pipes that clients hand it, for instance when pasting from
+	 * X11, and a client may close its end at any time. */
+	signal(SIGPIPE, SIG_IGN);
 
 	struct server server = { 0 };
 	server.display = wl_display_create();
@@ -338,6 +341,7 @@ int main(int argc, char *argv[])
 		wl_list_remove(&server.xwayland_ready.link);
 		wl_list_remove(&server.new_xwayland_surface.link);
 		wlr_xwayland_destroy(server.xwayland);
+		server.xwayland = NULL;
 	}
 	wl_list_remove(&server.new_layer_surface.link);
 	wl_list_remove(&server.new_xdg_toplevel.link);

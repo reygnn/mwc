@@ -49,6 +49,7 @@ void spawn(const char *cmd)
 		sigset_t none;
 		sigemptyset(&none);
 		sigprocmask(SIG_SETMASK, &none, NULL);
+		signal(SIGPIPE, SIG_DFL); /* an ignored signal stays ignored across exec */
 		/* Double fork so we never collect zombies. */
 		setsid();
 		if (fork() == 0) {
@@ -765,6 +766,10 @@ static void keyboard_key(struct wl_listener *listener, void *data)
 	struct wlr_keyboard_key_event *event = data;
 	struct wlr_seat *seat = server->seat;
 
+	/* No keymap at all, not even the fallback: nothing can be looked up. */
+	if (!kb->wlr_keyboard->xkb_state)
+		return;
+
 	uint32_t keycode = event->keycode + 8;
 	const xkb_keysym_t *syms;
 	int nsyms = xkb_state_key_get_syms(kb->wlr_keyboard->xkb_state,
@@ -804,9 +809,22 @@ static void new_keyboard(struct server *server, struct wlr_input_device *dev)
 	struct xkb_context *ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 	struct xkb_keymap *keymap = xkb_keymap_new_from_names(ctx, NULL,
 		XKB_KEYMAP_COMPILE_NO_FLAGS);
-	wlr_keyboard_set_keymap(wlr_kb, keymap);
-	xkb_keymap_unref(keymap);
 	xkb_context_unref(ctx);
+	if (!keymap) {
+		/* A typo in the layout must not cost the keyboard, let alone the
+		 * session. Without the environment this time, it is what failed. */
+		wlr_log(WLR_ERROR, "cannot compile the keymap from XKB_DEFAULT_*, "
+			"falling back to the us layout");
+		const struct xkb_rule_names us = { .layout = "us" };
+		ctx = xkb_context_new(XKB_CONTEXT_NO_ENVIRONMENT_NAMES);
+		keymap = xkb_keymap_new_from_names(ctx, &us,
+			XKB_KEYMAP_COMPILE_NO_FLAGS);
+		xkb_context_unref(ctx);
+	}
+	if (keymap) {
+		wlr_keyboard_set_keymap(wlr_kb, keymap);
+		xkb_keymap_unref(keymap);
+	}
 	wlr_keyboard_set_repeat_info(wlr_kb, 25, 600);
 
 	kb->modifiers.notify = keyboard_modifiers;

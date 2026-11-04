@@ -128,6 +128,14 @@ build/xdgc: tests/xdgc.c $(XDGC_GEN)
 		build/xdg-decoration-unstable-v1-code.c build/xdg-shell-code.c \
 		$(shell $(PKG_CONFIG) --libs wayland-client)
 
+build/badclient: tests/badclient.c build/xdg-shell-client.h build/xdg-shell-code.c
+	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
+		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/badclient.c \
+		build/xdg-shell-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
+
+crash-test: mwc build/vinput build/xclient build/xdgc build/badclient build/layerc
+	tests/crash.sh
+
 outputs-test: mwc build/vinput build/pngtool build/xclient build/layerc
 	tests/outputs.sh
 
@@ -150,10 +158,10 @@ config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
 test: smoke input-test wallpaper-test config-test layer-test window-test \
-	move-test snap-test outputs-test tile-test
+	move-test snap-test outputs-test tile-test crash-test
 
 clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN)
-.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test test clean
+.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test test clean

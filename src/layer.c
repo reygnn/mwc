@@ -93,7 +93,9 @@ static void apply_struts(struct output *output, struct wlr_box *usable)
  * desktop rather than per output, so the first output's has to do. */
 static void publish_workarea(struct server *server)
 {
-	if (!server->xwayland_up || wl_list_empty(&server->outputs))
+	/* Xwayland exits by itself when idle, and may not have started yet. */
+	if (!server->xwayland || !wlr_xwayland_get_xwm_connection(server->xwayland) ||
+			wl_list_empty(&server->outputs))
 		return;
 	struct output *first = wl_container_of(server->outputs.prev, first, link);
 	wlr_xwayland_set_workareas(server->xwayland, &first->usable, 1);
@@ -264,8 +266,8 @@ static void layer_new_popup(struct wl_listener *listener, void *data)
 {
 	struct layer_surface *ls = wl_container_of(listener, ls, new_popup);
 	struct wlr_xdg_popup *popup = data;
-	popup->base->data = wlr_scene_xdg_surface_create(ls->scene->tree,
-		popup->base);
+	xdg_surface_set_tree(popup->base, wlr_scene_xdg_surface_create(
+		ls->scene->tree, popup->base));
 }
 
 static void new_layer_surface(struct wl_listener *listener, void *data)

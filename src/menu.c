@@ -214,6 +214,10 @@ static void open_at(struct server *server, int x, int y)
 void menu_open_window(struct server *server, struct view *view, int x, int y)
 {
 	struct menu *m = &server->menu;
+	/* A client can ask for this at any time, also while a grab is going on. */
+	if (!view->mapped || (server->cursor_mode != CURSOR_PASSTHROUGH &&
+			server->cursor_mode != CURSOR_MENU))
+		return;
 	if (m->open)
 		menu_close(server);
 	m->title = NULL;

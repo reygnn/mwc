@@ -373,6 +373,14 @@ static void view_save_free(struct view *view)
 {
 	if (view->snap != SNAP_NONE || view->maximized)
 		return;
+	if (!view->mapped) {
+		/* It hasn't been anywhere yet. Its size is its own to choose, which is
+		 * what a size of 0 tells it, and the place is the start of the cascade. */
+		struct wlr_box a = output_usable_area(view->server, view->server->cursor->x,
+			view->server->cursor->y);
+		view->saved = (struct wlr_box){ a.x + 32, a.y + 32, 0, 0 };
+		return;
+	}
 	view->saved = (struct wlr_box){ view->x, view->y, view->width, view->height };
 	if (view->type == VIEW_XWAYLAND) {
 		view->saved.width = view->xsurface->width;
@@ -441,9 +449,21 @@ void view_set_maximized(struct view *view, bool maximized)
 		view->y + view->height / 2.0);
 }
 
+/* An xdg surface takes no configures before its first commit, or after a null
+ * buffer started it over. Until then a state can only be noted, and goes out with
+ * the first configure, see xdg_send_first_configure(). */
+static bool view_configurable(struct view *view)
+{
+	return view->type != VIEW_XDG || view->xdg_toplevel->base->initialized;
+}
+
 static void view_maximize_at(struct view *view, bool maximized, double px,
 	double py)
 {
+	if (!view_configurable(view)) {
+		view->maximized = maximized;
+		return;
+	}
 	/* In the layout, the layout decides; see tile_promote(). */
 	if (view->maximized == maximized || view->fullscreen || view->tiled)
 		goto ack;
@@ -535,6 +555,11 @@ void view_apply_tile(struct view *view)
 
 void view_set_fullscreen(struct view *view, bool fullscreen)
 {
+	if (!view_configurable(view)) {
+		view->fullscreen = fullscreen;
+		view->decorated = view->ssd && !fullscreen;
+		return;
+	}
 	if (view->fullscreen != fullscreen) {
 		if (fullscreen) {
 			/* A tiled window leaves the layout for fullscreen and goes back
@@ -739,6 +764,11 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	uint32_t edges, bool until_click)
 {
 	struct server *server = view->server;
+	/* A client can ask for this at any time: before it is mapped, while minimized,
+	 * or during another grab. Only something visible and free can be grabbed. */
+	if (!view->mapped || view->minimized || view->hidden_with_parent ||
+			server->cursor_mode != CURSOR_PASSTHROUGH)
+		return;
 	if (view->fullscreen)
 		return;
 	/* The client's limits may have changed since it was mapped. */
@@ -980,6 +1010,14 @@ void view_handle_unmap(struct view *view)
 
 void view_handle_destroy(struct view *view)
 {
+	/* A window that was never mapped gets here without view_handle_unmap(). */
+	struct server *server = view->server;
+	if (server->grabbed_view == view)
+		grab_forget(server);
+	if (server->menu.open && server->menu.target == view)
+		menu_close(server);
+	if (server->last_click_view == view)
+		server->last_click_view = NULL;
 	wl_list_remove(&view->link);
 	wlr_scene_node_destroy(&view->icon_node->node);
 	wlr_scene_node_destroy(&view->tree->node);
@@ -1006,6 +1044,43 @@ static struct view *view_from_xdg_toplevel(struct server *server,
 	return NULL;
 }
 
+/* The state noted so far goes out with the first configure, and with it the size
+ * that belongs to it. Otherwise the client chooses. */
+static void xdg_send_first_configure(struct view *view)
+{
+	struct server *server = view->server;
+	struct wlr_xdg_toplevel *top = view->xdg_toplevel;
+	view_update_properties(view);
+	view->placed = false;
+	if (view->fullscreen) {
+		struct wlr_box a = output_full_area(server, server->cursor->x,
+			server->cursor->y);
+		view->x = a.x;
+		view->y = a.y;
+		view->placed = true;
+		view_send_size(view, a.width, a.height);
+		wlr_xdg_toplevel_set_fullscreen(top, true);
+	} else if (view->maximized) {
+		struct wlr_box a = output_usable_area(server, server->cursor->x,
+			server->cursor->y);
+		int w = a.width - frame_extra_w(view), h = a.height - frame_extra_h(view);
+		view_apply_size_hints(view, &w, &h, false);
+		view->x = a.x;
+		view->y = a.y;
+		view->placed = true;
+		view_send_size(view, w, h);
+		wlr_xdg_toplevel_set_maximized(top, true);
+	} else {
+		view_send_size(view, 0, 0);
+	}
+	/* What it goes back to, if it asked for a state before ever being anywhere. */
+	if (view->placed && !view->saved.x && !view->saved.y && !view->saved.width) {
+		struct wlr_box a = output_usable_area(server, server->cursor->x,
+			server->cursor->y);
+		view->saved = (struct wlr_box){ a.x + 32, a.y + 32, 0, 0 };
+	}
+}
+
 static void xdg_commit(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, commit);
@@ -1021,7 +1096,7 @@ static void xdg_commit(struct wl_listener *listener, void *data)
 		if (deco)
 			wlr_xdg_toplevel_decoration_v1_set_mode(deco->wlr,
 				WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
-		wlr_xdg_toplevel_set_size(view->xdg_toplevel, 0, 0);
+		xdg_send_first_configure(view);
 		return;
 	}
 	if (!view->mapped)
@@ -1058,6 +1133,11 @@ static void xdg_unmap(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, unmap);
 	view_handle_unmap(view);
+	/* Unmapped, the surface starts over, and so do its states. */
+	view->maximized = false;
+	view->fullscreen = false;
+	view->snap = SNAP_NONE;
+	view->decorated = view->ssd;
 }
 
 static void xdg_destroy(struct wl_listener *listener, void *data)
@@ -1146,7 +1226,7 @@ static void new_xdg_toplevel(struct wl_listener *listener, void *data)
 	view_init_common(view);
 	view->content_tree = wlr_scene_xdg_surface_create(view->tree,
 		toplevel->base);
-	toplevel->base->data = view->content_tree;
+	xdg_surface_set_tree(toplevel->base, view->content_tree);
 
 	view->map.notify = xdg_map;
 	wl_signal_add(&toplevel->base->surface->events.map, &view->map);
@@ -1179,6 +1259,30 @@ static void new_xdg_toplevel(struct wl_listener *listener, void *data)
 }
 
 /* ---- popups ------------------------------------------------------------- */
+
+struct tree_link {
+	struct wlr_xdg_surface *base;
+	struct wl_listener destroy;
+};
+
+static void tree_link_destroy(struct wl_listener *listener, void *data)
+{
+	struct tree_link *link = wl_container_of(listener, link, destroy);
+	link->base->data = NULL;
+	wl_list_remove(&link->destroy.link);
+	free(link);
+}
+
+void xdg_surface_set_tree(struct wlr_xdg_surface *base, struct wlr_scene_tree *tree)
+{
+	/* The scene destroys the tree when the surface goes, so the surface is always
+	 * still there for this. */
+	struct tree_link *link = calloc(1, sizeof(*link));
+	link->base = base;
+	link->destroy.notify = tree_link_destroy;
+	wl_signal_add(&tree->node.events.destroy, &link->destroy);
+	base->data = tree;
+}
 
 struct popup {
 	struct server *server;
@@ -1252,8 +1356,8 @@ static void new_xdg_popup(struct wl_listener *listener, void *data)
 			return;
 		}
 		struct wlr_scene_tree *parent_tree = parent->data;
-		xdg_popup->base->data = wlr_scene_xdg_surface_create(parent_tree,
-			xdg_popup->base);
+		xdg_surface_set_tree(xdg_popup->base, wlr_scene_xdg_surface_create(
+			parent_tree, xdg_popup->base));
 	}
 
 	popup->commit.notify = popup_commit;
