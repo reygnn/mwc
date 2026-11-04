@@ -623,6 +623,11 @@ static bool handle_press(struct server *server, uint32_t button,
 			menu_open_root(server, cx, cy);
 			return true;
 		}
+		if (button == BTN_MIDDLE) {
+			const char *run = config_get("runDialog");
+			spawn(run ? run : "mrun");
+			return true;
+		}
 		return false;
 	}
 

@@ -80,7 +80,7 @@ mwc.
 | Menu button        | click: window menu · double-click: close            |
 | Border / corners   | resize                                              |
 | Icon               | double-click: restore · btn3: window menu           |
-| Desktop            | btn1/btn3: root menu                                |
+| Desktop            | btn1/btn3: root menu · btn2: run dialog             |
 | Alt + btn1/2/3     | move / lower / resize anywhere in the window        |
 
 ## Keys (mwm defaults)
@@ -296,6 +296,15 @@ Mwm*rootMenuItem:   Notes: xterm -e sh -c "vi ~/notes.txt"
 The label ends at the first colon, and the rest is a shell command. Up to 20 are used;
 others are reported in the log, as are lines without a label or command. Each gets the
 first letter of its label that is still free as its key. A reload takes up changes.
+
+## Run dialog
+
+The middle button on the desktop runs `Mwm*runDialog`, by default
+[mrun](https://github.com/reygnn/mrun):
+
+```
+Mwm*runDialog:   mrun
+```
 
 ## Screen saver and monitor power
 

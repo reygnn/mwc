@@ -182,6 +182,44 @@ check "a client asking for no server-side frame has none" \
 stop own
 finish
 
+# ---- the middle button on the desktop ---------------------------------------------------
+
+mkdir "$SMOKE_DIR/bin"
+printf '#!/bin/sh\n: >"%s/ran-mrun"\n' "$SMOKE_DIR" >"$SMOKE_DIR/bin/mrun"
+chmod +x "$SMOKE_DIR/bin/mrun"
+PLAIN_PATH=$PATH
+export PATH=$SMOKE_DIR/bin:$PATH
+begin
+do_input move 1200 700
+do_input click middle
+wait_for "the middle button on the desktop runs mrun" test -e "$SMOKE_DIR/ran-mrun"
+rm "$SMOKE_DIR/ran-mrun"
+refresh
+[ "$(global menu open)" = 0 ] || fail "the middle button opened the root menu"
+
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=midwin size=300x200 >/dev/null 2>&1 &
+MIDWIN=$!
+check "a window is up" '[ -n "$(get midwin w)" ]'
+do_input move $(($(get midwin x) + B + 50)) $(($(get midwin y) + T + B + 50))
+do_input click middle
+sleep 0.3
+[ ! -e "$SMOKE_DIR/ran-mrun" ] || fail "the middle button on a window ran mrun"
+echo "ok: on a window it stays the window's"
+kill "$MIDWIN"
+wait "$MIDWIN" 2>/dev/null
+check "the window is gone" '[ -z "$(get midwin w)" ]'
+
+printf 'Mwm*runDialog: touch %s/ran-other\n' "$SMOKE_DIR" >"$XDG_CONFIG_HOME/mwc/mwmrc"
+kill -HUP "$pid"
+sleep 0.5
+do_input move 1200 700
+do_input click middle
+wait_for "Mwm*runDialog is what it runs" test -e "$SMOKE_DIR/ran-other"
+[ ! -e "$SMOKE_DIR/ran-mrun" ] || fail "mrun ran as well"
+rm "$XDG_CONFIG_HOME/mwc/mwmrc"
+finish
+export PATH=$PLAIN_PATH
+
 # ---- the hooks are off unless asked for --------------------------------------------------------
 
 unset MWC_TEST_STATE
