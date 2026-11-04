@@ -505,6 +505,47 @@ wait "$PID_panel" 2>/dev/null
 stop area
 finish
 
+# A dialog hidden with a window it stops belonging to.
+begin
+wayland unp dialog=unpkid unparent=1
+focus_on unp
+do_input key alt+F9
+check "the parent is an icon, its dialog hidden" "[ \"\$(get unp min)\" = 1 ] && [ \"\$(get unpkid hidden)\" = 1 ]"
+check "no longer its dialog, it is there again" "[ \"\$(get unpkid hidden)\" = 0 ]"
+stop unp
+finish
+
+# States asked for before a window has been anywhere belong to the output the pointer is on.
+export WLR_HEADLESS_OUTPUTS=2
+begin 2560 720
+do_input move 1800 300
+wayland premax2 pre=max size=300x200
+check "maximized before the first commit, on the second output" \
+	"[ \"\$(get premax2 max)\" = 1 ] && [ \"\$(get premax2 x)\" = 1280 ]"
+do_input key alt+F11
+check "fullscreen there" "[ \"\$(get premax2 full)\" = 1 ] && [ \"\$(get premax2 x)\" = 1280 ]"
+do_input key alt+F11
+check "and back to maximized there, not on the first" \
+	"[ \"\$(get premax2 max)\" = 1 ] && [ \"\$(get premax2 x)\" = 1280 ]"
+stop premax2
+for state in max full; do
+	wayland pl$state pre_late=$state size=300x200
+	check "$state between the first configure and the first buffer, on the second output" \
+		"[ \"\$(get pl$state x)\" = 1280 ] && [ \"\$(get pl$state y)\" = 0 ]"
+	stop pl$state
+done
+# What a tiled window goes back to may go with an output it has already left.
+x11 back pos=1500,100 size=300x200
+do_input key super+t
+check "tiling takes it to the first output" "[ \"\$(get back x)\" -lt 1280 ]"
+kill -USR2 "$pid"
+do_input key super+t
+check "the second output is gone, and it floats in reach" \
+	"[ \"\$(get back tiled)\" = 0 ] && [ \"\$(get back x)\" -lt 1280 ]"
+stop back
+finish
+unset WLR_HEADLESS_OUTPUTS
+
 # A menu or a grab must not go on where there is no longer anything.
 export WLR_HEADLESS_OUTPUTS=3
 begin 3840 720

@@ -121,6 +121,11 @@ void layer_arrange(struct output *output)
 	arrange_pass(output, &full, &usable, true);
 	arrange_pass(output, &full, &usable, false);
 	apply_struts(output, &usable);
+	/* A panel may reserve more than there is. Then there is no use in believing it:
+	 * windows would have nowhere to go. */
+	if (!wlr_box_intersection(&usable, &usable, &full) || usable.width <= 0 ||
+			usable.height <= 0)
+		usable = full;
 	if (!wlr_box_equal(&usable, &output->usable)) {
 		output->usable = usable;
 		views_usable_area_changed(output->server);
@@ -143,9 +148,33 @@ static void give_keyboard(struct layer_surface *ls)
 	input_keyboard_enter(ls->server, ls->wlr->surface);
 }
 
+/* One that insists on the keyboard and hasn't got it: a topmost one, if there are more. */
+static struct layer_surface *waiting_exclusive(struct server *server)
+{
+	struct output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		for (int layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
+				layer >= ZWLR_LAYER_SHELL_V1_LAYER_TOP; layer--) {
+			struct layer_surface *ls;
+			wl_list_for_each(ls, &output->layers[layer], link) {
+				if (ls->wlr->surface->mapped && ls->wlr->current.keyboard_interactive ==
+						ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
+					return ls;
+			}
+		}
+	}
+	return NULL;
+}
+
 /* Back to the window that had the focus, or to nobody. */
 static void take_keyboard_back(struct server *server)
 {
+	struct layer_surface *waiting = waiting_exclusive(server);
+	if (waiting) {
+		server->exclusive_layer = waiting->wlr;
+		give_keyboard(waiting);
+		return;
+	}
 	server->focused_layer = NULL;
 	server->exclusive_layer = NULL;
 	struct view *v;

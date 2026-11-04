@@ -3,6 +3,7 @@
  * resize, mwm's default key bindings.
  */
 #define _POSIX_C_SOURCE 200809L
+#include <errno.h>
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -60,6 +61,12 @@ static void spawn_argv(const char *const argv[])
 		setsid();
 		if (fork() == 0) {
 			execv(argv[0], (char *const *)argv);
+			/* A script without a #! line, as a shell would run it. */
+			if (errno == ENOEXEC) {
+				const char *sh[] = { "/bin/sh", argv[0], NULL };
+				execv(sh[0], (char *const *)sh);
+			}
+			fprintf(stderr, "mwc: cannot run %s: %s\n", argv[0], strerror(errno));
 			_exit(127);
 		}
 		_exit(0);

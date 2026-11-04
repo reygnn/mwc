@@ -350,6 +350,7 @@ struct server {
 	struct wl_listener new_xdg_popup;
 	struct wl_listener new_xdg_decoration;
 	struct wl_listener new_server_decoration;
+	struct wlr_server_decoration_manager *kde_decorations;
 	struct wl_list views;
 	struct wl_list unmanaged;
 
@@ -507,6 +508,7 @@ void view_apply_size_hints(struct view *view, int *w, int *h, bool incr);
 void view_gravity_to_frame(struct view *view, int x, int y, int w, int h, int *fx,
 	int *fy);
 struct view *view_parent(struct view *view);
+void view_parent_changed(struct view *view);
 bool view_is_transient_of(struct view *view, struct view *ancestor);
 struct view *view_transient_root(struct view *view);
 bool view_focusable(struct view *view);

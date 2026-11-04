@@ -12,6 +12,9 @@
  *     late_frame=xdg ask for a server-side frame after the first configure, before
  *                  the first buffer: as late as xdg-decoration allows
  *     late_frame=kde ask for one once mapped, with KDE's protocol, as GTK3 does
+ *     early_frame=1  ask with KDE's protocol before the surface has a role
+ *     pre_late=max|full  ask for a state after the first configure, before the first buffer
+ *     unparent=1     once running, the dialog stops belonging to the main window
  *     states=1     log the states each configure carries
  *     late_app=NAME set this app_id a moment after mapping
  *     dialog=NAME  also open a child toplevel with this app_id
@@ -37,7 +40,8 @@ static int open_windows;
 static const char *pre_state;
 static const char *late_app;
 static bool log_states, client_side;
-static const char *late_frame;
+static const char *late_frame, *pre_late;
+static bool early_frame, unparent;
 static struct org_kde_kwin_server_decoration_manager *kde_manager;
 
 struct window {
@@ -78,6 +82,13 @@ static void xdg_configure(void *data, struct xdg_surface *xdg, uint32_t serial)
 {
 	struct window *win = data;
 	xdg_surface_ack_configure(xdg, serial);
+	if (pre_late) {
+		if (!strcmp(pre_late, "max"))
+			xdg_toplevel_set_maximized(win->toplevel);
+		else
+			xdg_toplevel_set_fullscreen(win->toplevel, NULL);
+		pre_late = NULL;
+	}
 	if (late_frame && !strcmp(late_frame, "xdg") && !win->framed) {
 		win->framed = true;
 		struct zxdg_toplevel_decoration_v1 *deco =
@@ -179,6 +190,13 @@ static struct window *open_window(const char *app, struct window *parent,
 	win->w = win->natural_w = w;
 	win->h = win->natural_h = h;
 	win->surface = wl_compositor_create_surface(compositor);
+	if (early_frame && limits) {
+		struct org_kde_kwin_server_decoration *deco =
+			org_kde_kwin_server_decoration_manager_create(kde_manager, win->surface);
+		org_kde_kwin_server_decoration_request_mode(deco,
+			ORG_KDE_KWIN_SERVER_DECORATION_MODE_SERVER);
+		wl_display_roundtrip(the_display);
+	}
 	win->xdg = xdg_wm_base_get_xdg_surface(wm_base, win->surface);
 	xdg_surface_add_listener(win->xdg, &xdg_listener, win);
 	win->toplevel = xdg_surface_get_toplevel(win->xdg);
@@ -191,7 +209,7 @@ static struct window *open_window(const char *app, struct window *parent,
 		xdg_toplevel_set_min_size(win->toplevel, min_w, min_h);
 		xdg_toplevel_set_max_size(win->toplevel, max_w, max_h);
 	}
-	if (!client_side && !late_frame) {
+	if (!client_side && !late_frame && !early_frame) {
 		struct zxdg_toplevel_decoration_v1 *deco =
 			zxdg_decoration_manager_v1_get_toplevel_decoration(deco_manager,
 			win->toplevel);
@@ -231,6 +249,12 @@ int main(int argc, char *argv[])
 			dialog = v;
 		else if (!strcmp(argv[i], "pre"))
 			pre_state = v;
+		else if (!strcmp(argv[i], "early_frame"))
+			early_frame = atoi(v);
+		else if (!strcmp(argv[i], "pre_late"))
+			pre_late = v;
+		else if (!strcmp(argv[i], "unparent"))
+			unparent = atoi(v);
 		else if (!strcmp(argv[i], "late_frame"))
 			late_frame = v;
 		else if (!strcmp(argv[i], "csd"))
@@ -261,7 +285,14 @@ int main(int argc, char *argv[])
 	if (dialog) {
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
-		open_window(dialog, main_win, 120, 80, false);
+		struct window *dialog_win = open_window(dialog, main_win, 120, 80, false);
+		if (unparent) {
+			wl_display_roundtrip(display);
+			wl_display_roundtrip(display);
+			usleep(1500000);
+			xdg_toplevel_set_parent(dialog_win->toplevel, NULL);
+			wl_display_flush(display);
+		}
 	}
 	if (late_frame && !strcmp(late_frame, "kde")) {
 		wl_display_roundtrip(display);

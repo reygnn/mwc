@@ -480,8 +480,10 @@ void view_lower(struct view *view)
 
 void view_set_maximized(struct view *view, bool maximized)
 {
-	view_maximize_at(view, maximized, view->x + view->width / 2.0,
-		view->y + view->height / 2.0);
+	/* Not on any output yet, it goes where the pointer is, as a new window does. */
+	struct wlr_cursor *c = view->server->cursor;
+	view_maximize_at(view, maximized, view->mapped ? view->x + view->width / 2.0 : c->x,
+		view->mapped ? view->y + view->height / 2.0 : c->y);
 }
 
 /* An xdg surface takes no configures before its first commit, or after a null
@@ -607,9 +609,10 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 			} else {
 				view_save_free(view);
 			}
+			struct wlr_cursor *c = view->server->cursor;
 			struct wlr_box a = output_full_area(view->server,
-				view->x + view->width / 2.0,
-				view->y + view->height / 2.0);
+				view->mapped ? view->x + view->width / 2.0 : c->x,
+				view->mapped ? view->y + view->height / 2.0 : c->y);
 			view->fullscreen = true;
 			views_update_layers(view->server);
 			/* Fullscreen windows lose their frame for the duration. */
@@ -661,6 +664,20 @@ static void view_show(struct view *view, bool show)
 	wlr_scene_node_set_enabled(&view->tree->node, show);
 	if (view->type == VIEW_XWAYLAND)
 		wlr_xwayland_surface_set_minimized(view->xsurface, !show);
+}
+
+void view_parent_changed(struct view *view)
+{
+	view_update_properties(view);
+	views_update_layers(view->server);
+	/* Hidden with a window it no longer belongs to, nothing would bring it back. */
+	struct view *parent = view_parent(view);
+	if (view->hidden_with_parent &&
+			!(parent && (parent->minimized || parent->hidden_with_parent))) {
+		view->hidden_with_parent = false;
+		view_show(view, true);
+	}
+	tile_arrange(view->server); /* dialogs float */
 }
 
 void view_minimize(struct view *view)
@@ -779,10 +796,18 @@ void views_layout_changed(struct server *server)
 		/* output_at() falls back to an existing output for any other point. */
 		struct wlr_box a = output_usable_area(server, v->x + box.width / 2.0,
 			v->y + box.height / 2.0);
-		if (!reachable) {
-			/* What it goes back to was on that output as well. */
+		/* What it goes back to may have been on that output, whether or not the window
+		 * itself still was: tiling, a maximized state or fullscreen may have brought it
+		 * over here. */
+		struct wlr_box back = { v->saved.x, v->saved.y,
+			v->saved.width + frame_extra_w(v), v->saved.height + frame_extra_h(v) };
+		if (!reachable || !wlr_output_layout_intersects(server->output_layout, NULL,
+				&back)) {
 			v->saved.x = a.x + 32;
 			v->saved.y = a.y + 32;
+		}
+		if (!reachable || !wlr_output_layout_contains_point(server->output_layout, NULL,
+				v->fit_px, v->fit_py)) {
 			v->fit_px = a.x + a.width / 2.0;
 			v->fit_py = a.y + a.height / 2.0;
 		}
@@ -819,6 +844,9 @@ void view_frame_changed(struct view *view)
 		xwayland_configure(view);
 	frame_render(view);
 	xwayland_publish_frame_extents(view);
+	/* In the layout, the cell stays and the client has to make room. */
+	if (view->tiled)
+		tile_arrange(view->server);
 }
 
 void view_theme_changed(struct view *view)
@@ -1182,6 +1210,15 @@ static void xdg_send_first_configure(struct view *view)
 	struct wlr_xdg_toplevel *top = view->xdg_toplevel;
 	view_update_properties(view);
 	view->placed = false;
+	/* wlroots keeps what was last scheduled across a null buffer, and the client would
+	 * start over in the states of its last life. */
+	wlr_xdg_toplevel_set_maximized(top, view->maximized);
+	wlr_xdg_toplevel_set_fullscreen(top, view->fullscreen);
+	wlr_xdg_toplevel_set_tiled(top, WLR_EDGE_NONE);
+	wlr_xdg_toplevel_set_resizing(top, false);
+	/* The output it goes back to, leaving a state. */
+	view->fit_px = server->cursor->x;
+	view->fit_py = server->cursor->y;
 	if (view->fullscreen) {
 		struct wlr_box a = output_full_area(server, server->cursor->x,
 			server->cursor->y);
@@ -1189,7 +1226,6 @@ static void xdg_send_first_configure(struct view *view)
 		view->y = a.y;
 		view->placed = true;
 		view_send_size(view, a.width, a.height);
-		wlr_xdg_toplevel_set_fullscreen(top, true);
 	} else if (view->maximized) {
 		struct wlr_box a = output_usable_area(server, server->cursor->x,
 			server->cursor->y);
@@ -1199,7 +1235,6 @@ static void xdg_send_first_configure(struct view *view)
 		view->y = a.y;
 		view->placed = true;
 		view_send_size(view, w, h);
-		wlr_xdg_toplevel_set_maximized(top, true);
 	} else {
 		view_send_size(view, 0, 0);
 	}
@@ -1295,9 +1330,7 @@ static void xdg_destroy(struct wl_listener *listener, void *data)
 static void xdg_set_parent(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, set_parent);
-	view_update_properties(view);
-	views_update_layers(view->server);
-	tile_arrange(view->server); /* dialogs float */
+	view_parent_changed(view);
 }
 
 static void xdg_set_app_id(struct wl_listener *listener, void *data)
@@ -1381,6 +1414,14 @@ static void new_xdg_toplevel(struct wl_listener *listener, void *data)
 	view->type = VIEW_XDG;
 	view->xdg_toplevel = toplevel;
 	view_init_common(view);
+	/* KDE's protocol goes by the surface, which may ask before it has this role. */
+	struct wlr_server_decoration *kde;
+	wl_list_for_each(kde, &server->kde_decorations->decorations, link) {
+		if (kde->surface == toplevel->base->surface) {
+			view->ssd = kde->mode == WLR_SERVER_DECORATION_MANAGER_MODE_SERVER;
+			view->decorated = view->ssd;
+		}
+	}
 	view->content_tree = wlr_scene_xdg_surface_create(view->tree,
 		toplevel->base);
 	xdg_surface_set_tree(toplevel->base, view->content_tree);
@@ -1670,6 +1711,7 @@ void xdg_init(struct server *server)
 
 	struct wlr_server_decoration_manager *sdm =
 		wlr_server_decoration_manager_create(server->display);
+	server->kde_decorations = sdm;
 	wlr_server_decoration_manager_set_default_mode(sdm,
 		WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 	server->new_server_decoration.notify = new_server_decoration;

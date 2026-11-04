@@ -193,6 +193,26 @@ pixel_is "the surface is mapped" 1270 360 444444
 check "keyboard=none leaves the keyboard alone" "[ \"\$(get foot kbfocus)\" = 1 ]"
 layerc_stop nokbd
 
+# Two that insist: when the newer one goes, the keyboard goes to the other, not a window.
+layerc_start lock1 layer=overlay anchor=left size=50x50 keyboard=exclusive color=555555
+wait_for "exclusive keyboard: the first has it" has_event lock1 keyboard-enter
+layerc_start lock2 layer=overlay anchor=right size=50x50 keyboard=exclusive color=555555
+wait_for "exclusive keyboard: the second takes it" has_event lock2 keyboard-enter
+: >"$SMOKE_DIR/lock1.events"
+layerc_stop lock2
+wait_for "the first has it back" has_event lock1 keyboard-enter
+check "and no window got it" "[ \"\$(get foot kbfocus)\" = 0 ]"
+do_input key a
+wait_for "its keys arrive" has_event lock1 "key 30"
+layerc_stop lock1
+check "with both gone, the window has it again" "[ \"\$(get foot kbfocus)\" = 1 ]"
+
+# A panel reserving more than there is doesn't leave windows nowhere to go.
+layerc_start huge layer=top anchor=top,left,right size=0x30 exclusive=5000 color=444444
+sleep 0.3
+output_is "exclusive zone beyond the output: it isn't believed" 0 0 1280 720
+layerc_stop huge
+
 layerc_start lock layer=overlay anchor=right size=50x50 keyboard=exclusive color=555555
 wait_for "exclusive keyboard: focus on map" has_event lock keyboard-enter
 check "the window lost the keyboard" "[ \"\$(get foot kbfocus)\" = 0 ]"

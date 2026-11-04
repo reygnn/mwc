@@ -372,9 +372,7 @@ static void xw_set_decorations(struct wl_listener *listener, void *data)
 static void xw_set_parent(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, set_parent);
-	view_update_properties(view);
-	views_update_layers(view->server);
-	tile_arrange(view->server); /* dialogs float */
+	view_parent_changed(view);
 }
 
 static void xw_set_class(struct wl_listener *listener, void *data)

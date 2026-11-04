@@ -145,6 +145,31 @@ if command -v xterm >/dev/null; then
 	check "the window is gone" "[ -z \"\$(get XTermFull x)\" ]"
 fi
 
+# Maximized before a null buffer, and the next life starts without it. wlroots keeps what
+# was last scheduled, which the client must not be told.
+bad remapplain remap-plain
+wait_for "the client started over" grep -q 'configured max=' "$SMOKE_DIR/remapplain.events"
+grep -q 'configured max=0' "$SMOKE_DIR/remapplain.events" || fail "the new first configure says maximized"
+echo "ok: the new first configure says nothing of its old states"
+check "and it isn't maximized" "[ \"\$(get bad max)\" = 0 ]"
+stop remapplain
+check "the window is gone" "[ -z \"\$(get bad x)\" ]"
+
+# ---- frames asked for in the order nobody expected --------------------------------------
+
+wayland earlykde early_frame=1 size=300x200
+check "KDE's protocol before the surface has a role: it gets its frame" "[ \"\$(get earlykde frame)\" = 1 ]"
+stop earlykde
+do_input key super+t
+wayland tilekde late_frame=kde size=300x200
+check "tiled, without a frame yet" "[ \"\$(get tilekde tiled)\" = 1 ] && [ \"\$(get tilekde frame)\" = 0 ]"
+check "the frame comes, and it stays in its cell" "[ \"\$(get tilekde frame)\" = 1 ] && \
+	[ \$((\$(get tilekde y) + \$(get tilekde h) + 2 * B + T)) -le 720 ] && \
+	[ \$((\$(get tilekde x) + \$(get tilekde w) + 2 * B)) -le 1280 ]"
+stop tilekde
+check "the window is gone" "[ -z \"\$(get tilekde x)\" ]"
+do_input key super+t
+
 # ---- grabs and menus on windows that were never mapped --------------------------------
 
 bad nomove move

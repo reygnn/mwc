@@ -118,6 +118,13 @@ unset WAYLAND_DISPLAY DISPLAY
 pid=$!
 wait_for "autostart runs without -s, wherever it lies" started autostart
 stop_mwc
+# Without a #! line, as a shell would run it.
+rm -f "$SMOKE_DIR"/wayland-* "$SMOKE_DIR/started-autostart"
+echo "touch \"$SMOKE_DIR/started-autostart\"" >"$XDG_CONFIG_HOME/mwc/autostart"
+"$MWC" >"$LOG" 2>&1 &
+pid=$!
+wait_for "an autostart without a #! line runs too" started autostart
+stop_mwc
 rm "$XDG_CONFIG_HOME/mwc/autostart"
 export XDG_CONFIG_HOME=$SMOKE_DIR/config
 
