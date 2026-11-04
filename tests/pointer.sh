@@ -345,7 +345,197 @@ lacks "Alt+Space went to a binding, not down" K '^key 57 down'
 lacks "not up" K '^key 57 up'
 lacks "Escape closed the menu, not up" K '^key 1 up'
 saw "Alt is the client's, it's a modifier" K '^key 56 up'
+
+# Alt+Tab away and back: the window coming in is told what is down, and Tab isn't, or it
+# would wait for a release it never gets.
+client K2 log
+focus_on K2
+clear_log K
+do_input key alt+Tab
+saw "the window coming in is told of Alt" K '^kb-enter 56$'
+lacks "and not of Tab" K '^kb-enter.* 15( |$)'
+do_input key Escape
+stop K2
 stop K
+
+# Caps Lock doesn't turn a letter off, while Shift still means something else.
+do_input caps on
+do_input key super+t
+check "Super+T with Caps Lock on" "[ \"\$(global tiling on)\" = 1 ]"
+do_input caps off
+do_input key super+t
+check "and off again" "[ \"\$(global tiling on)\" = 0 ]"
+do_input key super+shift+t
+check "Super+Shift+T is something else" "[ \"\$(global tiling on)\" = 0 ]"
+
+# ---- the focus moving during a grab of the keyboard -----------------------------------------
+
+client G popup-grab
+focus_on G
+place G 100 100
+client H log
+focus_on H
+place H 500 100
+focus_on G
+do_input move 200 200
+do_input click left
+saw "a press opens its menu" G '^popup-open'
+sleep 0.3
+clear_log H
+do_input key alt+Tab
+saw "Alt+Tab closes the client's menu" G '^popup-done'
+check "the other window has the keyboard" \
+	"[ \"\$(get H active)\" = 1 ] && [ \"\$(get H kbfocus)\" = 1 ] && [ \"\$(get G kbfocus)\" = 0 ]"
+do_input key a
+saw "and hears the keys" H '^key 30 down'
+stop G
+stop H
+
+client S drag
+focus_on S
+place S 100 100
+client D drop
+focus_on D
+place D 500 100
+focus_on S
+do_input move 200 200
+do_input down left
+saw "a press starts the drag" S '^drag-start'
+do_input key alt+Tab
+check "Alt+Tab during a drag" "[ \"\$(get D active)\" = 1 ]"
+do_input move 600 200
+saw "doesn't end it: the other client is offered the drag" D '^dnd-enter'
+do_input up left
+saw "and it can be dropped there" S '^drag-dropped'
+check "and the keyboard follows once it is over" \
+	"[ \"\$(get D active)\" = 1 ] && [ \"\$(get D kbfocus)\" = 1 ]"
+clear_log D
+do_input key a
+saw "the keys with it" D '^key 30 down'
+stop S
+stop D
+
+# ---- more than one button -------------------------------------------------------------------
+
+BTN_RIGHT=273
+BTN_MIDDLE=274
+client A2 log
+focus_on A2
+place A2 100 100
+client B2 log
+focus_on B2
+place B2 500 100
+focus_on A2
+
+do_input move 200 200
+clear_log A2
+do_input down left
+saw "A has the pointer" A2 "^button $BTN_LEFT down"
+do_input move 1000 600
+do_input down right
+saw "a second button is A's too, over the desktop" A2 "^button $BTN_RIGHT down"
+check "and opens no root menu" "[ \"\$(global menu open)\" = 0 ]"
+lacks "A keeps the pointer" A2 '^leave'
+do_input up right
+do_input up left
+saw "only the last release lets go of it" A2 '^leave'
+
+do_input move 200 200
+clear_log A2
+do_input down left
+do_input move 600 200
+do_input down right
+saw "over another window as well" A2 "^button $BTN_RIGHT down"
+check "which is neither raised nor focused" \
+	"[ \"\$(get A2 active)\" = 1 ] && [ \"\$(get B2 active)\" = 0 ]"
+do_input up right
+do_input up left
+
+# A press nobody saw has no release to report.
+do_input move 1000 600
+settle
+do_input down middle
+do_input move 600 200
+saw "over the other window" B2 '^enter'
+clear_log B2
+do_input up middle
+lacks "the release of a press on the desktop goes nowhere" B2 "^button $BTN_MIDDLE up"
+clear_log B2
+do_input click left
+saw "and the next click works" B2 "^button $BTN_LEFT down"
+
+# Nor has a client that left.
+focus_on A2
+do_input move 200 200
+clear_log A2
+do_input down left
+saw "A has the pointer" A2 "^button $BTN_LEFT down"
+stop A2
+clear_log B2
+do_input move 600 210
+saw "A dies, and the pointer is free" B2 '^enter|^motion'
+clear_log B2
+do_input up left
+lacks "and the release of its press goes nowhere" B2 "^button $BTN_LEFT up"
+stop B2
+
+# Another button doesn't end a drag or set off a frame button.
+x11 titled pos=100,300 size=300x100
+TY=$((300 + B + T / 2))
+do_input move 250 "$TY"
+do_input down left
+do_input move 300 $((TY + 40))
+check "a drag on the title" "[ \"\$(global cursor mode)\" != 0 ]"
+do_input click right
+check "goes on past a click of another button" "[ \"\$(global cursor mode)\" != 0 ]"
+do_input up left
+check "and ends with its own" "[ \"\$(global cursor mode)\" = 0 ] && [ \"\$(get titled y)\" = 340 ]"
+refresh
+TY=$(($(get titled y) + B + T / 2))
+MINX=$(($(get titled x) + B + 300 - T - T / 2))
+do_input move "$MINX" "$TY"
+do_input down left
+do_input click right
+check "a frame button waits for its own release too" "[ \"\$(get titled min)\" = 0 ]"
+do_input up left
+check "and then works" "[ \"\$(get titled min)\" = 1 ]"
+stop titled
+
+# ---- menus a client asks for ----------------------------------------------------------------
+
+client N menu-press
+focus_on N
+place N 100 100
+do_input move 200 200
+do_input click left
+check "a click may ask for the window menu" "[ \"\$(global menu open)\" = 1 ]"
+check "and it opens where the client said" \
+	"[ \"\$(global menu x)\" = 140 ] && [ \"\$(global menu y)\" = 150 ]"
+do_input key Escape
+stop N
+
+client O menu-bad
+focus_on O
+place O 100 100
+do_input move 200 200
+do_input click left
+saw "a client with a made-up serial" O "^button $BTN_LEFT down"
+check "gets no menu" "[ \"\$(global menu open)\" = 0 ]"
+clear_log O
+do_input key a
+saw "and keeps the keyboard" O '^key 30 down'
+stop O
+
+client Q menu-leave
+focus_on Q
+place Q 100 100
+do_input move 200 200
+do_input click left
+client R log
+saw "a client losing the focus" Q '^kb-leave'
+check "gets no menu with an old serial" "[ \"\$(global menu open)\" = 0 ]"
+stop Q
+stop R
 
 stop_vinput
 stop_mwc

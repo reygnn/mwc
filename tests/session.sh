@@ -175,6 +175,39 @@ begin
 log_has "the environment wins" 'keymap compiled, layout French'
 finish
 unset XKB_DEFAULT_LAYOUT
+
+# Layout and variant belong together, wherever each comes from.
+echo 'Mwm*keyboardVariant: dvorak' >"$RC"
+begin
+log_has "a variant alone goes with the default layout" 'keymap compiled, layout English (Dvorak)'
+finish
+echo 'Mwm*keyboardVariant: nodeadkeys' >"$RC"
+export XKB_DEFAULT_LAYOUT=de
+begin
+log_has "a variant from the file with a layout from the environment" \
+	'keymap compiled, layout German (no dead keys)'
+finish
+unset XKB_DEFAULT_LAYOUT
+echo 'Mwm*keyboardLayout: de' >"$RC"
+export XKB_DEFAULT_VARIANT=nodeadkeys
+begin
+log_has "a layout from the file with a variant from the environment" \
+	'keymap compiled, layout German (no dead keys)'
+finish
+unset XKB_DEFAULT_VARIANT
+
+# A new keymap resets the locks, so only a change brings one.
+echo 'Mwm*keyboardLayout: de' >"$RC"
+begin
+echo 'Mwm*rootBackground: #102030' >>"$RC"
+kill -HUP "$pid"
+sleep 0.5
+grep -q 'keymap settings changed' "$LOG" && fail "a reload for a colour rebuilt the keymap"
+echo "ok: a reload for a colour leaves the keymap alone"
+echo 'Mwm*keyboardLayout: fr' >"$RC"
+kill -HUP "$pid"
+wait_for "a reload for the layout" grep -q 'keymap settings changed' "$LOG"
+finish
 echo 'Mwm*keyboardLayout: no-such-layout' >"$RC"
 begin
 log_has "a layout that doesn't exist falls back" 'falling back to the us layout'

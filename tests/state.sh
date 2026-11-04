@@ -401,6 +401,25 @@ check "and un-maximized it comes back in reach too" \
 stop roam
 stop maxed2
 finish
+
+# A menu or a grab must not go on where there is no longer anything.
+export WLR_HEADLESS_OUTPUTS=3
+begin 3840 720
+do_input move 3000 400
+do_input click left
+check "a root menu on the third output" "[ \"\$(global menu open)\" = 1 ]"
+kill -USR2 "$pid"
+check "unplugged, the menu is gone" "[ \"\$(global menu open)\" = 0 ]"
+x11 strand pos=1400,100 size=300x200
+do_input key alt+F7
+check "a move from the keyboard on the second output" "[ \"\$(global cursor mode)\" != 0 ]"
+do_input key Right
+kill -USR2 "$pid"
+check "unplugged, the grab is over" "[ \"\$(global cursor mode)\" = 0 ]"
+do_input key Return
+check "and the window is in reach" "[ \"\$(get strand x)\" -lt 1280 ]"
+stop strand
+finish
 unset WLR_HEADLESS_OUTPUTS
 
 echo "PASS: state"

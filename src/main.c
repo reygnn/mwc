@@ -525,6 +525,7 @@ int main(int argc, char *argv[])
 	wl_list_remove(&server.request_set_primary_selection.link);
 	wl_list_remove(&server.request_start_drag.link);
 	wl_list_remove(&server.start_drag.link);
+	wl_list_remove(&server.keyboard_grab_end.link);
 	wl_list_remove(&server.new_output.link);
 	wl_list_remove(&server.layout_change.link);
 	/* The backend goes first: output_destroy() still needs the scene. */

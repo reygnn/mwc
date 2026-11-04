@@ -468,13 +468,8 @@ static void um_map(struct wl_listener *listener, void *data)
 	wl_signal_add(&xs->events.set_geometry, &um->set_geometry);
 	/* An exclusive layer surface keeps the keyboard, a password prompt for one. */
 	if (wlr_xwayland_surface_override_redirect_wants_focus(xs) &&
-			!um->server->exclusive_layer) {
-		struct wlr_seat *seat = um->server->seat;
-		struct wlr_keyboard *kb = wlr_seat_get_keyboard(seat);
-		wlr_seat_keyboard_notify_enter(seat, xs->surface,
-			kb ? kb->keycodes : NULL, kb ? kb->num_keycodes : 0,
-			kb ? &kb->modifiers : NULL);
-	}
+			!um->server->exclusive_layer)
+		input_keyboard_enter(um->server, xs->surface);
 }
 
 static void um_unmap(struct wl_listener *listener, void *data)

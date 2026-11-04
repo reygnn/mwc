@@ -6,6 +6,7 @@
  *   down|up|click B    B is left, middle or right
  *   key COMBO          press and release, e.g. "alt+F4", "shift+Escape", "q"
  *   hold|release MOD   keep alt, ctrl, shift or super down across commands
+ *   caps on|off        lock or unlock Caps
  *
  * Usage: vinput WIDTH HEIGHT (the size of the headless output)
  */
@@ -133,6 +134,8 @@ static void send_key(uint32_t code, bool pressed)
 }
 
 /* The compositor doesn't track modifiers of a virtual keyboard itself. */
+static uint32_t locked_mods;
+
 static void set_mod(int idx, bool pressed)
 {
 	if (pressed)
@@ -140,7 +143,7 @@ static void set_mod(int idx, bool pressed)
 	else
 		held_mods &= ~mods[idx].mask;
 	send_key(mods[idx].code, pressed);
-	zwp_virtual_keyboard_v1_modifiers(keyboard, held_mods, 0, 0, 0);
+	zwp_virtual_keyboard_v1_modifiers(keyboard, held_mods, 0, locked_mods, 0);
 }
 
 static int find_mod(const char *name)
@@ -245,6 +248,11 @@ static const char *run_command(char *line)
 		return do_button(a, true, true);
 	if (strcmp(cmd, "key") == 0)
 		return do_key(a);
+	if (strcmp(cmd, "caps") == 0) {
+		locked_mods = strcmp(a, "on") == 0 ? 2 : 0; /* Lock is the second modifier */
+		zwp_virtual_keyboard_v1_modifiers(keyboard, held_mods, 0, locked_mods, 0);
+		return NULL;
+	}
 	if (strcmp(cmd, "hold") == 0 || strcmp(cmd, "release") == 0) {
 		int idx = find_mod(a);
 		if (idx < 0)

@@ -17,6 +17,7 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_input_device.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
@@ -408,12 +409,15 @@ void process_cursor_motion(struct server *server, uint32_t time)
 	 * release that didn't happen. Drags and popups have grabs of their own, which
 	 * have to see what is under the pointer. */
 	struct wlr_seat *seat = server->seat;
-	if (server->n_forwarded > 0 && seat->pointer_state.focused_surface &&
-			!wlr_seat_pointer_has_grab(seat)) {
-		wlr_seat_pointer_notify_motion(seat, time,
-			server->cursor->x - server->grab_surface_x,
-			server->cursor->y - server->grab_surface_y);
-		return;
+	if (server->n_forwarded > 0 && !wlr_seat_pointer_has_grab(seat)) {
+		if (seat->pointer_state.focused_surface) {
+			wlr_seat_pointer_notify_motion(seat, time,
+				server->cursor->x - server->grab_surface_x,
+				server->cursor->y - server->grab_surface_y);
+			return;
+		}
+		/* The client that saw the press is gone: nobody waits for the release. */
+		server->n_forwarded = 0;
 	}
 
 	struct wlr_surface *surface;
@@ -659,13 +663,15 @@ static void cursor_button(struct wl_listener *listener, void *data)
 		return;
 	case CURSOR_MOVE:
 	case CURSOR_RESIZE:
-		if (pressed == server->grab_until_click) {
+		/* Any click ends what began without a button, only its own release a drag. */
+		if (server->grab_until_click ? pressed :
+				!pressed && event->button == server->grab_button) {
 			end_grab(server);
 			process_cursor_motion(server, event->time_msec);
 		}
 		return;
 	case CURSOR_BUTTON:
-		if (!pressed)
+		if (!pressed && event->button == server->grab_button)
 			handle_button_release(server);
 		return;
 	case CURSOR_PASSTHROUGH:
@@ -692,7 +698,12 @@ static void cursor_button(struct wl_listener *listener, void *data)
 		process_cursor_motion(server, event->time_msec);
 	}
 
-	if (handle_press(server, event->button, event->time_msec))
+	/* A further button while a client has the pointer is the client's as well, not
+	 * a click on whatever the pointer has been dragged over. */
+	bool implicit_grab = server->n_forwarded > 0 &&
+		seat->pointer_state.focused_surface && !wlr_seat_pointer_has_grab(seat);
+	server->grab_button = event->button;
+	if (!implicit_grab && handle_press(server, event->button, event->time_msec))
 		return;
 	if (server->n_forwarded < (int)(sizeof(server->forwarded_buttons) /
 			sizeof(*server->forwarded_buttons)))
@@ -797,7 +808,8 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	}
 	if (logo && !alt && !ctrl) {
 		enum snap_dir dir;
-		switch (sym) {
+		/* Letters by their lower case, or Caps Lock would turn them off. */
+		switch (xkb_keysym_to_lower(sym)) {
 		case XKB_KEY_t:
 			if (shift)
 				return false;
@@ -905,10 +917,15 @@ static void keyboard_key(struct wl_listener *listener, void *data)
 
 	bool handled = false;
 	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+		/* Noted beforehand: a window that gets the focus from this very key must not
+		 * be told it is down, or it would wait for a release it never gets. */
+		bool room = kb->n_swallowed < MAX_SWALLOWED_KEYS;
+		if (room)
+			kb->swallowed[kb->n_swallowed++] = event->keycode;
 		for (int i = 0; i < nsyms && !handled; i++)
 			handled = handle_keybinding(server, mods, syms[i]);
-		if (handled && kb->n_swallowed < MAX_SWALLOWED_KEYS)
-			kb->swallowed[kb->n_swallowed++] = event->keycode;
+		if (room && !handled)
+			kb->n_swallowed--;
 	} else {
 		for (int i = 0; i < kb->n_swallowed; i++) {
 			if (kb->swallowed[i] == event->keycode) {
@@ -935,22 +952,41 @@ static void keyboard_destroy(struct wl_listener *listener, void *data)
 	free(kb);
 }
 
-/* The environment over mwmrc, as for the other settings. A NULL field is what makes
- * xkbcommon look at XKB_DEFAULT_*. */
+/* The environment over mwmrc, as for the other settings. */
 static const char *keyboard_setting(const char *env, const char *resource)
 {
 	const char *value = getenv(env);
-	return value && *value ? NULL : config_get(resource);
+	return value && *value ? value : config_get(resource);
+}
+
+static struct xkb_rule_names keyboard_settings(void)
+{
+	/* Each from wherever it is set, and handed over together: xkbcommon drops a
+	 * variant that comes without a layout, and looks at XKB_DEFAULT_VARIANT only when
+	 * it also takes the layout from the environment. */
+	const char *layout = keyboard_setting("XKB_DEFAULT_LAYOUT", "keyboardLayout");
+	return (struct xkb_rule_names){
+		.model = keyboard_setting("XKB_DEFAULT_MODEL", "keyboardModel"),
+		.layout = layout && *layout ? layout : "us",
+		.variant = keyboard_setting("XKB_DEFAULT_VARIANT", "keyboardVariant"),
+		.options = keyboard_setting("XKB_DEFAULT_OPTIONS", "keyboardOptions"),
+	};
+}
+
+/* What the keymaps were last made from. */
+static char keymap_settings[1024];
+
+static void keyboard_settings_text(char *buf, size_t size)
+{
+	const struct xkb_rule_names n = keyboard_settings();
+	snprintf(buf, size, "%s|%s|%s|%s", n.model ? n.model : "", n.layout,
+		n.variant ? n.variant : "", n.options ? n.options : "");
 }
 
 static void apply_keymap(struct wlr_keyboard *wlr_kb)
 {
-	const struct xkb_rule_names names = {
-		.model = keyboard_setting("XKB_DEFAULT_MODEL", "keyboardModel"),
-		.layout = keyboard_setting("XKB_DEFAULT_LAYOUT", "keyboardLayout"),
-		.variant = keyboard_setting("XKB_DEFAULT_VARIANT", "keyboardVariant"),
-		.options = keyboard_setting("XKB_DEFAULT_OPTIONS", "keyboardOptions"),
-	};
+	const struct xkb_rule_names names = keyboard_settings();
+	keyboard_settings_text(keymap_settings, sizeof(keymap_settings));
 	struct xkb_context *ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 	struct xkb_keymap *keymap = xkb_keymap_new_from_names(ctx, &names,
 		XKB_KEYMAP_COMPILE_NO_FLAGS);
@@ -977,12 +1013,69 @@ static void apply_keymap(struct wlr_keyboard *wlr_kb)
 
 void input_config_changed(struct server *server)
 {
+	/* A new keymap resets Caps Lock, NumLock and the layout group, so a reload for
+	 * the sake of a colour must not bring one. */
+	char now[sizeof(keymap_settings)];
+	keyboard_settings_text(now, sizeof(now));
+	if (!strcmp(now, keymap_settings))
+		return;
+	wlr_log(WLR_INFO, "keymap settings changed: %s", now);
+	snprintf(keymap_settings, sizeof(keymap_settings), "%s", now);
 	struct keyboard *kb;
 	wl_list_for_each(kb, &server->keyboards, link) {
 		/* A virtual keyboard brought its own keymap. */
 		if (!wlr_input_device_get_virtual_keyboard(&kb->wlr_keyboard->base))
 			apply_keymap(kb->wlr_keyboard);
 	}
+}
+
+static struct keyboard *keyboard_of(struct server *server, struct wlr_keyboard *wlr_kb)
+{
+	struct keyboard *kb;
+	wl_list_for_each(kb, &server->keyboards, link) {
+		if (kb->wlr_keyboard == wlr_kb)
+			return kb;
+	}
+	return NULL;
+}
+
+void input_keyboard_enter(struct server *server, struct wlr_surface *surface)
+{
+	struct wlr_seat *seat = server->seat;
+	/* The grab swallows this, so it has to be made up for afterwards. */
+	if (wlr_seat_keyboard_has_grab(seat))
+		server->refocus_after_grab = true;
+	struct wlr_keyboard *wlr_kb = wlr_seat_get_keyboard(seat);
+	if (!wlr_kb) {
+		wlr_seat_keyboard_notify_enter(seat, surface, NULL, 0, NULL);
+		return;
+	}
+	struct keyboard *kb = keyboard_of(server, wlr_kb);
+	uint32_t keycodes[WLR_KEYBOARD_KEYS_CAP];
+	size_t n = 0;
+	for (size_t i = 0; i < wlr_kb->num_keycodes; i++) {
+		bool swallowed = false;
+		for (int j = 0; kb && j < kb->n_swallowed; j++)
+			swallowed |= kb->swallowed[j] == wlr_kb->keycodes[i];
+		if (!swallowed)
+			keycodes[n++] = wlr_kb->keycodes[i];
+	}
+	wlr_seat_keyboard_notify_enter(seat, surface, keycodes, n, &wlr_kb->modifiers);
+}
+
+/* The focus moved during a popup's grab or a drag, and only now can the keyboard go
+ * there. */
+static void keyboard_grab_end(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server, keyboard_grab_end);
+	if (!server->refocus_after_grab)
+		return;
+	server->refocus_after_grab = false;
+	struct view *view = focused_view(server);
+	if (server->focused_layer)
+		input_keyboard_enter(server, server->focused_layer->surface);
+	else if (view && view_surface(view))
+		input_keyboard_enter(server, view_surface(view));
 }
 
 static void new_keyboard(struct server *server, struct wlr_input_device *dev)
@@ -1120,6 +1213,8 @@ void input_init(struct server *server)
 		&server->request_start_drag);
 	server->start_drag.notify = start_drag;
 	wl_signal_add(&server->seat->events.start_drag, &server->start_drag);
+	server->keyboard_grab_end.notify = keyboard_grab_end;
+	wl_signal_add(&server->seat->events.keyboard_grab_end, &server->keyboard_grab_end);
 	server->request_set_primary_selection.notify =
 		request_set_primary_selection;
 	wl_signal_add(&server->seat->events.request_set_primary_selection,

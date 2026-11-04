@@ -63,6 +63,25 @@ feedback_is() { # description text, with _ for spaces
 	check "$1" "[ \"\$(global feedback text)\" = '$2' ]"
 }
 
+# ---- a window that has never been anything but maximized ------------------------
+
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=premaxed pre=max size=300x200 >/dev/null 2>&1 &
+PID_premaxed=$!
+check "it maps maximized" "[ \"\$(get premaxed max)\" = 1 ]"
+settle
+do_input move 640 $((B + T / 2))
+do_input down left
+do_input move 700 80
+check "dragged off, the outline has a size, though the window has none of its own yet" \
+	"[ \"\$(global outline shown)\" = 1 ] && [ \"\$(global outline w)\" -ge 300 ] && \
+	[ \"\$(global outline h)\" -ge 200 ]"
+do_input up left
+check "dropped, it chooses its own" \
+	"[ \"\$(get premaxed max)\" = 0 ] && [ \"\$(get premaxed w)\" = 300 ] && [ \"\$(get premaxed h)\" = 200 ]"
+kill "$PID_premaxed"
+wait "$PID_premaxed" 2>/dev/null
+check "the window is gone" "[ -z \"\$(get premaxed x)\" ]"
+
 # ---- moving with the outline --------------------------------------------------
 
 x11 mover pos=100,100 size=300x200

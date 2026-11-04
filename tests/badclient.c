@@ -275,10 +275,11 @@ static void ptr_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x,
 	printf("motion %d %d\n", wl_fixed_to_int(x), wl_fixed_to_int(y));
 }
 
+static uint32_t press_serial;
+
 static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
 	uint32_t button, uint32_t state)
 {
-	static uint32_t press_serial;
 	bool down = state == WL_POINTER_BUTTON_STATE_PRESSED;
 	printf("button %u %s\n", button, down ? "down" : "up");
 	if (down)
@@ -287,6 +288,10 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 		open_grabbing_popup(serial);
 	else if (down && !strcmp(mode, "drag"))
 		start_a_drag(serial);
+	else if (down && !strcmp(mode, "menu-press"))
+		xdg_toplevel_show_window_menu(main_top, seat, serial, 40, 50);
+	else if (down && !strcmp(mode, "menu-bad"))
+		xdg_toplevel_show_window_menu(main_top, seat, 12345, 40, 50);
 	else if (down && !strcmp(mode, "move-press"))
 		xdg_toplevel_move(main_top, seat, serial);
 	else if (!down && !strcmp(mode, "move-late"))
@@ -310,12 +315,20 @@ static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t f, int32_t fd, ui
 static void kb_enter(void *d, struct wl_keyboard *k, uint32_t serial, struct wl_surface *s,
 	struct wl_array *keys)
 {
-	printf("kb-enter\n");
+	/* The keys it is told are down. */
+	printf("kb-enter");
+	uint32_t *key;
+	wl_array_for_each(key, keys)
+		printf(" %u", *key);
+	printf("\n");
 }
 
 static void kb_leave(void *d, struct wl_keyboard *k, uint32_t serial, struct wl_surface *s)
 {
 	printf("kb-leave\n");
+	/* With a serial that was good, but no longer focused. */
+	if (!strcmp(mode, "menu-leave") && press_serial)
+		xdg_toplevel_show_window_menu(main_top, seat, press_serial, 40, 50);
 }
 
 static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t t, uint32_t key,
@@ -470,7 +483,9 @@ int main(int argc, char *argv[])
 	bool logging = !strcmp(mode, "log") || !strcmp(mode, "popup-grab") ||
 		!strcmp(mode, "popup-far") ||
 		!strcmp(mode, "drag") || !strcmp(mode, "drop") ||
-		!strcmp(mode, "move-press") || !strcmp(mode, "move-late");
+		!strcmp(mode, "move-press") || !strcmp(mode, "move-late") ||
+		!strcmp(mode, "menu-press") || !strcmp(mode, "menu-bad") ||
+		!strcmp(mode, "menu-leave");
 	if (logging)
 		wl_seat_add_listener(seat, &seat_listener, NULL);
 

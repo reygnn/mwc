@@ -276,12 +276,13 @@ void view_focus(struct view *view)
 		return;
 	server->focused_layer = NULL;
 	struct wlr_surface *surface = view_surface(view);
-	struct wlr_keyboard *kb = wlr_seat_get_keyboard(seat);
-	if (surface && kb) {
-		wlr_seat_keyboard_notify_enter(seat, surface, kb->keycodes,
-			kb->num_keycodes, &kb->modifiers);
-	} else if (surface) {
-		wlr_seat_keyboard_notify_enter(seat, surface, NULL, 0, NULL);
+	if (surface) {
+		/* A client's menu closes when the focus goes elsewhere, and only then does
+		 * the keyboard follow: its grab keeps it where it is. A drag has to run
+		 * its course, see keyboard_grab_end(). */
+		if (surface != seat->keyboard_state.focused_surface && !seat->drag)
+			wlr_seat_pointer_end_grab(seat);
+		input_keyboard_enter(server, surface);
 	}
 	/* Typing into a window that can't be seen helps no one. Focused first, so a
 	 * full stack shades another one to make room. */
@@ -759,6 +760,11 @@ void views_usable_area_changed(struct server *server)
 
 void views_layout_changed(struct server *server)
 {
+	/* What they point at may have gone with an output. */
+	if (server->menu.open)
+		menu_close(server);
+	if (server->grabbed_view)
+		grab_give_way(server->grabbed_view);
 	if (wl_list_empty(&server->outputs))
 		return;
 	struct view *v;
@@ -933,19 +939,23 @@ void view_drag_free(struct view *view)
 	struct server *server = view->server;
 	double frac = (server->cursor->x - view->x) /
 		(double)(view->width + frame_extra_w(view));
+	/* Maximized since its first commit, it has no size of its own yet, and will
+	 * choose one. Until then the outline needs something to show. */
+	int w = view->saved.width ? view->saved.width : view->width / 2;
+	int h = view->saved.height ? view->saved.height : view->height / 2;
 	server->grab_detaching = true;
 	view_snap(view, SNAP_NONE, 0, 0);
 	server->grab_detaching = false;
-	int nw = view->saved.width + frame_extra_w(view);
+	int nw = w + frame_extra_w(view);
 	view_set_position(view, server->cursor->x - frac * nw,
 		server->cursor->y - frame_border(view) - frame_title(view) / 2);
 	server->grab_x = server->cursor->x - view->x;
 	server->grab_y = server->cursor->y - view->y;
 	/* The client hasn't committed its old size yet, so don't go by view->width. */
-	server->grab_target.width = view->saved.width;
-	server->grab_target.height = view->saved.height;
+	server->grab_target.width = w;
+	server->grab_target.height = h;
 	server->grab_geobox.width = nw;
-	server->grab_geobox.height = view->saved.height + frame_extra_h(view);
+	server->grab_geobox.height = h + frame_extra_h(view);
 }
 
 struct view *view_at(struct server *server, double lx, double ly,
@@ -1334,8 +1344,14 @@ static void xdg_request_show_window_menu(struct wl_listener *listener,
 {
 	struct view *view = wl_container_of(listener, view,
 		request_show_window_menu);
-	struct server *s = view->server;
-	menu_open_window(s, view, s->cursor->x, s->cursor->y);
+	struct wlr_xdg_toplevel_show_window_menu_event *event = data;
+	/* In answer to something the user just did to this window, since the menu takes
+	 * over the keyboard. */
+	if (!view->activated ||
+			!wlr_seat_client_validate_event_serial(event->seat, event->serial))
+		return;
+	menu_open_window(view->server, view, view->x + frame_left(view) + event->x,
+		view->y + frame_top(view) + event->y);
 }
 
 static void xdg_set_title(struct wl_listener *listener, void *data)

@@ -373,6 +373,8 @@ struct server {
 	struct wl_listener request_set_primary_selection;
 	struct wl_listener request_start_drag;
 	struct wl_listener start_drag;
+	struct wl_listener keyboard_grab_end;
+	bool refocus_after_grab; /* a focus change the keyboard grab held back */
 	/* Buttons a client has seen go down and not yet up. While there are any, the
 	 * pointer stays with that client: its implicit grab. */
 	uint32_t forwarded_buttons[16];
@@ -386,6 +388,7 @@ struct server {
 	struct wlr_box grab_geobox;
 	uint32_t resize_edges;
 	bool grab_until_click; /* move/size started from menu or keyboard */
+	uint32_t grab_button;  /* the press a drag or frame button goes by */
 	enum frame_part grab_part;
 	bool grab_outline;  /* wireframe: the window changes when the grab ends */
 	bool grab_detached; /* a move got going, past the drag threshold */
@@ -566,6 +569,8 @@ void process_cursor_motion(struct server *server, uint32_t time);
 void input_pointer_changed(struct server *server);
 /* Whether a client may start a move now: only with a button down that it got. */
 bool input_button_held(struct server *server);
+/* Gives the keyboard to a surface, without the keys mwc kept to itself. */
+void input_keyboard_enter(struct server *server, struct wlr_surface *surface);
 void spawn(const char *cmd);
 /* The same for a program by its path, which needs no quoting. */
 void spawn_file(const char *path);

@@ -137,12 +137,8 @@ void layers_arrange_all(struct server *server)
 
 static void give_keyboard(struct layer_surface *ls)
 {
-	struct wlr_seat *seat = ls->server->seat;
-	struct wlr_keyboard *kb = wlr_seat_get_keyboard(seat);
 	ls->server->focused_layer = ls->wlr;
-	wlr_seat_keyboard_notify_enter(seat, ls->wlr->surface,
-		kb ? kb->keycodes : NULL, kb ? kb->num_keycodes : 0,
-		kb ? &kb->modifiers : NULL);
+	input_keyboard_enter(ls->server, ls->wlr->surface);
 }
 
 /* Back to the window that had the focus, or to nobody. */
