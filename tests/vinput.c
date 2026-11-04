@@ -7,6 +7,7 @@
  *   key COMBO          press and release, e.g. "alt+F4", "shift+Escape", "q"
  *   hold|release MOD   keep alt, ctrl, shift or super down across commands
  *   caps on|off        lock or unlock Caps
+ *   wheel N            turn the wheel N steps
  *
  * Usage: vinput WIDTH HEIGHT (the size of the headless output)
  */
@@ -248,6 +249,13 @@ static const char *run_command(char *line)
 		return do_button(a, true, true);
 	if (strcmp(cmd, "key") == 0)
 		return do_key(a);
+	if (strcmp(cmd, "wheel") == 0 && a) {
+		zwlr_virtual_pointer_v1_axis_source(pointer, WL_POINTER_AXIS_SOURCE_WHEEL);
+		zwlr_virtual_pointer_v1_axis_discrete(pointer, now_msec(),
+			WL_POINTER_AXIS_VERTICAL_SCROLL, wl_fixed_from_int(15 * atoi(a)), atoi(a));
+		zwlr_virtual_pointer_v1_frame(pointer);
+		return NULL;
+	}
 	if (strcmp(cmd, "caps") == 0) {
 		locked_mods = strcmp(a, "on") == 0 ? 2 : 0; /* Lock is the second modifier */
 		zwp_virtual_keyboard_v1_modifiers(keyboard, held_mods, 0, locked_mods, 0);

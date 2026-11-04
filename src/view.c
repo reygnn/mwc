@@ -1489,6 +1489,7 @@ struct popup {
 	struct wlr_xdg_popup *xdg_popup;
 	struct wl_listener commit;
 	struct wl_listener reposition;
+	struct wl_listener unmap;
 	struct wl_listener destroy;
 };
 
@@ -1542,11 +1543,20 @@ static void popup_reposition(struct wl_listener *listener, void *data)
 	popup_unconstrain(popup);
 }
 
+/* A menu closing under a pointer that doesn't move: what is below has to get the pointer
+ * now, or the wheel goes nowhere until the next motion. */
+static void popup_unmap(struct wl_listener *listener, void *data)
+{
+	struct popup *popup = wl_container_of(listener, popup, unmap);
+	input_pointer_changed_soon(popup->server);
+}
+
 static void popup_destroy(struct wl_listener *listener, void *data)
 {
 	struct popup *popup = wl_container_of(listener, popup, destroy);
 	wl_list_remove(&popup->commit.link);
 	wl_list_remove(&popup->reposition.link);
+	wl_list_remove(&popup->unmap.link);
 	wl_list_remove(&popup->destroy.link);
 	free(popup);
 }
@@ -1578,6 +1588,8 @@ static void new_xdg_popup(struct wl_listener *listener, void *data)
 	wl_signal_add(&xdg_popup->base->surface->events.commit, &popup->commit);
 	popup->reposition.notify = popup_reposition;
 	wl_signal_add(&xdg_popup->events.reposition, &popup->reposition);
+	popup->unmap.notify = popup_unmap;
+	wl_signal_add(&xdg_popup->base->surface->events.unmap, &popup->unmap);
 	popup->destroy.notify = popup_destroy;
 	wl_signal_add(&xdg_popup->events.destroy, &popup->destroy);
 }

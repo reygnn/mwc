@@ -379,6 +379,7 @@ struct server {
 	struct wl_listener start_drag;
 	struct wl_listener keyboard_grab_end;
 	bool refocus_after_grab; /* a focus change the keyboard grab held back */
+	struct wl_event_source *pointer_refresh; /* pending, see input_pointer_changed_soon() */
 	/* Buttons a client has seen go down and not yet up. While there are any, the
 	 * pointer stays with that client: its implicit grab. */
 	uint32_t forwarded_buttons[16];
@@ -575,6 +576,9 @@ void cursor_set_name(struct server *server, const char *name);
 void process_cursor_motion(struct server *server, uint32_t time);
 /* What is under the pointer may have changed without it moving. */
 void input_pointer_changed(struct server *server);
+/* The same once wlroots is through with what it is doing, for a surface on its way out:
+ * until then the scene may still find it under the pointer. */
+void input_pointer_changed_soon(struct server *server);
 /* Whether a client may start a move now: only with a button down that it got. */
 bool input_button_held(struct server *server);
 /* Gives the keyboard to a surface, without the keys mwc kept to itself. */

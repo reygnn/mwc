@@ -502,6 +502,9 @@ int main(int argc, char *argv[])
 
 	/* wlroots asserts that nobody listens to an object it destroys. */
 	wl_display_destroy_clients(server.display);
+	/* Their popups may have asked for this, and nothing will run it any more. */
+	if (server.pointer_refresh)
+		wl_event_source_remove(server.pointer_refresh);
 	testhook_fini();
 	if (server.xwayland) {
 		wl_list_remove(&server.xwayland_ready.link);

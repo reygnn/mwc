@@ -174,6 +174,11 @@ static const struct xdg_popup_listener popup_listener = {
 	popup_configure, popup_done, popup_repositioned,
 };
 
+/* The menu last opened, for a client that closes it when an entry is chosen. */
+static struct wl_surface *item_surface, *pointer_surface;
+static struct xdg_surface *item_xdg;
+static struct xdg_popup *item_popup;
+
 static void open_grabbing_popup(uint32_t serial)
 {
 	struct wl_surface *s = wl_compositor_create_surface(compositor);
@@ -189,6 +194,9 @@ static void open_grabbing_popup(uint32_t serial)
 	xdg_popup_grab(popup, seat, serial);
 	xdg_positioner_destroy(p);
 	wl_surface_commit(s);
+	item_surface = s;
+	item_xdg = x;
+	item_popup = popup;
 	printf("popup-open\n");
 	if (!strcmp(mode, "popup-far")) {
 		wl_display_roundtrip(display);
@@ -267,6 +275,7 @@ static void ptr_enter(void *d, struct wl_pointer *p, uint32_t serial,
 	struct wl_surface *s, wl_fixed_t x, wl_fixed_t y)
 {
 	pointer_enter_serial = serial;
+	pointer_surface = s;
 	printf("enter\n");
 }
 
@@ -291,6 +300,18 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 	printf("button %u %s\n", button, down ? "down" : "up");
 	if (down)
 		press_serial = serial;
+	if (!strcmp(mode, "popup-item")) {
+		if (down && !item_surface) {
+			open_grabbing_popup(serial);
+		} else if (!down && item_surface && pointer_surface == item_surface) {
+			/* An entry was chosen. */
+			xdg_popup_destroy(item_popup);
+			xdg_surface_destroy(item_xdg);
+			wl_surface_destroy(item_surface);
+			item_surface = NULL;
+			printf("popup-closed\n");
+		}
+	}
 	if (down && (!strcmp(mode, "popup-grab") || !strcmp(mode, "popup-far")))
 		open_grabbing_popup(serial);
 	else if (down && !strcmp(mode, "drag"))
@@ -307,6 +328,7 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 
 static void ptr_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t a, wl_fixed_t v)
 {
+	printf("axis\n");
 }
 
 static const struct wl_pointer_listener pointer_listener = {
@@ -488,6 +510,7 @@ int main(int argc, char *argv[])
 	wl_display_roundtrip(display);
 	xdg_wm_base_add_listener(wm_base, &wm_listener, NULL);
 	bool logging = !strcmp(mode, "log") || !strcmp(mode, "popup-grab") ||
+		!strcmp(mode, "popup-item") ||
 		!strcmp(mode, "popup-far") ||
 		!strcmp(mode, "drag") || !strcmp(mode, "drop") ||
 		!strcmp(mode, "move-press") || !strcmp(mode, "move-late") ||

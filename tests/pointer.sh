@@ -242,6 +242,25 @@ saw "released outside everything, the menu closes" P '^popup-done'
 check "and that release opens nothing of ours" "[ \"\$(global menu open)\" = 0 ]"
 stop P
 
+# A menu closing by itself under a pointer that doesn't move: what is below gets the pointer
+# right away, or the wheel goes nowhere until the next motion. The menu lies at 111,111.
+client I popup-item
+focus_on I
+place I 100 100
+do_input move 120 120
+do_input click left
+saw "a click opens its menu" I '^popup-open'
+sleep 0.3
+do_input move 150 130
+sleep 0.3
+do_input click left
+saw "an entry is chosen, and the client closes the menu" I '^popup-closed'
+after_closed() { sed -n '/^popup-closed/,$p' "$SMOKE_DIR/I.log" | grep -q "$1"; }
+wait_for "without any motion, the window below has the pointer" after_closed '^enter'
+do_input wheel 2
+wait_for "and the wheel reaches it" after_closed '^axis'
+stop I
+
 # ---- drag and drop ----------------------------------------------------------------------
 
 client S drag

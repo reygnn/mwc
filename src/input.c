@@ -377,6 +377,20 @@ void input_pointer_changed(struct server *server)
 		process_cursor_motion(server, now_msec());
 }
 
+static void pointer_refresh_idle(void *data)
+{
+	struct server *server = data;
+	server->pointer_refresh = NULL;
+	input_pointer_changed(server);
+}
+
+void input_pointer_changed_soon(struct server *server)
+{
+	if (!server->pointer_refresh)
+		server->pointer_refresh = wl_event_loop_add_idle(server->event_loop,
+			pointer_refresh_idle, server);
+}
+
 bool input_button_held(struct server *server)
 {
 	return server->n_forwarded > 0;
