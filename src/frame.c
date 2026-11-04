@@ -122,11 +122,20 @@ void draw_text(cairo_t *cr, const char *text, const char *font,
 	cairo_clip(cr);
 	cairo_set_antialias(cr, CAIRO_ANTIALIAS_DEFAULT);
 
+	/* WM_NAME is Latin-1 by the book, and wlroots passes on its bytes. */
+	char *converted = NULL;
+	if (!g_utf8_validate(text, -1, NULL)) {
+		converted = g_convert(text, -1, "UTF-8", "ISO-8859-1", NULL, NULL, NULL);
+		if (converted)
+			text = converted;
+	}
+
 	PangoLayout *layout = pango_cairo_create_layout(cr);
 	PangoFontDescription *desc = pango_font_description_from_string(font);
 	pango_layout_set_font_description(layout, desc);
 	pango_font_description_free(desc);
 	pango_layout_set_text(layout, text, -1);
+	g_free(converted);
 	pango_layout_set_single_paragraph_mode(layout, true);
 	pango_layout_set_width(layout, (int)(w * PANGO_SCALE));
 	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);

@@ -102,6 +102,8 @@ static void publish_workarea(struct server *server)
 		return;
 	struct output *first = wl_container_of(server->outputs.prev, first, link);
 	wlr_xwayland_set_workareas(server->xwayland, &first->usable, 1);
+	/* wlroots leaves it in the queue, and idle clients would never hear of it. */
+	xcb_flush(wlr_xwayland_get_xwm_connection(server->xwayland));
 }
 
 void layer_publish_workarea(struct server *server)

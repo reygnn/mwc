@@ -402,6 +402,109 @@ stop roam
 stop maxed2
 finish
 
+# ---- X windows withdrawn and shown again, and what they change later --------------------
+
+begin
+said() { grep -q "^$2" "$SMOKE_DIR/$1.log"; }
+
+x11 drift pos=100,100 rehide=3
+wait_for "it has been hidden and shown three times" said drift 'reshown 3'
+check "it hasn't moved" "[ \"\$(get drift x)\" = 100 ] && [ \"\$(get drift y)\" = 100 ]"
+stop drift
+
+x11 fsdrop state=fullscreen rehide=1 rehide_drop=1 size=300x200
+wait_for "shown again without the state" said fsdrop 'reshown 1'
+check "it isn't fullscreen any longer" "[ \"\$(get fsdrop full)\" = 0 ] && [ \"\$(get fsdrop frame)\" = 1 ] && \
+	[ \"\$(get fsdrop w)\" = 300 ] && [ \"\$(get fsdrop h)\" = 200 ]"
+stop fsdrop
+
+# The window manager takes the states away from a withdrawn window itself, as EWMH says.
+x11 fsplain state=fullscreen rehide=1 size=300x200
+wait_for "shown again" said fsplain 'reshown 1'
+check "so it comes back without them" "[ \"\$(get fsplain full)\" = 0 ] && [ \"\$(get fsplain w)\" = 300 ]"
+stop fsplain
+
+# wlroots only forgets fullscreen that way. Maximized stays, for the window as well.
+x11 mxkeep state=maximized rehide=1 size=300x200
+wait_for "shown again" said mxkeep 'reshown 1'
+check "still maximized" "[ \"\$(get mxkeep max)\" = 1 ] && [ \$((\$(get mxkeep w) + 2 * B)) = 1280 ]"
+do_input key alt+F10
+check "and it can leave, for its own size" "[ \"\$(get mxkeep max)\" = 0 ] && [ \"\$(get mxkeep w)\" = 300 ]"
+stop mxkeep
+
+x11 minre rehide=1 rehide_ms=1500
+do_input key alt+F9
+check "minimized" "[ \"\$(get minre min)\" = 1 ]"
+wait_for "withdrawn as an icon and shown again" said minre 'reshown 1'
+check "it is a window again" "[ \"\$(get minre min)\" = 0 ] && [ \"\$(get minre active)\" = 1 ]"
+said minre 'wm_state 1' || fail "it still says it is an icon"
+echo "ok: and says so"
+stop minre
+
+x11 axisoff state=maximized script=-v,-h size=300x200
+wait_for "one axis taken back, then the other" said axisoff 'sent 1'
+check "the first ends it" "[ \"\$(get axisoff max)\" = 0 ] && [ \"\$(get axisoff w)\" = 300 ]"
+wait_for "the second" said axisoff 'sent 2'
+sleep 0.3
+check "and the second changes nothing" "[ \"\$(get axisoff max)\" = 0 ] && [ \"\$(get axisoff w)\" = 300 ]"
+stop axisoff
+x11 axison script=+v size=300x200
+check "one axis asked for is enough" "[ \"\$(get axison max)\" = 1 ] && [ \$((\$(get axison w) + 2 * B)) = 1280 ]"
+stop axison
+
+x11 selfocus dialog=selfd focus_main=1
+wait_for "a program moved the focus to its own other window" said selfocus 'focused main'
+check "and that one shows it" "[ \"\$(get selfocus active)\" = 1 ] && [ \"\$(get selfd active)\" = 0 ] && \
+	[ \"\$(get selfocus kbfocus)\" = 1 ]"
+stop selfocus
+
+x11 motifl motif_later=0
+wait_for "functions taken away after mapping" said motifl 'motif set'
+do_input key alt+F7
+check "no move any more" "[ \"\$(global cursor mode)\" = 0 ]"
+stop motifl
+
+do_input key super+t
+x11 hintl hints_later=300x200 size=300x200
+check "it tiles" "[ \"\$(get hintl tiled)\" = 1 ]"
+wait_for "fixed at a size after mapping" said hintl 'hints set'
+check "and floats" "[ \"\$(get hintl tiled)\" = 0 ]"
+stop hintl
+do_input key super+t
+
+x11 kidp dialog=kid dialog_ms=1500
+do_input key alt+F9
+check "the parent is an icon" "[ \"\$(get kidp min)\" = 1 ]"
+check "a dialog appearing now stays hidden" "[ \"\$(get kid hidden)\" = 1 ] && [ \"\$(get kid active)\" = 0 ]"
+refresh
+do_input move $(($(get kidp icon_x) + 30)) $(($(get kidp icon_y) + 30))
+do_input click left
+do_input click left
+check "and comes back with it" "[ \"\$(get kidp min)\" = 0 ] && [ \"\$(get kid hidden)\" = 0 ]"
+stop kidp
+
+x11 latin latin1_title=1
+sleep 0.5
+grep -aq 'Invalid UTF-8' "$LOG" && fail "a Latin-1 title reaches Pango as it is"
+echo "ok: a Latin-1 title is converted"
+stop latin
+
+x11 extents report=1
+wait_for "a program asks what is supported" said extents 'supported frame extents'
+said extents 'supported frame extents 1' || fail "_NET_FRAME_EXTENTS isn't listed"
+echo "ok: _NET_FRAME_EXTENTS is listed"
+stop extents
+
+x11 area workarea=1
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=top anchor=top,left,right size=0x30 exclusive=30 \
+	>"$SMOKE_DIR/panel.log" 2>&1 &
+PID_panel=$!
+wait_for "an idle X client hears of a panel" grep -q 'workarea 0 30 1280 690' "$SMOKE_DIR/area.log"
+kill "$PID_panel"
+wait "$PID_panel" 2>/dev/null
+stop area
+finish
+
 # A menu or a grab must not go on where there is no longer anything.
 export WLR_HEADLESS_OUTPUTS=3
 begin 3840 720

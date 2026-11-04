@@ -883,6 +883,7 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	if (view->fullscreen)
 		return;
 	/* The client's limits may have changed since it was mapped. */
+	xwayland_read_motif_hints(view);
 	view_update_properties(view);
 	if (mode == CURSOR_RESIZE &&
 			(view->maximized || !(view->funcs & FUNC_RESIZE)))
@@ -1073,6 +1074,9 @@ void view_handle_map(struct view *view)
 	view_update_properties(view);
 	wlr_scene_node_set_enabled(&view->tree->node, true);
 	view_update_content_pos(view);
+	/* A dialog of a window that is an icon by now comes back with it. */
+	struct view *parent = view_parent(view);
+	bool hide = parent && (parent->minimized || parent->hidden_with_parent);
 	if (view->placed)
 		view_set_position(view, view->x, view->y);
 	else if (!view->maximized && !view->fullscreen)
@@ -1080,8 +1084,14 @@ void view_handle_map(struct view *view)
 	frame_render(view);
 	views_update_layers(view->server);
 	struts_changed(view);
+	if (hide) {
+		view->hidden_with_parent = true;
+		view_show(view, false);
+	}
 	/* Into the layout before it gets the focus, so it doesn't jump. */
 	tile_arrange(view->server);
+	if (hide)
+		return;
 	if (view->wtype != WT_SPLASH)
 		view_focus(view);
 	else

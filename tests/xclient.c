@@ -32,6 +32,17 @@
  *     moveto=X,Y          once mapped, XMoveWindow there
  *     iconic=1            WM_HINTS with the initial state iconic
  *     normalize=1         once mapped, WM_CHANGE_STATE to NormalState
+ *     rehide=N            withdraw and map it again, N times; says "reshown N" each time,
+ *                         and what WM_STATE then is
+ *     rehide_ms=MS        wait that long before each, default 700
+ *     rehide_drop=1       delete _NET_WM_STATE while withdrawn, as a client may
+ *     script=+v,-h,...    once mapped, _NET_WM_STATE messages one at a time about the
+ *                         vertical or horizontal axis; says "sent N" each time
+ *     focus_main=1        once mapped, give the focus from the dialog to the main window
+ *     motif_later=FUNCS   once mapped, _MOTIF_WM_HINTS with only the functions set
+ *     hints_later=WxH     once mapped, the minimum and maximum size become this
+ *     latin1_title=1      a WM_NAME with bytes that are not UTF-8
+ *     dialog_ms=MS        wait that long before opening the dialog
  *     pulldown=1          a press posts an override-redirect menu and grabs the pointer,
  *                         as Motif does for press-drag-release; logs what follows
  */
@@ -76,6 +87,9 @@ struct options {
 	long motif_funcs, motif_decor;
 	bool has_motif;
 	bool no_input, workarea, clipboard, move_press, pulldown;
+	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h;
+	bool rehide_drop, focus_main, has_motif_later, latin1_title;
+	const char *script;
 	int moveresize;
 	bool has_moveto, iconic, normalize, report;
 	int moveto_x, moveto_y;
@@ -294,6 +308,25 @@ static void print_frame_extents(Window win)
 		XFree(data);
 }
 
+/* What a toolkit asks before it believes _NET_FRAME_EXTENTS. */
+static void print_supported(void)
+{
+	Atom type, wanted = XInternAtom(dpy, "_NET_FRAME_EXTENTS", False);
+	int format;
+	unsigned long n, after;
+	unsigned char *data = NULL;
+	bool found = false;
+	if (XGetWindowProperty(dpy, DefaultRootWindow(dpy),
+			XInternAtom(dpy, "_NET_SUPPORTED", False), 0, 1024, False, XA_ATOM, &type,
+			&format, &n, &after, &data) == Success && data) {
+		for (unsigned long i = 0; i < n; i++)
+			found |= ((Atom *)data)[i] == wanted;
+	}
+	if (data)
+		XFree(data);
+	printf("supported frame extents %d\n", found);
+}
+
 static void print_motif_wm(void)
 {
 	Atom info = XInternAtom(dpy, "_MOTIF_WM_INFO", False), type;
@@ -364,6 +397,25 @@ int main(int argc, char *argv[])
 			sscanf(v, "%d/%d", &o.aspect_n, &o.aspect_d);
 		else if (!strcmp(k, "type"))
 			o.type = v;
+		else if (!strcmp(k, "rehide"))
+			o.rehide = atoi(v);
+		else if (!strcmp(k, "rehide_ms"))
+			o.rehide_ms = atoi(v);
+		else if (!strcmp(k, "rehide_drop"))
+			o.rehide_drop = atoi(v);
+		else if (!strcmp(k, "script"))
+			o.script = v;
+		else if (!strcmp(k, "focus_main"))
+			o.focus_main = atoi(v);
+		else if (!strcmp(k, "motif_later")) {
+			o.motif_later = atoi(v);
+			o.has_motif_later = true;
+		} else if (!strcmp(k, "hints_later"))
+			sscanf(v, "%dx%d", &o.later_w, &o.later_h);
+		else if (!strcmp(k, "latin1_title"))
+			o.latin1_title = atoi(v);
+		else if (!strcmp(k, "dialog_ms"))
+			o.dialog_ms = atoi(v);
 		else if (!strcmp(k, "ask_before"))
 			o.ask_before = v;
 		else if (!strcmp(k, "ask_after"))
@@ -490,6 +542,10 @@ int main(int argc, char *argv[])
 	}
 	Window dialog_win = None;
 	if (o.dialog) {
+		if (o.dialog_ms) {
+			XSync(dpy, False);
+			usleep(o.dialog_ms * 1000);
+		}
 		struct options d = o;
 		d.has_pos = d.has_min = d.has_max = d.has_motif = false;
 		d.type = NULL;
@@ -506,6 +562,80 @@ int main(int argc, char *argv[])
 			CurrentTime);
 		XSync(dpy, False);
 		printf("owner\n");
+	}
+	if (o.latin1_title)
+		XStoreName(dpy, main_win, "M\xfcller \xc4rger");
+	if (o.script) {
+		int sent = 0;
+		for (const char *s = o.script; s[0] && s[1]; s += s[2] ? 3 : 2) {
+			XSync(dpy, False);
+			usleep(600000);
+			XEvent e = { 0 };
+			e.xclient.type = ClientMessage;
+			e.xclient.window = main_win;
+			e.xclient.message_type = XInternAtom(dpy, "_NET_WM_STATE", False);
+			e.xclient.format = 32;
+			e.xclient.data.l[0] = s[0] == '+';
+			e.xclient.data.l[1] = XInternAtom(dpy, s[1] == 'v' ?
+				"_NET_WM_STATE_MAXIMIZED_VERT" : "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+			XSendEvent(dpy, DefaultRootWindow(dpy), False,
+				SubstructureRedirectMask | SubstructureNotifyMask, &e);
+			XSync(dpy, False);
+			printf("sent %d\n", ++sent);
+		}
+	}
+	if (o.focus_main) {
+		XSync(dpy, False);
+		usleep(800000);
+		XSetInputFocus(dpy, main_win, RevertToParent, CurrentTime);
+		XSync(dpy, False);
+		printf("focused main\n");
+	}
+	if (o.has_motif_later) {
+		XSync(dpy, False);
+		usleep(500000);
+		long hints[5] = { 1 /* functions only */, o.motif_later, 0, 0, 0 };
+		Atom m = XInternAtom(dpy, "_MOTIF_WM_HINTS", False);
+		XChangeProperty(dpy, main_win, m, m, 32, PropModeReplace,
+			(unsigned char *)hints, 5);
+		XSync(dpy, False);
+		printf("motif set\n");
+	}
+	if (o.later_w) {
+		XSync(dpy, False);
+		usleep(800000);
+		XSizeHints sh = { .flags = PMinSize | PMaxSize, .min_width = o.later_w,
+			.min_height = o.later_h, .max_width = o.later_w, .max_height = o.later_h };
+		XSetWMNormalHints(dpy, main_win, &sh);
+		/* Something to commit, or the compositor never looks. */
+		XSetWindowBackground(dpy, main_win, 0x204060);
+		XClearWindow(dpy, main_win);
+		XSync(dpy, False);
+		printf("hints set\n");
+	}
+	for (int i = 0; i < o.rehide; i++) {
+		XSync(dpy, False);
+		usleep((o.rehide_ms ? o.rehide_ms : 700) * 1000);
+		XWithdrawWindow(dpy, main_win, DefaultScreen(dpy));
+		if (o.rehide_drop)
+			XDeleteProperty(dpy, main_win, XInternAtom(dpy, "_NET_WM_STATE", False));
+		XSync(dpy, False);
+		usleep(400000);
+		XMapWindow(dpy, main_win);
+		XSync(dpy, False);
+		usleep(300000);
+		Atom wm_state = XInternAtom(dpy, "WM_STATE", False), type;
+		int format;
+		unsigned long n, after;
+		unsigned char *data = NULL;
+		long state = -1;
+		if (XGetWindowProperty(dpy, main_win, wm_state, 0, 2, False, wm_state, &type,
+				&format, &n, &after, &data) == Success && data && n) {
+			state = *(long *)data;
+		}
+		if (data)
+			XFree(data);
+		printf("reshown %d\nwm_state %ld\n", i + 1, state);
 	}
 	XFlush(dpy);
 	printf("up\n");
@@ -555,8 +685,10 @@ int main(int argc, char *argv[])
 		case MapNotify:
 			/* Mapped: the window manager is there for sure. Xwayland starts on the
 			 * first connection, so it may not have been before. */
-			if (o.report)
+			if (o.report) {
 				print_motif_wm();
+				print_supported();
+			}
 			break;
 		case FocusIn:
 			printf("focus-in %s\n", e.xfocus.window == main_win ? "main" : "dialog");

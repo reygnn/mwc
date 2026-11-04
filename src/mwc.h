@@ -234,6 +234,9 @@ struct view {
 	struct wl_listener request_configure;
 	struct wl_listener request_activate;
 	struct wl_listener set_decorations;
+	struct wl_listener focus_in;
+	bool been_mapped;
+	int unmap_x, unmap_y; /* the X window's place when it was withdrawn */
 	struct wl_listener set_parent;
 	struct wl_listener set_window_type;
 	struct wl_listener set_strut_partial;
@@ -518,6 +521,9 @@ void outputs_config_changed(struct server *server);
 void xwayland_init(struct server *server);
 /* _NET_FRAME_EXTENTS, for an X11 window whose frame changed. */
 void xwayland_publish_frame_extents(struct view *view);
+/* _MOTIF_WM_HINTS once more. Blocks on the X server. wlroots only tells of changes to
+ * the decoration part, so this is for when the functions are about to matter. */
+void xwayland_read_motif_hints(struct view *view);
 
 /* ---- frame.c ------------------------------------------------------------ */
 

@@ -32,6 +32,8 @@ static void xw_commit(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, commit);
 	struct wlr_surface *s = view->xsurface->surface;
+	/* wlroots doesn't tell when WM_NORMAL_HINTS change. */
+	view_update_properties(view);
 	if (s->current.width == view->width &&
 			s->current.height == view->height)
 		return;
@@ -56,8 +58,10 @@ static void xw_commit(struct wl_listener *listener, void *data)
 
 /* wlroots parses only the decoration part of _MOTIF_WM_HINTS. Reading it here
  * blocks on the X server, as wlroots' own property reads do. */
-static void read_motif_hints(struct view *view)
+void xwayland_read_motif_hints(struct view *view)
 {
+	if (view->type != VIEW_XWAYLAND)
+		return;
 	struct server *server = view->server;
 	view->motif_flags = 0;
 	xcb_connection_t *conn = wlr_xwayland_get_xwm_connection(server->xwayland);
@@ -147,7 +151,7 @@ static void xw_map(struct wl_listener *listener, void *data)
 		xs->surface->current.height : xs->height;
 	view->ssd = true;
 	view->decorated = !view->fullscreen;
-	read_motif_hints(view);
+	xwayland_read_motif_hints(view);
 	view_update_properties(view);
 
 	/* As in mwm-x11: only a position the program or user insisted on counts,
@@ -158,20 +162,29 @@ static void xw_map(struct wl_listener *listener, void *data)
 	view->placed = view->wtype == WT_DOCK || view->wtype == WT_DESKTOP ||
 		(flags & XCB_ICCCM_SIZE_HINT_US_POSITION) ||
 		((flags & XCB_ICCCM_SIZE_HINT_P_POSITION) && (xs->x || xs->y));
-	if (view->placed)
+	/* Shown again, xs->x and y are still where the client sits inside its frame,
+	 * unless it asked for another place in the meantime. */
+	if (view->placed && (!view->been_mapped || xs->x != view->unmap_x ||
+			xs->y != view->unmap_y))
 		view_gravity_to_frame(view, xs->x, xs->y, view->width, view->height,
 			&view->x, &view->y);
+	view->been_mapped = true;
 
 	view->commit.notify = xw_commit;
 	wl_signal_add(&xs->surface->events.commit, &view->commit);
 	view_handle_map(view);
 
-	/* States it asked for before it was mapped. */
-	if (xs->fullscreen)
-		view_set_fullscreen(view, true);
-	else if (xs->maximized_horz || xs->maximized_vert)
-		view_set_maximized(view, true);
-	/* xterm -iconic and friends. */
+	/* States it asked for before it was mapped. Shown again, it may have given up
+	 * ones it had: wlroots forgets those with the property, which a withdrawn window
+	 * may delete, without telling. */
+	if (view->fullscreen != xs->fullscreen)
+		view_set_fullscreen(view, xs->fullscreen);
+	bool maximized = xs->maximized_horz || xs->maximized_vert;
+	if (!view->fullscreen && view->maximized != maximized)
+		view_set_maximized(view, maximized);
+	/* Not an icon any longer, whatever the properties still say... */
+	wlr_xwayland_surface_set_minimized(xs, view->hidden_with_parent);
+	/* ... unless it asks for that: xterm -iconic and friends. */
 	if (xs->hints && (xs->hints->flags & XCB_ICCCM_WM_HINT_STATE) &&
 			xs->hints->initial_state == XCB_ICCCM_WM_STATE_ICONIC)
 		view_minimize(view);
@@ -180,6 +193,8 @@ static void xw_map(struct wl_listener *listener, void *data)
 static void xw_unmap(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, unmap);
+	view->unmap_x = view->xsurface->x;
+	view->unmap_y = view->xsurface->y;
 	view_handle_unmap(view);
 	wl_list_remove(&view->commit.link);
 	wlr_scene_node_destroy(&view->content_tree->node);
@@ -223,6 +238,7 @@ static void xw_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&view->request_fullscreen.link);
 	wl_list_remove(&view->set_title.link);
 	wl_list_remove(&view->set_decorations.link);
+	wl_list_remove(&view->focus_in.link);
 	wl_list_remove(&view->set_parent.link);
 	wl_list_remove(&view->set_window_type.link);
 	wl_list_remove(&view->set_strut_partial.link);
@@ -302,7 +318,11 @@ static void xw_request_maximize(struct wl_listener *listener, void *data)
 	struct wlr_xwayland_surface *xs = view->xsurface;
 	if (!view->mapped)
 		return; /* xw_map reads it */
-	view_set_maximized(view, xs->maximized_horz || xs->maximized_vert);
+	/* There is no maximizing one way only: either axis asks for it, and either axis
+	 * going away ends it, as both are taken back then. */
+	view_set_maximized(view, view->maximized ?
+		xs->maximized_horz && xs->maximized_vert :
+		xs->maximized_horz || xs->maximized_vert);
 }
 
 static void xw_request_minimize(struct wl_listener *listener, void *data)
@@ -324,6 +344,15 @@ static void xw_request_fullscreen(struct wl_listener *listener, void *data)
 	view_set_fullscreen(view, view->xsurface->fullscreen);
 }
 
+/* wlroots lets a program move the focus between its own windows, which Java and Steam
+ * do, and only tells afterwards. Without following, the wrong window looks active. */
+static void xw_focus_in(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, focus_in);
+	if (view->mapped && !view->activated)
+		view_focus(view);
+}
+
 static void xw_set_title(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, set_title);
@@ -336,7 +365,7 @@ static void xw_set_decorations(struct wl_listener *listener, void *data)
 	struct view *view = wl_container_of(listener, view, set_decorations);
 	if (!view->mapped)
 		return; /* xw_map reads them */
-	read_motif_hints(view);
+	xwayland_read_motif_hints(view);
 	view_update_properties(view);
 }
 
@@ -435,6 +464,7 @@ static struct view *new_managed(struct server *server, struct wlr_xwayland_surfa
 	LISTEN(request_fullscreen, request_fullscreen, xw_request_fullscreen);
 	LISTEN(set_title, set_title, xw_set_title);
 	LISTEN(set_decorations, set_decorations, xw_set_decorations);
+	LISTEN(focus_in, focus_in, xw_focus_in);
 	LISTEN(set_parent, set_parent, xw_set_parent);
 	LISTEN(set_window_type, set_window_type, xw_set_window_type);
 	LISTEN(set_strut_partial, set_strut_partial, xw_set_strut_partial);
@@ -618,6 +648,23 @@ static void publish_motif_info(struct server *server, xcb_connection_t *conn)
 	xcb_flush(conn);
 }
 
+/* wlroots' list leaves out what it doesn't handle itself, and toolkits check it before
+ * they believe a property. Qt and GDK do for _NET_FRAME_EXTENTS. */
+static void publish_supported(xcb_connection_t *conn)
+{
+	xcb_screen_t *screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data;
+	const xcb_atom_t atoms[] = {
+		intern_atom(conn, "_NET_FRAME_EXTENTS"),
+		intern_atom(conn, "_NET_WORKAREA"),
+		intern_atom(conn, "_NET_WM_STRUT_PARTIAL"),
+		intern_atom(conn, "_NET_WM_WINDOW_TYPE"),
+	};
+	xcb_change_property(conn, XCB_PROP_MODE_APPEND, screen->root,
+		intern_atom(conn, "_NET_SUPPORTED"), XCB_ATOM_ATOM, 32,
+		sizeof(atoms) / sizeof(*atoms), atoms);
+	xcb_flush(conn);
+}
+
 static void xwayland_ready(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server,
@@ -629,6 +676,7 @@ static void xwayland_ready(struct wl_listener *listener, void *data)
 	server->atom_motif_info = intern_atom(conn, "_MOTIF_WM_INFO");
 	server->atom_frame_extents = intern_atom(conn, "_NET_FRAME_EXTENTS");
 	publish_motif_info(server, conn);
+	publish_supported(conn);
 	server->atom_net_wm_state = intern_atom(conn, "_NET_WM_STATE");
 	server->atom_state_above = intern_atom(conn, "_NET_WM_STATE_ABOVE");
 	server->atom_state_below = intern_atom(conn, "_NET_WM_STATE_BELOW");
