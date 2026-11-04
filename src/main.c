@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <unistd.h>
 #include <wlr/backend.h>
@@ -68,6 +69,144 @@ static void output_destroy(struct wl_listener *listener, void *data)
 	free(output);
 }
 
+/* Mwm*NAME*outputMode: WIDTHxHEIGHT or WIDTHxHEIGHT@HZ. The highest refresh rate if
+ * none is given. A backend without a mode list, nested or headless, takes any size. */
+static bool configure_mode(struct wlr_output *o, struct wlr_output_state *state)
+{
+	const char *value = config_get_for(o->name, "outputMode");
+	if (!value)
+		return false;
+	int w, h, consumed = 0;
+	double hz = 0;
+	if (sscanf(value, "%dx%d%n", &w, &h, &consumed) != 2 || w <= 0 || h <= 0 ||
+			(value[consumed] && (sscanf(value + consumed, "@%lf", &hz) != 1 ||
+			hz <= 0))) {
+		wlr_log(WLR_ERROR, "ignoring outputMode \"%s\" for %s: expected "
+			"WIDTHxHEIGHT or WIDTHxHEIGHT@HZ", value, o->name);
+		return false;
+	}
+	if (wl_list_empty(&o->modes)) {
+		wlr_output_state_set_custom_mode(state, w, h, (int)(hz * 1000));
+		return true;
+	}
+	struct wlr_output_mode *best = NULL, *m;
+	wl_list_for_each(m, &o->modes, link) {
+		if (m->width != w || m->height != h)
+			continue;
+		/* Within half a Hz: 59.94 is what most people mean by 60. */
+		if (hz > 0 && abs(m->refresh - (int)(hz * 1000)) > 500)
+			continue;
+		if (!best || m->refresh > best->refresh)
+			best = m;
+	}
+	if (!best) {
+		wlr_log(WLR_ERROR, "ignoring outputMode \"%s\": %s has no such mode",
+			value, o->name);
+		return false;
+	}
+	wlr_output_state_set_mode(state, best);
+	return true;
+}
+
+static void configure_scale(struct wlr_output *o, struct wlr_output_state *state)
+{
+	const char *value = config_get_for(o->name, "outputScale");
+	char *end;
+	double scale = value ? strtod(value, &end) : 1;
+	if (value && (end == value || *end || scale <= 0 || scale > 10)) {
+		wlr_log(WLR_ERROR, "ignoring outputScale \"%s\" for %s", value, o->name);
+		scale = 1;
+	}
+	wlr_output_state_set_scale(state, scale);
+}
+
+static void configure_transform(struct wlr_output *o, struct wlr_output_state *state)
+{
+	static const struct {
+		const char *name;
+		enum wl_output_transform transform;
+	} table[] = {
+		{ "normal", WL_OUTPUT_TRANSFORM_NORMAL },
+		{ "90", WL_OUTPUT_TRANSFORM_90 },
+		{ "180", WL_OUTPUT_TRANSFORM_180 },
+		{ "270", WL_OUTPUT_TRANSFORM_270 },
+		{ "flipped", WL_OUTPUT_TRANSFORM_FLIPPED },
+		{ "flipped-90", WL_OUTPUT_TRANSFORM_FLIPPED_90 },
+		{ "flipped-180", WL_OUTPUT_TRANSFORM_FLIPPED_180 },
+		{ "flipped-270", WL_OUTPUT_TRANSFORM_FLIPPED_270 },
+	};
+	const char *value = config_get_for(o->name, "outputTransform");
+	enum wl_output_transform transform = WL_OUTPUT_TRANSFORM_NORMAL;
+	if (value) {
+		bool known = false;
+		for (size_t i = 0; i < sizeof(table) / sizeof(*table) && !known; i++) {
+			if (!strcasecmp(table[i].name, value)) {
+				transform = table[i].transform;
+				known = true;
+			}
+		}
+		if (!known)
+			wlr_log(WLR_ERROR, "ignoring outputTransform \"%s\" for %s", value,
+				o->name);
+	}
+	wlr_output_state_set_transform(state, transform);
+}
+
+/* Commits what mwmrc says about this output. Its mode may not be possible, nor the
+ * preferred one, two 4K monitors on one link say, so the others get their turn. */
+static bool output_commit_config(struct wlr_output *o)
+{
+	struct wlr_output_state state;
+	wlr_output_state_init(&state);
+	wlr_output_state_set_enabled(&state, true);
+	configure_scale(o, &state);
+	configure_transform(o, &state);
+	bool configured = configure_mode(o, &state);
+	struct wlr_output_mode *preferred = wlr_output_preferred_mode(o);
+	if (!configured && preferred)
+		wlr_output_state_set_mode(&state, preferred);
+	if (!wlr_output_test_state(o, &state)) {
+		if (configured)
+			wlr_log(WLR_ERROR, "output %s can't do what mwmrc asks", o->name);
+		if (preferred)
+			wlr_output_state_set_mode(&state, preferred);
+		if (!wlr_output_test_state(o, &state)) {
+			struct wlr_output_mode *m;
+			wl_list_for_each(m, &o->modes, link) {
+				wlr_output_state_set_mode(&state, m);
+				if (wlr_output_test_state(o, &state))
+					break;
+			}
+		}
+	}
+	bool ok = wlr_output_commit_state(o, &state);
+	wlr_output_state_finish(&state);
+	return ok;
+}
+
+/* Mwm*NAME*outputPosition: X,Y. Otherwise the next free place in the row. */
+static struct wlr_output_layout_output *output_place(struct server *server,
+	struct wlr_output *o)
+{
+	const char *value = config_get_for(o->name, "outputPosition");
+	int x, y, consumed = 0;
+	if (value) {
+		if (sscanf(value, "%d,%d%n", &x, &y, &consumed) == 2 && !value[consumed])
+			return wlr_output_layout_add(server->output_layout, o, x, y);
+		wlr_log(WLR_ERROR, "ignoring outputPosition \"%s\" for %s", value, o->name);
+	}
+	return wlr_output_layout_add_auto(server->output_layout, o);
+}
+
+void outputs_config_changed(struct server *server)
+{
+	struct output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		output_commit_config(output->wlr_output);
+		output_place(server, output->wlr_output);
+	}
+}
+
 static void new_output(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server, new_output);
@@ -75,29 +214,17 @@ static void new_output(struct wl_listener *listener, void *data)
 
 	wlr_output_init_render(wlr_output, server->allocator, server->renderer);
 
-	struct wlr_output_state state;
-	wlr_output_state_init(&state);
-	wlr_output_state_set_enabled(&state, true);
-	struct wlr_output_mode *mode = wlr_output_preferred_mode(wlr_output);
-	if (mode)
-		wlr_output_state_set_mode(&state, mode);
-	/* The preferred mode may not be possible, two 4K monitors on one link say. */
-	if (!wlr_output_test_state(wlr_output, &state)) {
-		struct wlr_output_mode *m;
-		wl_list_for_each(m, &wlr_output->modes, link) {
-			wlr_output_state_set_mode(&state, m);
-			if (wlr_output_test_state(wlr_output, &state)) {
-				mode = m;
-				break;
-			}
-		}
-	}
-	if (!wlr_output_commit_state(wlr_output, &state)) {
+	/* Its name and modes are what mwmrc needs, and nowhere else to be seen. */
+	wlr_log(WLR_INFO, "new output %s", wlr_output->name);
+	struct wlr_output_mode *known;
+	wl_list_for_each(known, &wlr_output->modes, link)
+		wlr_log(WLR_INFO, "  mode %dx%d@%.3f", known->width, known->height,
+			known->refresh / 1000.0);
+
+	if (!output_commit_config(wlr_output)) {
 		wlr_log(WLR_ERROR, "no usable mode for output %s", wlr_output->name);
-		wlr_output_state_finish(&state);
 		return;
 	}
-	wlr_output_state_finish(&state);
 
 	struct output *output = calloc(1, sizeof(*output));
 	output->server = server;
@@ -117,8 +244,7 @@ static void new_output(struct wl_listener *listener, void *data)
 	wlr_scene_node_set_enabled(&output->background->node, !theme.root_none);
 	wl_list_insert(&server->outputs, &output->link);
 
-	struct wlr_output_layout_output *lo =
-		wlr_output_layout_add_auto(server->output_layout, wlr_output);
+	struct wlr_output_layout_output *lo = output_place(server, wlr_output);
 	struct wlr_scene_output *so = wlr_scene_output_create(server->scene,
 		wlr_output);
 	wlr_scene_output_layout_add_output(server->scene_layout, lo, so);
@@ -181,6 +307,19 @@ static const char *pick_terminal(void)
 			return candidates[i];
 	}
 	return "xterm";
+}
+
+/* D-Bus-activated services, such as gnome-terminal's server and the desktop portals,
+ * don't inherit from mwc. In a real session only: nested, this would point the session
+ * around it at mwc. */
+static void export_activation_environment(struct server *server)
+{
+	if (!server->session)
+		return;
+	setenv("XDG_SESSION_TYPE", "wayland", true);
+	if (in_path("dbus-update-activation-environment"))
+		spawn("dbus-update-activation-environment --systemd WAYLAND_DISPLAY "
+			"DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE");
 }
 
 static void run_autostart(const char *startup_cmd)
@@ -348,6 +487,10 @@ int main(int argc, char *argv[])
 	setenv("XDG_CURRENT_DESKTOP", "mwc", true);
 	/* Ask toolkits for server-side decorations where they support it. */
 	setenv("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1", true);
+	/* Java under Xwayland draws grey windows and misplaces popups on a window
+	 * manager that doesn't reparent, unless told. Not forced on anyone who set it. */
+	setenv("_JAVA_AWT_WM_NONREPARENTING", "1", false);
+	export_activation_environment(&server);
 	wlr_log(WLR_INFO, "mwc running on WAYLAND_DISPLAY=%s, terminal: %s",
 		socket, server.terminal);
 

@@ -24,6 +24,8 @@
  *     clipboard=1         own CLIPBOARD and answer with 200 KB of text
  *     moveresize=2        map it, then ask for _NET_WM_MOVERESIZE with no button down
  *     move_press=1        a press asks for _NET_WM_MOVERESIZE, as toolkits do
+ *     report=1            print _NET_FRAME_EXTENTS as it changes, and whether a Motif
+ *                         window manager can be found, as XmIsMotifWMRunning looks
  *     moveto=X,Y          once mapped, XMoveWindow there
  *     iconic=1            WM_HINTS with the initial state iconic
  *     normalize=1         once mapped, WM_CHANGE_STATE to NormalState
@@ -54,7 +56,7 @@ struct options {
 	bool has_motif;
 	bool no_input, workarea, clipboard, move_press, pulldown;
 	int moveresize;
-	bool has_moveto, iconic, normalize;
+	bool has_moveto, iconic, normalize, report;
 	int moveto_x, moveto_y;
 	const char *override;
 	long strut[4];
@@ -97,6 +99,8 @@ static Window create_window(const struct options *o, const char *class,
 	};
 	if (o->move_press || o->pulldown)
 		a.event_mask |= ButtonPressMask | ButtonReleaseMask;
+	if (o->report)
+		a.event_mask |= PropertyChangeMask;
 	Window win = XCreateWindow(dpy, DefaultRootWindow(dpy), o->x, o->y, o->w, o->h,
 		0, CopyFromParent, InputOutput, CopyFromParent,
 		CWBackPixel | CWEventMask, &a);
@@ -253,6 +257,45 @@ static void answer_selection(XSelectionRequestEvent *r)
 	XFlush(dpy);
 }
 
+static void print_frame_extents(Window win)
+{
+	Atom type;
+	int format;
+	unsigned long n, after;
+	unsigned char *data = NULL;
+	if (XGetWindowProperty(dpy, win, XInternAtom(dpy, "_NET_FRAME_EXTENTS", False), 0, 4,
+			False, XA_CARDINAL, &type, &format, &n, &after, &data) == Success &&
+			data && n == 4) {
+		long *e = (long *)data;
+		printf("frame-extents %ld %ld %ld %ld\n", e[0], e[1], e[2], e[3]);
+	}
+	if (data)
+		XFree(data);
+}
+
+static void print_motif_wm(void)
+{
+	Atom info = XInternAtom(dpy, "_MOTIF_WM_INFO", False), type;
+	int format;
+	unsigned long n, after;
+	unsigned char *data = NULL;
+	bool running = false;
+	if (XGetWindowProperty(dpy, DefaultRootWindow(dpy), info, 0, 2, False, info, &type,
+			&format, &n, &after, &data) == Success && data && n == 2) {
+		Window wm = ((long *)data)[1], root, parent, *kids = NULL;
+		unsigned int count = 0;
+		if (XQueryTree(dpy, DefaultRootWindow(dpy), &root, &parent, &kids, &count)) {
+			for (unsigned int i = 0; i < count; i++)
+				running |= kids[i] == wm;
+			if (kids)
+				XFree(kids);
+		}
+	}
+	if (data)
+		XFree(data);
+	printf("motif-wm %s\n", running ? "running" : "absent");
+}
+
 static void print_workarea(void)
 {
 	Atom type;
@@ -320,6 +363,8 @@ int main(int argc, char *argv[])
 			o.moveresize = atoi(v);
 		else if (!strcmp(k, "clipboard"))
 			o.clipboard = atoi(v);
+		else if (!strcmp(k, "report"))
+			o.report = atoi(v);
 		else if (!strcmp(k, "moveto"))
 			o.has_moveto = sscanf(v, "%d,%d", &o.moveto_x, &o.moveto_y) == 2;
 		else if (!strcmp(k, "iconic"))
@@ -470,6 +515,12 @@ int main(int argc, char *argv[])
 			printf("motion %s %d,%d\n", e.xmotion.window == main_win ? "main" :
 				"menu", e.xmotion.x_root, e.xmotion.y_root);
 			break;
+		case MapNotify:
+			/* Mapped: the window manager is there for sure. Xwayland starts on the
+			 * first connection, so it may not have been before. */
+			if (o.report)
+				print_motif_wm();
+			break;
 		case FocusIn:
 			printf("focus-in %s\n", e.xfocus.window == main_win ? "main" : "dialog");
 			break;
@@ -477,6 +528,9 @@ int main(int argc, char *argv[])
 			answer_selection(&e.xselectionrequest);
 			break;
 		case PropertyNotify:
+			if (o.report && e.xproperty.atom ==
+					XInternAtom(dpy, "_NET_FRAME_EXTENTS", False))
+				print_frame_extents(main_win);
 			if (o.workarea && e.xproperty.atom ==
 					XInternAtom(dpy, "_NET_WORKAREA", False))
 				print_workarea();

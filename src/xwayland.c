@@ -119,6 +119,21 @@ static void read_initial_state(struct view *view)
 	free(reply);
 }
 
+void xwayland_publish_frame_extents(struct view *view)
+{
+	struct server *server = view->server;
+	if (view->type != VIEW_XWAYLAND || !server->atom_frame_extents)
+		return;
+	xcb_connection_t *conn = wlr_xwayland_get_xwm_connection(server->xwayland);
+	if (!conn)
+		return;
+	uint32_t b = frame_border(view), t = frame_title(view);
+	const uint32_t extents[4] = { b, b, b + t, b }; /* left, right, top, bottom */
+	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, view->xsurface->window_id,
+		server->atom_frame_extents, XCB_ATOM_CARDINAL, 32, 4, extents);
+	xcb_flush(conn);
+}
+
 static void xw_map(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, map);
@@ -139,6 +154,7 @@ static void xw_map(struct wl_listener *listener, void *data)
 	 * and panels know where they belong. */
 	const xcb_size_hints_t *sh = xs->size_hints;
 	uint32_t flags = sh ? sh->flags : 0;
+	xwayland_publish_frame_extents(view);
 	view->placed = view->wtype == WT_DOCK || view->wtype == WT_DESKTOP ||
 		(flags & XCB_ICCCM_SIZE_HINT_US_POSITION) ||
 		((flags & XCB_ICCCM_SIZE_HINT_P_POSITION) && (xs->x || xs->y));
@@ -584,6 +600,25 @@ static uint32_t intern_atom(xcb_connection_t *conn, const char *name)
 	return atom;
 }
 
+/* Motif applications look for this to know a window manager like mwm is running: a
+ * property on the root naming a window that is a child of the root. The window goes
+ * with our connection, when Xwayland exits. */
+static void publish_motif_info(struct server *server, xcb_connection_t *conn)
+{
+	xcb_screen_t *screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data;
+	xcb_window_t window = xcb_generate_id(conn);
+	const uint32_t values[] = { 1 }; /* override-redirect */
+	xcb_create_window(conn, XCB_COPY_FROM_PARENT, window, screen->root, -10, -10, 1, 1,
+		0, XCB_WINDOW_CLASS_INPUT_ONLY, XCB_COPY_FROM_PARENT, XCB_CW_OVERRIDE_REDIRECT,
+		values);
+	const uint32_t info[2] = { 2 /* MWM_INFO_STARTUP_CUSTOM */, window };
+	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, screen->root,
+		server->atom_motif_info, server->atom_motif_info, 32, 2, info);
+	xcb_change_property(conn, XCB_PROP_MODE_REPLACE, window, server->atom_motif_info,
+		server->atom_motif_info, 32, 2, info);
+	xcb_flush(conn);
+}
+
 static void xwayland_ready(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server,
@@ -592,6 +627,9 @@ static void xwayland_ready(struct wl_listener *listener, void *data)
 
 	xcb_connection_t *conn = wlr_xwayland_get_xwm_connection(server->xwayland);
 	server->atom_motif_hints = intern_atom(conn, "_MOTIF_WM_HINTS");
+	server->atom_motif_info = intern_atom(conn, "_MOTIF_WM_INFO");
+	server->atom_frame_extents = intern_atom(conn, "_NET_FRAME_EXTENTS");
+	publish_motif_info(server, conn);
 	server->atom_net_wm_state = intern_atom(conn, "_NET_WM_STATE");
 	server->atom_state_above = intern_atom(conn, "_NET_WM_STATE_ABOVE");
 	server->atom_state_below = intern_atom(conn, "_NET_WM_STATE_BELOW");

@@ -19,6 +19,7 @@
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
@@ -934,23 +935,34 @@ static void keyboard_destroy(struct wl_listener *listener, void *data)
 	free(kb);
 }
 
-static void new_keyboard(struct server *server, struct wlr_input_device *dev)
+/* The environment over mwmrc, as for the other settings. A NULL field is what makes
+ * xkbcommon look at XKB_DEFAULT_*. */
+static const char *keyboard_setting(const char *env, const char *resource)
 {
-	struct wlr_keyboard *wlr_kb = wlr_keyboard_from_input_device(dev);
-	struct keyboard *kb = calloc(1, sizeof(*kb));
-	kb->server = server;
-	kb->wlr_keyboard = wlr_kb;
+	const char *value = getenv(env);
+	return value && *value ? NULL : config_get(resource);
+}
 
-	/* Layout from the usual XKB_DEFAULT_* environment variables. */
+static void apply_keymap(struct wlr_keyboard *wlr_kb)
+{
+	const struct xkb_rule_names names = {
+		.model = keyboard_setting("XKB_DEFAULT_MODEL", "keyboardModel"),
+		.layout = keyboard_setting("XKB_DEFAULT_LAYOUT", "keyboardLayout"),
+		.variant = keyboard_setting("XKB_DEFAULT_VARIANT", "keyboardVariant"),
+		.options = keyboard_setting("XKB_DEFAULT_OPTIONS", "keyboardOptions"),
+	};
 	struct xkb_context *ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	struct xkb_keymap *keymap = xkb_keymap_new_from_names(ctx, NULL,
+	struct xkb_keymap *keymap = xkb_keymap_new_from_names(ctx, &names,
 		XKB_KEYMAP_COMPILE_NO_FLAGS);
 	xkb_context_unref(ctx);
-	if (!keymap) {
+	if (keymap) {
+		wlr_log(WLR_INFO, "keymap compiled, layout %s",
+			xkb_keymap_layout_get_name(keymap, 0));
+	} else {
 		/* A typo in the layout must not cost the keyboard, let alone the
-		 * session. Without the environment this time, it is what failed. */
-		wlr_log(WLR_ERROR, "cannot compile the keymap from XKB_DEFAULT_*, "
-			"falling back to the us layout");
+		 * session. Without the environment this time, it may be what failed. */
+		wlr_log(WLR_ERROR, "cannot compile the keymap, falling back to the "
+			"us layout");
 		const struct xkb_rule_names us = { .layout = "us" };
 		ctx = xkb_context_new(XKB_CONTEXT_NO_ENVIRONMENT_NAMES);
 		keymap = xkb_keymap_new_from_names(ctx, &us,
@@ -961,6 +973,26 @@ static void new_keyboard(struct server *server, struct wlr_input_device *dev)
 		wlr_keyboard_set_keymap(wlr_kb, keymap);
 		xkb_keymap_unref(keymap);
 	}
+}
+
+void input_config_changed(struct server *server)
+{
+	struct keyboard *kb;
+	wl_list_for_each(kb, &server->keyboards, link) {
+		/* A virtual keyboard brought its own keymap. */
+		if (!wlr_input_device_get_virtual_keyboard(&kb->wlr_keyboard->base))
+			apply_keymap(kb->wlr_keyboard);
+	}
+}
+
+static void new_keyboard(struct server *server, struct wlr_input_device *dev)
+{
+	struct wlr_keyboard *wlr_kb = wlr_keyboard_from_input_device(dev);
+	struct keyboard *kb = calloc(1, sizeof(*kb));
+	kb->server = server;
+	kb->wlr_keyboard = wlr_kb;
+
+	apply_keymap(wlr_kb);
 	wlr_keyboard_set_repeat_info(wlr_kb, 25, 600);
 
 	kb->modifiers.notify = keyboard_modifiers;

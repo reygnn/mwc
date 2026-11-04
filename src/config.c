@@ -9,6 +9,10 @@
  *   Mwm*rootBackground:            #5b7792
  *   Mwm*wallpaper:                 ~/pictures/desk.png
  *   Mwm*moveOpaque:                true       drag windows, not an outline
+ *   Mwm*keyboardLayout:            de         also keyboardVariant, keyboardOptions,
+ *                                             keyboardModel
+ *   Mwm*DP-1*outputMode:           3440x1440@144
+ *   Mwm*DP-1*outputScale:          1.5        also outputTransform, outputPosition
  *   Mwm*tiling:                    true       start in tiling mode
  *   Mwm*tileMainWidth:             60         the main window's share, in %
  *   Mwm*DoNotTile:                 Navigator  Firefox floats in tiling mode
@@ -190,6 +194,17 @@ const char *config_get(const char *resource)
 	return v;
 }
 
+const char *config_get_for(const char *client, const char *resource)
+{
+	const char *v = NULL;
+	for (int i = 0; i < n_rules; i++) {
+		if (rules[i].client && strcasecmp(rules[i].client, client) == 0 &&
+				strcasecmp(rules[i].resource, resource) == 0)
+			v = rules[i].value;
+	}
+	return v;
+}
+
 /* rgb:r/g/b with 1 to 4 hex digits per channel, as XParseColor reads it. */
 static bool parse_rgb_form(const char *value, struct mwc_color *out)
 {
@@ -331,6 +346,8 @@ void config_reload(struct server *server)
 	config_load();
 	theme_init();
 	wallpaper_init(server);
+	input_config_changed(server);
+	outputs_config_changed(server);
 
 	const float c[4] = { theme.root.r, theme.root.g, theme.root.b, 1 };
 	struct output *output;

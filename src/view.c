@@ -614,6 +614,7 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 			/* Fullscreen windows lose their frame for the duration. */
 			view->decorated = false;
 			view_update_content_pos(view);
+			xwayland_publish_frame_extents(view);
 			frame_render(view);
 			view_set_geometry(view, a.x, a.y, a.width, a.height);
 			view_focus(view);
@@ -622,6 +623,7 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 			views_update_layers(view->server);
 			view->decorated = view->ssd;
 			view_update_content_pos(view);
+			xwayland_publish_frame_extents(view);
 			if (view->tile_back && view->server->tiling)
 				tile_arrange(view->server); /* places it, saved untouched */
 			if (!view->tiled) {
@@ -810,6 +812,7 @@ void view_frame_changed(struct view *view)
 	else
 		xwayland_configure(view);
 	frame_render(view);
+	xwayland_publish_frame_extents(view);
 }
 
 void view_theme_changed(struct view *view)
@@ -1514,6 +1517,22 @@ static void new_xdg_popup(struct wl_listener *listener, void *data)
 
 /* ---- decorations -------------------------------------------------------- */
 
+/* Whether it gets a frame can change at any time, GTK3 says so only after its first
+ * configure: what fills an area has to make room for the frame or take the room back. */
+static void view_decoration_changed(struct view *view)
+{
+	view->decorated = view->ssd && !view->fullscreen;
+	if (view->mapped) {
+		view_update_properties(view);
+		view_frame_changed(view);
+	} else if (view->xdg_toplevel->base->initialized && view->maximized) {
+		struct wlr_box a = output_usable_area(view->server, view->x + 1, view->y + 1);
+		int w = a.width - frame_extra_w(view), h = a.height - frame_extra_h(view);
+		view_apply_size_hints(view, &w, &h, false);
+		view_send_size(view, w, h);
+	}
+}
+
 /* We always ask for server-side decorations. */
 static void deco_request_mode(struct wl_listener *listener, void *data)
 {
@@ -1529,11 +1548,7 @@ static void deco_destroy(struct wl_listener *listener, void *data)
 	if (deco->view) {
 		deco->view->deco = NULL;
 		deco->view->ssd = false;
-		deco->view->decorated = false;
-		if (deco->view->mapped) {
-			frame_render(deco->view);
-			view_update_content_pos(deco->view);
-		}
+		view_decoration_changed(deco->view);
 	}
 	wl_list_remove(&deco->request_mode.link);
 	wl_list_remove(&deco->destroy.link);
@@ -1559,14 +1574,10 @@ static void new_xdg_decoration(struct wl_listener *listener, void *data)
 
 	view->deco = deco;
 	view->ssd = true;
-	view->decorated = !view->fullscreen;
 	if (wlr->toplevel->base->initialized)
 		wlr_xdg_toplevel_decoration_v1_set_mode(wlr,
 			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
-	if (view->mapped) {
-		view_update_content_pos(view);
-		frame_render(view);
-	}
+	view_decoration_changed(view);
 }
 
 /* KDE's older protocol, still used by GTK3 to decide against CSD. */
@@ -1589,11 +1600,7 @@ static void kde_deco_mode(struct wl_listener *listener, void *data)
 		return; /* xdg-decoration takes precedence */
 	view->ssd = deco->wlr->mode ==
 		WLR_SERVER_DECORATION_MANAGER_MODE_SERVER;
-	view->decorated = view->ssd && !view->fullscreen;
-	if (view->mapped) {
-		view_update_content_pos(view);
-		frame_render(view);
-	}
+	view_decoration_changed(view);
 }
 
 static void kde_deco_destroy(struct wl_listener *listener, void *data)

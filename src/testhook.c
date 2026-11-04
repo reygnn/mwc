@@ -16,6 +16,7 @@
 #include <string.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
@@ -104,6 +105,13 @@ static int dump_state(int signal, void *data)
 	wl_list_for_each(um, &server->unmanaged, link)
 		unmanaged += um->tree != NULL;
 	fprintf(f, "unmanaged count=%d\n", unmanaged);
+	struct output *each;
+	wl_list_for_each(each, &server->outputs, link) {
+		struct wlr_box b;
+		wlr_output_layout_get_box(server->output_layout, each->wlr_output, &b);
+		fprintf(f, "output_%s x=%d y=%d w=%d h=%d scale=%d\n", each->wlr_output->name,
+			b.x, b.y, b.width, b.height, (int)(each->wlr_output->scale * 100));
+	}
 	fprintf(f, "tiling on=%d\n", server->tiling);
 	int focused = 0;
 	wl_list_for_each(v, &server->views, link)

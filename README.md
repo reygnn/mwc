@@ -61,7 +61,8 @@ end the session, which is worth running against a sanitizer build too:
         ASAN_OPTIONS=detect_leaks=0 make test
 
 `make state-test` tries orderings of window states, and `make misc-test` key bindings,
-autostart and settings the others don't reach.
+autostart and settings the others don't reach. `make session-test` checks monitor and
+keyboard settings and the properties X11 programs look for.
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
@@ -252,6 +253,33 @@ the focus follows to the group on top. Switching tiling off puts every window ba
 where it was. `Mwm*tiling: true` in mwmrc or `MWC_TILING=1` starts with tiling on,
 and reloading the configuration keeps the current choice.
 
+## Keyboard and monitors
+
+mwc reads these from mwmrc as well, which also reaches a session started from GDM. In
+such a session nothing else sets the layout, so without them you get us:
+
+```
+Mwm*keyboardLayout:         de
+Mwm*keyboardVariant:        nodeadkeys
+Mwm*keyboardOptions:        ctrl:nocaps
+Mwm*DP-1*outputMode:        3440x1440@144
+Mwm*DP-1*outputPosition:    0,0
+Mwm*HDMI-A-1*outputScale:   1.5
+Mwm*HDMI-A-1*outputTransform: 90
+```
+
+| Resource | Meaning |
+|---|---|
+| `keyboardLayout`, `keyboardVariant`, `keyboardOptions`, `keyboardModel` | as in XKB; `XKB_DEFAULT_*` in the environment wins. A layout that doesn't exist falls back to us, and the log says so |
+| `Name*outputMode` | `WIDTHxHEIGHT` or `WIDTHxHEIGHT@HZ`; default the monitor's preferred mode |
+| `Name*outputScale` | scale factor. Frames and menus are drawn at 1x and look soft on a scaled monitor, and X11 programs are not scaled by themselves |
+| `Name*outputPosition` | `X,Y` in the layout; default the next free place in the row |
+| `Name*outputTransform` | `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180`, `flipped-270` |
+
+mwc logs each monitor's name and modes when it appears. All of this also applies on
+"Restart..." and `SIGHUP`. Tools like `wlr-randr` and `kanshi` don't work: mwc doesn't
+offer their protocol.
+
 ## Window behaviour
 
 - **Dialogs** stay above the window they belong to and minimize with it, without
@@ -270,6 +298,10 @@ and reloading the configuration keeps the current choice.
 
 Only `_NET_WM_STRUT_PARTIAL` counts for X11 panels, not the older `_NET_WM_STRUT`,
 because that is what wlroots reads.
+
+X11 programs find `_NET_FRAME_EXTENTS`, `_NET_WORKAREA` and `_MOTIF_WM_INFO`. Xwayland
+starts on the first X11 connection, so a program that asks for those before its window
+is mapped may miss them the very first time.
 
 ## Decorations
 

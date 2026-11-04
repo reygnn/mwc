@@ -67,6 +67,31 @@ check "un-maximized it takes its own size, on the screen" \
 stop premax
 check "the window is gone" "[ -z \"\$(get premax x)\" ]"
 
+# A frame asked for only later has to fit too. As late as xdg-decoration allows:
+wayland lateframe pre=max late_frame=xdg size=300x200
+check "the frame comes after the first configure, and it makes room for it" \
+	"[ \"\$(get lateframe max)\" = 1 ] && [ \"\$(get lateframe frame)\" = 1 ] && \
+	[ \$((\$(get lateframe w) + 2 * B)) = 1280 ] && [ \$((\$(get lateframe h) + 2 * B + T)) = 720 ]"
+stop lateframe
+check "the window is gone" "[ -z \"\$(get lateframe x)\" ]"
+# And once mapped, with KDE's protocol, as GTK3 does:
+wayland latekde pre=max late_frame=kde size=300x200
+check "maximized without a frame yet, it fills the output" \
+	"[ \"\$(get latekde max)\" = 1 ] && [ \"\$(get latekde frame)\" = 0 ] && [ \"\$(get latekde w)\" = 1280 ]"
+check "the frame comes, and it makes room for it" \
+	"[ \"\$(get latekde frame)\" = 1 ] && [ \$((\$(get latekde w) + 2 * B)) = 1280 ] && \
+	[ \$((\$(get latekde h) + 2 * B + T)) = 720 ]"
+stop latekde
+check "the window is gone" "[ -z \"\$(get latekde x)\" ]"
+wayland latesnap late_frame=kde size=300x200
+check "a window without a frame yet" "[ \"\$(get latesnap frame)\" = 0 ]"
+do_input key super+Left
+check "snapped" "[ \"\$(get latesnap snap)\" != 0 ]"
+check "the frame comes, and it still fits its half" \
+	"[ \"\$(get latesnap frame)\" = 1 ] && [ \$((\$(get latesnap w) + 2 * B)) = 640 ]"
+stop latesnap
+check "the window is gone" "[ -z \"\$(get latesnap x)\" ]"
+
 wayland prefull pre=full size=300x200
 check "fullscreen before the first commit: it maps fullscreen" \
 	"[ \"\$(get prefull full)\" = 1 ] && [ \"\$(get prefull frame)\" = 0 ] && \

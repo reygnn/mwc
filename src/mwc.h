@@ -353,7 +353,7 @@ struct server {
 	struct wlr_xwayland *xwayland;
 	struct wl_listener xwayland_ready;
 	struct wl_listener new_xwayland_surface;
-	uint32_t atom_motif_hints;
+	uint32_t atom_motif_hints, atom_motif_info, atom_frame_extents;
 	uint32_t atom_net_wm_state, atom_state_above, atom_state_below;
 	uint32_t atom_state_fullscreen, atom_state_max_vert, atom_state_max_horz;
 
@@ -505,9 +505,16 @@ bool view_is_transient_of(struct view *view, struct view *ancestor);
 struct view *view_transient_root(struct view *view);
 bool view_focusable(struct view *view);
 
+/* ---- main.c ------------------------------------------------------------- */
+
+/* The output settings in mwmrc changed: apply them to what is there. */
+void outputs_config_changed(struct server *server);
+
 /* ---- xwayland.c --------------------------------------------------------- */
 
 void xwayland_init(struct server *server);
+/* _NET_FRAME_EXTENTS, for an X11 window whose frame changed. */
+void xwayland_publish_frame_extents(struct view *view);
 
 /* ---- frame.c ------------------------------------------------------------ */
 
@@ -542,6 +549,8 @@ void run_action(struct server *server, enum menu_action action,
 /* ---- input.c ------------------------------------------------------------ */
 
 void input_init(struct server *server);
+/* The keyboard settings in mwmrc changed: new keymaps for real keyboards. */
+void input_config_changed(struct server *server);
 /* After view_begin_interactive() set the grab up: show what it needs. */
 void grab_started(struct server *server);
 /* The grabbed window went away. */
@@ -628,6 +637,8 @@ void wallpaper_place(struct output *output, bool force);
 
 void config_load(void);
 const char *config_get(const char *resource);
+/* The value of Mwm*client*resource, NULL when unset. */
+const char *config_get_for(const char *client, const char *resource);
 bool config_color(const char *value, struct mwc_color *out);
 /* 1 or 0, or -1 when value is unset or no boolean; name is for the log. */
 int config_bool(const char *name, const char *value);

@@ -123,18 +123,23 @@ build/xdg-decoration-unstable-v1-code.c: | build
 
 XDGC_GEN = build/xdg-decoration-unstable-v1-client.h \
 	build/xdg-decoration-unstable-v1-code.c build/xdg-shell-client.h \
-	build/xdg-shell-code.c
+	build/xdg-shell-code.c build/server-decoration-client.h \
+	build/server-decoration-code.c
 
 build/xdgc: tests/xdgc.c $(XDGC_GEN)
 	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/xdgc.c \
 		build/xdg-decoration-unstable-v1-code.c build/xdg-shell-code.c \
+		build/server-decoration-code.c \
 		$(shell $(PKG_CONFIG) --libs wayland-client)
 
 build/badclient: tests/badclient.c build/xdg-shell-client.h build/xdg-shell-code.c
 	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/badclient.c \
 		build/xdg-shell-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
+
+session-test: mwc build/vinput build/pngtool build/xclient
+	tests/session.sh
 
 misc-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 	tests/misc.sh
@@ -170,10 +175,10 @@ config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
 test: smoke input-test wallpaper-test config-test layer-test window-test \
-	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test
+	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test
 
 clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN)
-.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test test clean
+.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
