@@ -258,6 +258,8 @@ void view_focus(struct view *view)
 	/* A panel or a window without input focus only comes to the front. */
 	if (!view_focusable(view)) {
 		view_raise(view);
+		if (view->shaded)
+			tile_unshade(view);
 		input_pointer_changed(server);
 		return;
 	}
@@ -292,7 +294,12 @@ void view_focus(struct view *view)
  * only gets it when asked for by name. */
 static void focus_next(struct server *server, struct view *except)
 {
-	struct view *v;
+	/* Prefer the window a dialog belongs to. */
+	struct view *v = except ? view_parent(except) : NULL;
+	if (v && v != except && view_focusable(v) && !v->shaded) {
+		view_focus(v);
+		return;
+	}
 	wl_list_for_each(v, &server->views, link) {
 		if (v != except && view_focusable(v) && !v->shaded) {
 			view_focus(v);
@@ -312,6 +319,8 @@ static void view_maximize_at(struct view *view, bool maximized, double px,
  * limits allow: all of the usable area, or a snap position in it. */
 static void view_fit_state(struct view *view, double px, double py)
 {
+	view->fit_px = px;
+	view->fit_py = py;
 	struct wlr_box a = output_usable_area(view->server, px, py);
 	if (view->snap != SNAP_NONE)
 		a = snap_rect(view->snap, a);
@@ -367,6 +376,9 @@ static void view_publish_snap(struct view *view)
 	if (view->tiled)
 		edges = WLR_EDGE_LEFT | WLR_EDGE_RIGHT | WLR_EDGE_TOP | WLR_EDGE_BOTTOM;
 	wlr_xdg_toplevel_set_tiled(view->xdg_toplevel, edges);
+	/* From maximized straight to snapped, it must stop thinking it is. */
+	wlr_xdg_toplevel_set_maximized(view->xdg_toplevel,
+		view->maximized && !view->tiled);
 }
 
 /* What it goes back to is only recorded while it is free. The size is the one last
@@ -432,13 +444,32 @@ void view_close(struct view *view)
 		wlr_xwayland_surface_close(view->xsurface);
 }
 
-void view_lower(struct view *view)
+static void view_lower_one(struct view *view)
 {
 	struct server *server = view->server;
 	wlr_scene_node_lower_to_bottom(&view->tree->node);
 	wl_list_remove(&view->link);
 	wl_list_insert(server->views.prev, &view->link);
-	if (view->activated) {
+}
+
+/* Whether anything could take the focus from it. If not it keeps it, even when it
+ * goes to the back: it is still the only window there is to type into. */
+static bool view_has_successor(struct view *view)
+{
+	struct view *v;
+	wl_list_for_each(v, &view->server->views, link) {
+		if (v != view && view_focusable(v) && !v->shaded &&
+				view_transient_root(v) != view_transient_root(view))
+			return true;
+	}
+	return false;
+}
+
+void view_lower(struct view *view)
+{
+	struct server *server = view->server;
+	view_lower_one(view);
+	if (view->activated && view_has_successor(view)) {
 		focus_next(server, view);
 		/* Losing the focus may have moved it to another scene layer. */
 		wlr_scene_node_lower_to_bottom(&view->tree->node);
@@ -472,6 +503,7 @@ static void view_maximize_at(struct view *view, bool maximized, double px,
 		goto ack;
 	if (maximized && !(view->funcs & FUNC_MAXIMIZE))
 		goto ack;
+	grab_give_way(view);
 	if (maximized) {
 		view_save_free(view);
 		view->snap = SNAP_NONE;
@@ -499,10 +531,8 @@ ack:
 /* Back to the geometry or state it floated in, on the output it came from. */
 static void view_apply_floating(struct view *view)
 {
-	double px = view->saved.x + view->saved.width / 2.0;
-	double py = view->saved.y + view->saved.height / 2.0;
 	if (view->maximized || view->snap != SNAP_NONE)
-		view_fit_state(view, px, py);
+		view_fit_state(view, view->fit_px, view->fit_py);
 	else
 		view_set_geometry(view, view->saved.x, view->saved.y,
 			view->saved.width, view->saved.height);
@@ -519,9 +549,11 @@ void view_set_tiled(struct view *view, bool on, bool apply)
 {
 	if (view->tiled == on)
 		return;
+	grab_give_way(view);
 	if (on && !view->tile_back)
 		view_save_free(view);
 	view->shaded = false;
+	view->auto_shaded = false;
 	view_show_content(view);
 	view->tile_back = false;
 	view->tiled = on;
@@ -564,6 +596,7 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 		return;
 	}
 	if (view->fullscreen != fullscreen) {
+		grab_give_way(view);
 		if (fullscreen) {
 			/* A tiled window leaves the layout for fullscreen and goes back
 			 * into it afterwards; saved still holds its floating geometry. */
@@ -580,6 +613,7 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 			views_update_layers(view->server);
 			/* Fullscreen windows lose their frame for the duration. */
 			view->decorated = false;
+			view_update_content_pos(view);
 			frame_render(view);
 			view_set_geometry(view, a.x, a.y, a.width, a.height);
 			view_focus(view);
@@ -587,6 +621,7 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 			view->fullscreen = false;
 			views_update_layers(view->server);
 			view->decorated = view->ssd;
+			view_update_content_pos(view);
 			if (view->tile_back && view->server->tiling)
 				tile_arrange(view->server); /* places it, saved untouched */
 			if (!view->tiled) {
@@ -630,6 +665,7 @@ void view_minimize(struct view *view)
 	if (view->minimized || !view->mapped)
 		return;
 	struct server *server = view->server;
+	grab_give_way(view);
 	bool had_focus = view->activated;
 	view->minimized = true;
 	view_show(view, false);
@@ -648,10 +684,11 @@ void view_minimize(struct view *view)
 	icon_render(view);
 	icons_arrange(server);
 	wlr_scene_node_set_enabled(&view->icon_node->node, true);
+	struts_changed(view);
+	/* The layout first: a shaded window may become the main one, and take the focus. */
+	tile_arrange(server);
 	if (had_focus)
 		focus_next(server, view);
-	struts_changed(view);
-	tile_arrange(server);
 	input_pointer_changed(server);
 }
 
@@ -718,6 +755,50 @@ void views_usable_area_changed(struct server *server)
 	tile_arrange(server);
 }
 
+void views_layout_changed(struct server *server)
+{
+	if (wl_list_empty(&server->outputs))
+		return;
+	struct view *v;
+	wl_list_for_each(v, &server->views, link) {
+		v->icon_placed = false;
+		if (!v->mapped)
+			continue;
+		struct wlr_box box = { v->x, v->y, v->width + frame_extra_w(v),
+			frame_height(v) };
+		bool reachable = wlr_output_layout_intersects(server->output_layout, NULL,
+			&box);
+		/* output_at() falls back to an existing output for any other point. */
+		struct wlr_box a = output_usable_area(server, v->x + box.width / 2.0,
+			v->y + box.height / 2.0);
+		if (!reachable) {
+			/* What it goes back to was on that output as well. */
+			v->saved.x = a.x + 32;
+			v->saved.y = a.y + 32;
+			v->fit_px = a.x + a.width / 2.0;
+			v->fit_py = a.y + a.height / 2.0;
+		}
+		if (v->tiled) {
+			continue;
+		} else if (v->fullscreen) {
+			struct wlr_box f = output_full_area(server, reachable ?
+				v->x + box.width / 2.0 : a.x + 1, reachable ?
+				v->y + box.height / 2.0 : a.y + 1);
+			view_set_geometry(v, f.x, f.y, f.width, f.height);
+		} else if (v->maximized || v->snap != SNAP_NONE) {
+			if (!reachable)
+				view_fit_state(v, v->fit_px, v->fit_py);
+			else
+				view_refit(v);
+		} else if (!reachable) {
+			view_set_position(v, a.x + 32, a.y + 32);
+		}
+	}
+	icons_arrange(server);
+	tile_arrange(server);
+	input_pointer_changed(server);
+}
+
 void view_frame_changed(struct view *view)
 {
 	/* The client keeps its size and the frame around it changes, except
@@ -753,8 +834,24 @@ void view_cycle(struct server *server, bool backwards)
 	if (!top)
 		return;
 	if (backwards) {
-		/* Push the current window to the back, focus the next one. */
-		view_lower(top);
+		/* Push the current window to the back, with what belongs to it, and focus
+		 * the next one. */
+		struct view *active = focused_view(server);
+		struct view *root = view_transient_root(active ? active : top);
+		bool had_successor = view_has_successor(root);
+		int count = wl_list_length(&server->views), n = 0;
+		struct view **group = calloc(count, sizeof(*group));
+		wl_list_for_each(v, &server->views, link) {
+			if (v != root && view_transient_root(v) == root)
+				group[n++] = v;
+		}
+		for (int i = 0; i < n; i++)
+			view_lower_one(group[i]);
+		free(group);
+		view_lower_one(root);
+		if (had_successor)
+			focus_next(server, root);
+		input_pointer_changed(server);
 		return;
 	}
 	wl_list_for_each_reverse(v, &server->views, link) {
@@ -791,15 +888,16 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	server->grab_changed = false;
 	server->grab_px = server->cursor->x;
 	server->grab_py = server->cursor->y;
-	server->grab_orig = (struct wlr_box){ view->x, view->y, view->width,
-		view->height };
+	/* The size last asked for: the client may not have got there yet. */
+	int w = view->type == VIEW_XDG ? view->requested_w : view->xsurface->width;
+	int h = view->type == VIEW_XDG ? view->requested_h : view->xsurface->height;
+	server->grab_orig = (struct wlr_box){ view->x, view->y, w, h };
 	server->grab_orig_maximized = view->maximized;
 	server->grab_orig_snap = view->snap;
 	server->grab_zone = SNAP_NONE;
 	server->grab_target = server->grab_orig;
 	server->grab_geobox = (struct wlr_box){ view->x, view->y,
-		view->width + frame_extra_w(view),
-		view->height + frame_extra_h(view) };
+		w + frame_extra_w(view), h + frame_extra_h(view) };
 
 	if (mode == CURSOR_MOVE) {
 		server->grab_x = server->cursor->x - view->x;
@@ -832,7 +930,9 @@ void view_drag_free(struct view *view)
 	struct server *server = view->server;
 	double frac = (server->cursor->x - view->x) /
 		(double)(view->width + frame_extra_w(view));
+	server->grab_detaching = true;
 	view_snap(view, SNAP_NONE, 0, 0);
+	server->grab_detaching = false;
 	int nw = view->saved.width + frame_extra_w(view);
 	view_set_position(view, server->cursor->x - frac * nw,
 		server->cursor->y - frame_border(view) - frame_title(view) / 2);
@@ -1007,10 +1107,11 @@ void view_handle_unmap(struct view *view)
 	view_show_content(view);
 	wlr_scene_node_set_enabled(&view->tree->node, false);
 	wlr_scene_node_set_enabled(&view->icon_node->node, false);
+	struts_changed(view);
+	/* The layout first: a shaded window may become the main one, and take the focus. */
+	tile_arrange(server);
 	if (was_active)
 		focus_next(server, view);
-	struts_changed(view);
-	tile_arrange(server);
 	input_pointer_changed(server);
 }
 
@@ -1164,6 +1265,7 @@ static void xdg_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&view->request_show_window_menu.link);
 	wl_list_remove(&view->set_title.link);
 	wl_list_remove(&view->set_parent.link);
+	wl_list_remove(&view->set_app_id.link);
 	view_handle_destroy(view);
 }
 
@@ -1171,6 +1273,19 @@ static void xdg_set_parent(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, set_parent);
 	view_update_properties(view);
+	views_update_layers(view->server);
+	tile_arrange(view->server); /* dialogs float */
+}
+
+static void xdg_set_app_id(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, set_app_id);
+	if (!view->mapped)
+		return; /* the map picks it up */
+	config_view_shades(view);
+	config_view_tiling(view);
+	view_theme_changed(view);
+	tile_arrange(view->server);
 }
 
 static void xdg_request_move(struct wl_listener *listener, void *data)
@@ -1269,6 +1384,8 @@ static void new_xdg_toplevel(struct wl_listener *listener, void *data)
 	wl_signal_add(&toplevel->events.set_title, &view->set_title);
 	view->set_parent.notify = xdg_set_parent;
 	wl_signal_add(&toplevel->events.set_parent, &view->set_parent);
+	view->set_app_id.notify = xdg_set_app_id;
+	wl_signal_add(&toplevel->events.set_app_id, &view->set_app_id);
 }
 
 /* ---- popups ------------------------------------------------------------- */
@@ -1301,6 +1418,7 @@ struct popup {
 	struct server *server;
 	struct wlr_xdg_popup *xdg_popup;
 	struct wl_listener commit;
+	struct wl_listener reposition;
 	struct wl_listener destroy;
 };
 
@@ -1312,12 +1430,8 @@ static struct view *view_from_tree(struct wlr_scene_tree *tree)
 	return n ? n->data : NULL;
 }
 
-static void popup_commit(struct wl_listener *listener, void *data)
+static void popup_unconstrain(struct popup *popup)
 {
-	struct popup *popup = wl_container_of(listener, popup, commit);
-	if (!popup->xdg_popup->base->initial_commit)
-		return;
-
 	/* Keep the popup on the output its toplevel is on. */
 	struct wlr_scene_tree *tree = popup->xdg_popup->base->data;
 	struct view *view = tree ? view_from_tree(tree) : NULL;
@@ -1327,25 +1441,42 @@ static void popup_commit(struct wl_listener *listener, void *data)
 		struct wlr_box *g = &view->xdg_toplevel->base->geometry;
 		a.x -= view->x + frame_left(view) - g->x;
 		a.y -= view->y + frame_top(view) - g->y;
-		/* The box is relative to the popup's parent toplevel only
-		 * for first-level popups; nested ones are close enough. */
+		/* wlroots wants the box relative to the toplevel, however deep the popup
+		 * is nested. */
 		wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup, &a);
 	} else if (tree) {
-		/* A layer surface's popup: its parent's position is all we need. */
+		/* A layer surface's popup, relative to that surface likewise. */
 		int lx, ly;
-		wlr_scene_node_coords(&tree->node.parent->node, &lx, &ly);
-		struct wlr_box a = output_full_area(popup->server, lx, ly);
-		a.x -= lx;
-		a.y -= ly;
-		wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup, &a);
+		if (layer_root_coords(popup->xdg_popup->parent, &lx, &ly)) {
+			struct wlr_box a = output_full_area(popup->server, lx, ly);
+			a.x -= lx;
+			a.y -= ly;
+			wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup, &a);
+		}
 	}
+}
+
+static void popup_commit(struct wl_listener *listener, void *data)
+{
+	struct popup *popup = wl_container_of(listener, popup, commit);
+	if (!popup->xdg_popup->base->initial_commit)
+		return;
+	popup_unconstrain(popup);
 	wlr_xdg_surface_schedule_configure(popup->xdg_popup->base);
+}
+
+/* The client gave new rules, and the same limits apply. wlroots sends the configure. */
+static void popup_reposition(struct wl_listener *listener, void *data)
+{
+	struct popup *popup = wl_container_of(listener, popup, reposition);
+	popup_unconstrain(popup);
 }
 
 static void popup_destroy(struct wl_listener *listener, void *data)
 {
 	struct popup *popup = wl_container_of(listener, popup, destroy);
 	wl_list_remove(&popup->commit.link);
+	wl_list_remove(&popup->reposition.link);
 	wl_list_remove(&popup->destroy.link);
 	free(popup);
 }
@@ -1375,6 +1506,8 @@ static void new_xdg_popup(struct wl_listener *listener, void *data)
 
 	popup->commit.notify = popup_commit;
 	wl_signal_add(&xdg_popup->base->surface->events.commit, &popup->commit);
+	popup->reposition.notify = popup_reposition;
+	wl_signal_add(&xdg_popup->events.reposition, &popup->reposition);
 	popup->destroy.notify = popup_destroy;
 	wl_signal_add(&xdg_popup->events.destroy, &popup->destroy);
 }

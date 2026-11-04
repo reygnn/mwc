@@ -8,6 +8,8 @@
  *     size=WxH     default 300x200
  *     min=WxH max=WxH
  *     pre=max|full ask for that state before the first commit
+ *     states=1     log the states each configure carries
+ *     late_app=NAME set this app_id a moment after mapping
  *     dialog=NAME  also open a child toplevel with this app_id
  */
 #define _GNU_SOURCE
@@ -28,6 +30,8 @@ static struct zxdg_decoration_manager_v1 *deco_manager;
 static int default_w = 300, default_h = 200, min_w, min_h, max_w, max_h;
 static int open_windows;
 static const char *pre_state;
+static const char *late_app;
+static bool log_states;
 
 struct window {
 	struct wl_surface *surface;
@@ -78,6 +82,14 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t, int32_t w,
 	struct window *win = data;
 	win->w = w > 0 ? w : win->natural_w;
 	win->h = h > 0 ? h : win->natural_h;
+	if (log_states) {
+		bool maximized = false;
+		uint32_t *state;
+		wl_array_for_each(state, states)
+			maximized |= *state == XDG_TOPLEVEL_STATE_MAXIMIZED;
+		printf("configure %s\n", maximized ? "maximized" : "free");
+		fflush(stdout);
+	}
 }
 
 static void toplevel_close(void *data, struct xdg_toplevel *t)
@@ -195,6 +207,10 @@ int main(int argc, char *argv[])
 			dialog = v;
 		else if (!strcmp(argv[i], "pre"))
 			pre_state = v;
+		else if (!strcmp(argv[i], "states"))
+			log_states = atoi(v);
+		else if (!strcmp(argv[i], "late_app"))
+			late_app = v;
 	}
 	if (!app) {
 		fprintf(stderr, "xdgc: app= is required\n");
@@ -218,6 +234,14 @@ int main(int argc, char *argv[])
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
 		open_window(dialog, main_win, 120, 80, false);
+	}
+	if (late_app) {
+		wl_display_roundtrip(display);
+		wl_display_roundtrip(display);
+		usleep(500000);
+		xdg_toplevel_set_app_id(main_win->toplevel, late_app);
+		wl_surface_commit(main_win->surface);
+		wl_display_flush(display);
 	}
 	while (open_windows > 0 && wl_display_dispatch(display) != -1) {
 	}

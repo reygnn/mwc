@@ -169,6 +169,17 @@ static void stop_resizing_state(struct server *server)
 		wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, false);
 }
 
+void grab_give_way(struct view *view)
+{
+	struct server *server = view->server;
+	if (server->grabbed_view != view || server->grab_detaching ||
+			(server->cursor_mode != CURSOR_MOVE &&
+			server->cursor_mode != CURSOR_RESIZE))
+		return;
+	stop_resizing_state(server);
+	clear_grab(server);
+}
+
 static void resize_to(struct view *view, const struct wlr_box *b)
 {
 	/* An xdg client answers later, and its anchor keeps the opposite edge
@@ -539,15 +550,13 @@ static bool handle_press(struct server *server, uint32_t button,
 		}
 		return true;
 	case PART_MENU_BUTTON:
-		if (is_double_click(server, view, part, time)) {
-			menu_close(server);
-			if (view->funcs & FUNC_CLOSE)
-				view_close(view);
-		} else {
-			menu_open_window(server, view,
-				view->x + frame_border(view),
-				view->y + frame_top(view));
-		}
+		if (button != BTN_LEFT && button != BTN_RIGHT)
+			return true;
+		/* The menu takes the grab; its own press handling sees the second click
+		 * of a double click and closes the window. */
+		menu_open_window(server, view, view->x + frame_border(view),
+			view->y + frame_top(view));
+		server->menu.from_button = true;
 		return true;
 	case PART_MINIMIZE_BUTTON:
 	case PART_MAXIMIZE_BUTTON:
@@ -736,21 +745,31 @@ static void grab_key(struct server *server, uint32_t mods, xkb_keysym_t sym)
 static bool handle_keybinding(struct server *server, uint32_t mods,
 	xkb_keysym_t sym)
 {
-	if (server->menu.open)
-		return menu_key(server, sym);
-
-	/* VT switching works regardless of modifiers. */
+	/* These two work whatever else is going on, or there is no way out. */
 	if (sym >= XKB_KEY_XF86Switch_VT_1 && sym <= XKB_KEY_XF86Switch_VT_12) {
 		if (server->session)
 			wlr_session_change_vt(server->session,
 				sym - XKB_KEY_XF86Switch_VT_1 + 1);
 		return true;
 	}
+	if ((mods & WLR_MODIFIER_CTRL) && (mods & WLR_MODIFIER_ALT) &&
+			sym == XKB_KEY_BackSpace) {
+		wl_display_terminate(server->display);
+		return true;
+	}
+
+	if (server->menu.open)
+		return menu_key(server, sym);
 	if (server->cursor_mode == CURSOR_MOVE ||
 			server->cursor_mode == CURSOR_RESIZE) {
 		grab_key(server, mods, sym);
 		return true;
 	}
+	/* A frame button is held down: no other action until it is released. */
+	if (server->cursor_mode == CURSOR_BUTTON)
+		return false;
+	if (server->exclusive_layer)
+		return false;
 
 	struct view *view = focused_view(server);
 	bool alt = mods & WLR_MODIFIER_ALT;
@@ -758,17 +777,11 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	bool shift = mods & WLR_MODIFIER_SHIFT;
 	bool logo = mods & WLR_MODIFIER_LOGO;
 
-	if (ctrl && alt && sym == XKB_KEY_BackSpace) {
-		wl_display_terminate(server->display);
-		return true;
-	}
 	if ((ctrl && alt && sym == XKB_KEY_Return) ||
 			(logo && sym == XKB_KEY_Return)) {
 		spawn(server->terminal);
 		return true;
 	}
-	if (server->exclusive_layer)
-		return false;
 	if (logo && !alt && !ctrl) {
 		enum snap_dir dir;
 		switch (sym) {

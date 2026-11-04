@@ -24,6 +24,9 @@
  *     clipboard=1         own CLIPBOARD and answer with 200 KB of text
  *     moveresize=2        map it, then ask for _NET_WM_MOVERESIZE with no button down
  *     move_press=1        a press asks for _NET_WM_MOVERESIZE, as toolkits do
+ *     moveto=X,Y          once mapped, XMoveWindow there
+ *     iconic=1            WM_HINTS with the initial state iconic
+ *     normalize=1         once mapped, WM_CHANGE_STATE to NormalState
  *     pulldown=1          a press posts an override-redirect menu and grabs the pointer,
  *                         as Motif does for press-drag-release; logs what follows
  */
@@ -51,6 +54,8 @@ struct options {
 	bool has_motif;
 	bool no_input, workarea, clipboard, move_press, pulldown;
 	int moveresize;
+	bool has_moveto, iconic, normalize;
+	int moveto_x, moveto_y;
 	const char *override;
 	long strut[4];
 	bool has_strut;
@@ -138,8 +143,16 @@ static Window create_window(const struct options *o, const char *class,
 	}
 	XSetWMNormalHints(dpy, win, &sh);
 
-	if (o->no_input) {
-		XWMHints wh = { .flags = InputHint, .input = False };
+	if (o->no_input || o->iconic) {
+		XWMHints wh = { 0 };
+		if (o->no_input) {
+			wh.flags |= InputHint;
+			wh.input = False;
+		}
+		if (o->iconic) {
+			wh.flags |= StateHint;
+			wh.initial_state = IconicState;
+		}
 		XSetWMHints(dpy, win, &wh);
 	}
 	if (o->has_motif) {
@@ -307,6 +320,12 @@ int main(int argc, char *argv[])
 			o.moveresize = atoi(v);
 		else if (!strcmp(k, "clipboard"))
 			o.clipboard = atoi(v);
+		else if (!strcmp(k, "moveto"))
+			o.has_moveto = sscanf(v, "%d,%d", &o.moveto_x, &o.moveto_y) == 2;
+		else if (!strcmp(k, "iconic"))
+			o.iconic = atoi(v);
+		else if (!strcmp(k, "normalize"))
+			o.normalize = atoi(v);
 		else if (!strcmp(k, "move_press"))
 			o.move_press = atoi(v);
 		else if (!strcmp(k, "pulldown"))
@@ -352,6 +371,27 @@ int main(int argc, char *argv[])
 		set_override_redirect(main_win, false);
 	}
 	XMapWindow(dpy, main_win);
+	if (o.has_moveto) {
+		XSync(dpy, False);
+		usleep(500000);
+		XMoveWindow(dpy, main_win, o.moveto_x, o.moveto_y);
+		XSync(dpy, False);
+		printf("moved\n");
+	}
+	if (o.normalize) {
+		XSync(dpy, False);
+		usleep(800000);
+		XEvent e = { 0 };
+		e.xclient.type = ClientMessage;
+		e.xclient.window = main_win;
+		e.xclient.message_type = XInternAtom(dpy, "WM_CHANGE_STATE", False);
+		e.xclient.format = 32;
+		e.xclient.data.l[0] = NormalState;
+		XSendEvent(dpy, DefaultRootWindow(dpy), False,
+			SubstructureRedirectMask | SubstructureNotifyMask, &e);
+		XSync(dpy, False);
+		printf("normalized\n");
+	}
 	if (o.moveresize == 2) {
 		XSync(dpy, False);
 		usleep(500000);

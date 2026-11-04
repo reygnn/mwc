@@ -9,10 +9,12 @@
  *     exclusive=N                           exclusive zone, default 0
  *     keyboard=none|exclusive|on-demand     default none
  *     color=rrggbb                          default ff00ff
+ *     repaint=N                             commit some state every N ms, forever
  *     popup=rrggbb                          also open a 100x50 popup, like a
  *                                           panel's menu
  */
 #define _GNU_SOURCE
+#include <poll.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +35,8 @@ static struct wl_surface *surface;
 static struct zwlr_layer_surface_v1 *layer_surface;
 static uint32_t color = 0xff00ff, popup_color;
 static bool want_popup, closed;
+static int repaint_ms;
+static int last_w, last_h;
 
 static struct wl_surface *popup_surface;
 static struct xdg_surface *popup_xdg;
@@ -129,6 +133,8 @@ static void layer_configure(void *data, struct zwlr_layer_surface_v1 *ls,
 	uint32_t serial, uint32_t w, uint32_t h)
 {
 	zwlr_layer_surface_v1_ack_configure(ls, serial);
+	last_w = w;
+	last_h = h;
 	attach_color(surface, w, h, color);
 	printf("configured %ux%u\n", w, h);
 	if (want_popup) {
@@ -320,6 +326,8 @@ int main(int argc, char *argv[])
 			sscanf(v, "%ux%u", &w, &h);
 		else if (strcmp(argv[i], "exclusive") == 0)
 			exclusive = atoi(v);
+		else if (strcmp(argv[i], "repaint") == 0)
+			repaint_ms = atoi(v);
 		else if (strcmp(argv[i], "color") == 0)
 			color = strtoul(v, NULL, 16);
 		else if (strcmp(argv[i], "popup") == 0) {
@@ -357,7 +365,22 @@ int main(int argc, char *argv[])
 	zwlr_layer_surface_v1_set_keyboard_interactivity(layer_surface, keyboard);
 	wl_surface_commit(surface);
 
-	while (!closed && wl_display_dispatch(display) != -1) {
+	struct pollfd pfd = { wl_display_get_fd(display), POLLIN, 0 };
+	while (!closed) {
+		wl_display_flush(display);
+		int ready = poll(&pfd, 1, repaint_ms > 0 ? repaint_ms : -1);
+		if (ready < 0)
+			break;
+		if (ready > 0 && wl_display_dispatch(display) == -1)
+			break;
+		if (repaint_ms > 0 && last_w > 0) {
+			/* A state change, however small, as panels make all the time. */
+			static bool odd;
+			odd = !odd;
+			zwlr_layer_surface_v1_set_exclusive_zone(layer_surface,
+				odd ? -1 : exclusive);
+			wl_surface_commit(surface);
+		}
 	}
 	return 0;
 }

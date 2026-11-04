@@ -15,6 +15,7 @@
  *
  *   badclient log [APP]         only that
  *   badclient popup-grab [APP]  a press opens a popup with a grab; a press in it too
+ *   badclient popup-far [APP]   a press opens one, then repositions it far off-screen
  *   badclient drag [APP]        a press starts a drag with an icon
  *   badclient drop [APP]        accepts a drag
  *   badclient move-press [APP]  a press asks for xdg_toplevel.move
@@ -58,7 +59,7 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
 	else if (!strcmp(interface, wl_shm_interface.name))
 		shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
 	else if (!strcmp(interface, xdg_wm_base_interface.name))
-		wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, 2);
+		wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, 3);
 	else if (!strcmp(interface, wl_seat_interface.name))
 		seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
 	else if (!strcmp(interface, wl_data_device_manager_interface.name))
@@ -150,6 +151,7 @@ static const struct xdg_surface_listener popup_xdg_listener = { popup_xdg_config
 static void popup_configure(void *d, struct xdg_popup *p, int32_t x, int32_t y,
 	int32_t w, int32_t h)
 {
+	printf("popup-at %d %d\n", x, y);
 }
 
 static void popup_done(void *d, struct xdg_popup *p)
@@ -181,6 +183,18 @@ static void open_grabbing_popup(uint32_t serial)
 	xdg_positioner_destroy(p);
 	wl_surface_commit(s);
 	printf("popup-open\n");
+	if (!strcmp(mode, "popup-far")) {
+		wl_display_roundtrip(display);
+		struct xdg_positioner *far = xdg_wm_base_create_positioner(wm_base);
+		xdg_positioner_set_size(far, 100, 50);
+		xdg_positioner_set_anchor_rect(far, 5000, 5000, 1, 1);
+		xdg_positioner_set_constraint_adjustment(far,
+			XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X |
+			XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y);
+		xdg_popup_reposition(popup, far, 1);
+		xdg_positioner_destroy(far);
+		printf("popup-far\n");
+	}
 }
 
 static void source_target(void *d, struct wl_data_source *s, const char *m)
@@ -269,7 +283,7 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 	printf("button %u %s\n", button, down ? "down" : "up");
 	if (down)
 		press_serial = serial;
-	if (down && !strcmp(mode, "popup-grab"))
+	if (down && (!strcmp(mode, "popup-grab") || !strcmp(mode, "popup-far")))
 		open_grabbing_popup(serial);
 	else if (down && !strcmp(mode, "drag"))
 		start_a_drag(serial);
@@ -454,6 +468,7 @@ int main(int argc, char *argv[])
 	wl_display_roundtrip(display);
 	xdg_wm_base_add_listener(wm_base, &wm_listener, NULL);
 	bool logging = !strcmp(mode, "log") || !strcmp(mode, "popup-grab") ||
+		!strcmp(mode, "popup-far") ||
 		!strcmp(mode, "drag") || !strcmp(mode, "drop") ||
 		!strcmp(mode, "move-press") || !strcmp(mode, "move-late");
 	if (logging)

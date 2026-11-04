@@ -219,7 +219,6 @@ void view_update_properties(struct view *view)
 	int old_min_w = view->min_w, old_min_h = view->min_h;
 	int old_max_w = view->max_w, old_max_h = view->max_h;
 	bool old_fixed = view_fixed(view);
-	struct view *old_parent = view_parent(view);
 	if (view->type == VIEW_XDG) {
 		read_xdg_size_hints(view);
 		view->wtype = view->xdg_toplevel->parent ? WT_DIALOG : WT_NORMAL;
@@ -232,7 +231,7 @@ void view_update_properties(struct view *view)
 		views_update_layers(view->server);
 	/* Whether it fits the layout, or takes part at all, may have changed. */
 	if (view->mapped && view->server->tiling && (view->wtype != old_type ||
-			view_fixed(view) != old_fixed || view_parent(view) != old_parent ||
+			view_fixed(view) != old_fixed ||
 			view->min_w != old_min_w || view->min_h != old_min_h ||
 			view->max_w != old_max_w || view->max_h != old_max_h))
 		tile_arrange(view->server);
@@ -280,11 +279,11 @@ void view_apply_size_hints(struct view *view, int *pw, int *ph, bool incr)
 
 /* ICCCM 4.1.2.3: the client's position, turned into the frame's. The reference
  * point of the frame goes where the client asked for its own to be. */
-void view_gravity_to_frame(struct view *view, int x, int y, int *fx, int *fy)
+void view_gravity_to_frame(struct view *view, int x, int y, int w, int h, int *fx,
+	int *fy)
 {
-	int fw = view->width + frame_extra_w(view);
-	int fh = view->height + frame_extra_h(view);
-	int w = view->width, h = view->height;
+	int fw = w + frame_extra_w(view);
+	int fh = h + frame_extra_h(view);
 
 	if (view->gravity == XCB_GRAVITY_STATIC) {
 		*fx = x - frame_left(view);

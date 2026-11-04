@@ -7,12 +7,14 @@
  *   into the normal input path (see tests/vinput.c).
  * - SIGUSR1 writes the window state to the file so tests can check geometry
  *   and focus, which a Wayland client cannot query for other clients.
+ * - SIGUSR2 removes an output.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
@@ -24,6 +26,17 @@ static struct server *test_server;
 static const char *state_path;
 static struct wl_listener new_virtual_keyboard;
 static struct wl_listener new_virtual_pointer;
+
+/* SIGUSR2 unplugs the newest output, which the headless backend can't do by itself. */
+static int unplug_output(int signal, void *data)
+{
+	if (!wl_list_empty(&test_server->outputs)) {
+		struct output *newest = wl_container_of(test_server->outputs.next, newest,
+			link);
+		wlr_output_destroy(newest->wlr_output);
+	}
+	return 0;
+}
 
 static void on_new_virtual_keyboard(struct wl_listener *listener, void *data)
 {
@@ -138,6 +151,7 @@ void testhook_init(struct server *server)
 	wl_signal_add(&vp->events.new_virtual_pointer, &new_virtual_pointer);
 
 	wl_event_loop_add_signal(server->event_loop, SIGUSR1, dump_state, NULL);
+	wl_event_loop_add_signal(server->event_loop, SIGUSR2, unplug_output, NULL);
 }
 
 void testhook_fini(void)

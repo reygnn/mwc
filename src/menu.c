@@ -223,6 +223,7 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 	m->title = NULL;
 	m->n_items = 0;
 	m->target = view;
+	m->from_button = false;
 	view_update_properties(view);
 	bool normal = !view->minimized && !view->maximized && !view->fullscreen &&
 		view->snap == SNAP_NONE;
@@ -267,6 +268,7 @@ void menu_open_root(struct server *server, int x, int y)
 	m->title = "Root Menu";
 	m->n_items = 0;
 	m->target = NULL;
+	m->from_button = false;
 	add(m, "New Window", 'N', NULL, ACT_NEW_WINDOW, true);
 	add(m, "Shuffle Up", 'U', NULL, ACT_SHUFFLE_UP, true);
 	add(m, "Shuffle Down", 'D', NULL, ACT_SHUFFLE_DOWN, true);
@@ -293,6 +295,7 @@ static void open_confirm(struct server *server, const char *title,
 	m->title = title;
 	m->n_items = 0;
 	m->target = NULL;
+	m->from_button = false;
 	add(m, "OK", 'O', NULL, action, true);
 	add(m, "Cancel", 'C', NULL, ACT_NONE, true);
 	open_at(server, x, y);
@@ -364,16 +367,25 @@ bool menu_button(struct server *server, double lx, double ly, bool pressed,
 	if (!m->open)
 		return false;
 	int idx = item_at(m, lx, ly);
-	if (pressed) {
-		if (idx == -2)
-			menu_close(server);
-		else
-			arm(server, idx);
-		return true;
-	}
 	/* Signed: an event is stamped before we get to handle it, so it can
 	 * be slightly older than the moment the menu opened. */
 	int32_t age = time_msec - m->opened_msec;
+	if (pressed) {
+		if (idx != -2) {
+			arm(server, idx);
+			return true;
+		}
+		/* mwm: double-clicking the menu button closes the window. */
+		struct view *t = m->target;
+		uint32_t edges;
+		bool close = m->from_button && t && age < 400 &&
+			(t->funcs & FUNC_CLOSE) && frame_hit(t, (int)lx - t->x,
+			(int)ly - t->y, &edges) == PART_MENU_BUTTON;
+		menu_close(server);
+		if (close)
+			view_close(t);
+		return true;
+	}
 	if (idx >= 0) {
 		/* The release of the click that opened the menu: when the menu
 		 * had to shift to fit, an item is now under the pointer. */
@@ -449,10 +461,15 @@ void run_action(struct server *server, enum menu_action action,
 			view_restore(view);
 		break;
 	case ACT_MOVE:
-		if (!view || !(view->funcs & FUNC_MOVE))
+		if (!view)
 			break;
 		if (view->minimized)
 			view_restore(view);
+		/* The pointer only jumps if there will be a grab to go with it. Restoring
+		 * above may have put it into the layout, without these functions. */
+		if (!(view->funcs & FUNC_MOVE) || view->fullscreen ||
+				server->cursor_mode != CURSOR_PASSTHROUGH)
+			break;
 		/* Like f.move from a menu: the pointer jumps to the title and
 		 * the window follows it until the next click. */
 		wlr_cursor_warp(c, NULL, view->x + (view->width +
@@ -461,10 +478,13 @@ void run_action(struct server *server, enum menu_action action,
 		view_begin_interactive(view, CURSOR_MOVE, 0, true);
 		break;
 	case ACT_SIZE:
-		if (!view || !(view->funcs & FUNC_RESIZE))
+		if (!view)
 			break;
 		if (view->minimized)
 			view_restore(view);
+		if (!(view->funcs & FUNC_RESIZE) || view->fullscreen || view->maximized ||
+				server->cursor_mode != CURSOR_PASSTHROUGH)
+			break;
 		wlr_cursor_warp(c, NULL,
 			view->x + view->width + frame_extra_w(view) - 1,
 			view->y + view->height + frame_extra_h(view) - 1);

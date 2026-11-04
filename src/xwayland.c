@@ -143,7 +143,8 @@ static void xw_map(struct wl_listener *listener, void *data)
 		(flags & XCB_ICCCM_SIZE_HINT_US_POSITION) ||
 		((flags & XCB_ICCCM_SIZE_HINT_P_POSITION) && (xs->x || xs->y));
 	if (view->placed)
-		view_gravity_to_frame(view, xs->x, xs->y, &view->x, &view->y);
+		view_gravity_to_frame(view, xs->x, xs->y, view->width, view->height,
+			&view->x, &view->y);
 
 	view->commit.notify = xw_commit;
 	wl_signal_add(&xs->surface->events.commit, &view->commit);
@@ -154,6 +155,10 @@ static void xw_map(struct wl_listener *listener, void *data)
 		view_set_fullscreen(view, true);
 	else if (xs->maximized_horz || xs->maximized_vert)
 		view_set_maximized(view, true);
+	/* xterm -iconic and friends. */
+	if (xs->hints && (xs->hints->flags & XCB_ICCCM_WM_HINT_STATE) &&
+			xs->hints->initial_state == XCB_ICCCM_WM_STATE_ICONIC)
+		view_minimize(view);
 }
 
 static void xw_unmap(struct wl_listener *listener, void *data)
@@ -208,6 +213,7 @@ static void xw_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&view->request_above.link);
 	wl_list_remove(&view->request_below.link);
 	wl_list_remove(&view->set_override_redirect.link);
+	wl_list_remove(&view->set_app_id.link);
 	view_handle_destroy(view);
 }
 
@@ -227,8 +233,28 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 		view_send_size(view, view->xsurface->width, view->xsurface->height);
 		return;
 	}
-	view_set_geometry(view, ev->x - frame_left(view),
-		ev->y - frame_top(view), ev->width, ev->height);
+	/* Where the client thinks it is now, then what it asks for, translated through
+	 * its gravity at the new size. */
+	view_update_properties(view);
+	int w = (ev->mask & XCB_CONFIG_WINDOW_WIDTH) ? ev->width : view->xsurface->width;
+	int h = (ev->mask & XCB_CONFIG_WINDOW_HEIGHT) ? ev->height : view->xsurface->height;
+	view_apply_size_hints(view, &w, &h, false);
+	int fx0, fy0;
+	view_gravity_to_frame(view, 0, 0, view->xsurface->width, view->xsurface->height,
+		&fx0, &fy0);
+	int vx = (ev->mask & XCB_CONFIG_WINDOW_X) ? ev->x : view->x - fx0;
+	int vy = (ev->mask & XCB_CONFIG_WINDOW_Y) ? ev->y : view->y - fy0;
+	int fx, fy;
+	view_gravity_to_frame(view, vx, vy, w, h, &fx, &fy);
+	/* During a move or resize the outline decides; the request still gets its
+	 * answer. */
+	struct server *server = view->server;
+	if (server->grabbed_view == view && (server->cursor_mode == CURSOR_MOVE ||
+			server->cursor_mode == CURSOR_RESIZE)) {
+		view_send_size(view, view->xsurface->width, view->xsurface->height);
+		return;
+	}
+	view_set_geometry(view, fx, fy, w, h);
 }
 
 static void xw_request_activate(struct wl_listener *listener, void *data)
@@ -267,7 +293,8 @@ static void xw_request_minimize(struct wl_listener *listener, void *data)
 	struct wlr_xwayland_minimize_event *ev = data;
 	if (ev->minimize)
 		view_minimize(view);
-	else
+	/* Back from an icon, nothing more: it isn't asking to be un-maximized as well. */
+	else if (view->minimized || view->hidden_with_parent)
 		view_restore(view);
 }
 
@@ -297,6 +324,19 @@ static void xw_set_parent(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, set_parent);
 	view_update_properties(view);
+	views_update_layers(view->server);
+	tile_arrange(view->server); /* dialogs float */
+}
+
+static void xw_set_class(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, set_app_id);
+	if (!view->mapped)
+		return; /* the map picks it up */
+	config_view_shades(view);
+	config_view_tiling(view);
+	view_theme_changed(view);
+	tile_arrange(view->server);
 }
 
 static void xw_set_window_type(struct wl_listener *listener, void *data)
@@ -381,6 +421,7 @@ static struct view *new_managed(struct server *server, struct wlr_xwayland_surfa
 	LISTEN(request_above, request_above, xw_request_above);
 	LISTEN(request_below, request_below, xw_request_below);
 	LISTEN(set_override_redirect, set_override_redirect, xw_set_override_redirect);
+	LISTEN(set_class, set_app_id, xw_set_class);
 #undef LISTEN
 	read_initial_state(view);
 	return view;
@@ -405,7 +446,9 @@ static void um_map(struct wl_listener *listener, void *data)
 	wlr_scene_node_set_position(&um->tree->node, xs->x, xs->y);
 	um->set_geometry.notify = um_set_geometry;
 	wl_signal_add(&xs->events.set_geometry, &um->set_geometry);
-	if (wlr_xwayland_surface_override_redirect_wants_focus(xs)) {
+	/* An exclusive layer surface keeps the keyboard, a password prompt for one. */
+	if (wlr_xwayland_surface_override_redirect_wants_focus(xs) &&
+			!um->server->exclusive_layer) {
 		struct wlr_seat *seat = um->server->seat;
 		struct wlr_keyboard *kb = wlr_seat_get_keyboard(seat);
 		wlr_seat_keyboard_notify_enter(seat, xs->surface,
@@ -422,7 +465,8 @@ static void um_unmap(struct wl_listener *listener, void *data)
 	wlr_scene_node_destroy(&um->tree->node);
 	um->tree = NULL;
 	/* Hand the keyboard back to the focused window. */
-	if (seat->keyboard_state.focused_surface == um->xsurface->surface) {
+	if (seat->keyboard_state.focused_surface == um->xsurface->surface &&
+			!layer_keyboard_back(um->server)) {
 		struct view *v;
 		wl_list_for_each(v, &um->server->views, link) {
 			if (v->activated) {

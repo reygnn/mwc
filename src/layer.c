@@ -29,6 +29,9 @@ struct layer_surface {
 	struct wl_listener commit;
 	struct wl_listener destroy;
 	struct wl_listener new_popup;
+	/* What update_keyboard() last acted on. Other commits are no reason to take the
+	 * keyboard back from a window the user clicked on since. */
+	enum zwlr_layer_surface_v1_keyboard_interactivity keyboard_interactive;
 };
 
 static void arrange_pass(struct output *output, const struct wlr_box *full,
@@ -203,10 +206,34 @@ bool layer_surface_is_desktop(struct wlr_surface *surface)
 
 /* ---- surface lifecycle ---------------------------------------------------- */
 
+bool layer_keyboard_back(struct server *server)
+{
+	if (!server->focused_layer)
+		return false;
+	give_keyboard(server->focused_layer->data);
+	return true;
+}
+
+bool layer_root_coords(struct wlr_surface *surface, int *lx, int *ly)
+{
+	/* Up through the popups to the surface they belong to. */
+	struct wlr_xdg_surface *xdg;
+	while (surface && (xdg = wlr_xdg_surface_try_from_wlr_surface(surface)) &&
+			xdg->role == WLR_XDG_SURFACE_ROLE_POPUP && xdg->popup)
+		surface = xdg->popup->parent;
+	struct wlr_layer_surface_v1 *wlr = surface ?
+		wlr_layer_surface_v1_try_from_wlr_surface(surface) : NULL;
+	if (!wlr || !wlr->data)
+		return false;
+	struct layer_surface *ls = wlr->data;
+	return wlr_scene_node_coords(&ls->scene->tree->node, lx, ly);
+}
+
 static void layer_map(struct wl_listener *listener, void *data)
 {
 	struct layer_surface *ls = wl_container_of(listener, ls, map);
 	layer_arrange(ls->output);
+	ls->keyboard_interactive = ls->wlr->current.keyboard_interactive;
 	update_keyboard(ls);
 	input_pointer_changed(ls->server);
 }
@@ -235,6 +262,9 @@ static void layer_commit(struct wl_listener *listener, void *data)
 	struct wlr_layer_surface_v1 *wlr = ls->wlr;
 
 	if (wlr->initial_commit) {
+		/* It may have changed its mind about the layer already. */
+		if (wlr->pending.layer != ls->layer)
+			place_in_layer(ls, wlr->pending.layer);
 		/* Arrange it as if the requested state were already in force:
 		 * this sends the first configure. */
 		struct wlr_layer_surface_v1_state old = wlr->current;
@@ -245,10 +275,14 @@ static void layer_commit(struct wl_listener *listener, void *data)
 	}
 	if (!wlr->current.committed)
 		return;
-	if (wlr->current.layer != ls->layer)
+	bool layer_changed = wlr->current.layer != ls->layer;
+	if (layer_changed)
 		place_in_layer(ls, wlr->current.layer);
 	layer_arrange(ls->output);
-	update_keyboard(ls);
+	if (layer_changed || wlr->current.keyboard_interactive != ls->keyboard_interactive) {
+		ls->keyboard_interactive = wlr->current.keyboard_interactive;
+		update_keyboard(ls);
+	}
 }
 
 static void layer_destroy(struct wl_listener *listener, void *data)

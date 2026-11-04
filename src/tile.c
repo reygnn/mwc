@@ -166,6 +166,7 @@ static bool layout_stack(struct view **list, int k, struct wlr_box a, int x, int
 			}
 			if (pick) {
 				pick->shaded = true;
+				pick->auto_shaded = true;
 				continue;
 			}
 		}
@@ -212,6 +213,14 @@ static struct view *plan(struct server *server, struct view **list, int n,
 	}
 	a.height = bottom - a.y > 2 * TILE_GAP + 1 ? bottom - a.y : 2 * TILE_GAP + 1;
 	int top = a.y + TILE_GAP, h = a.height - 2 * TILE_GAP;
+	/* What the layout rolled up for lack of room in an earlier round gets another
+	 * chance, the room may be there now. */
+	for (int i = 0; i < n; i++) {
+		if (list[i]->auto_shaded) {
+			list[i]->shaded = false;
+			list[i]->auto_shaded = false;
+		}
+	}
 	/* The main window is never shaded. */
 	list[0]->shaded = false;
 	if (n == 1) {
@@ -220,6 +229,17 @@ static struct view *plan(struct server *server, struct view **list, int n,
 	} else {
 		int inner = a.width - 3 * TILE_GAP;
 		int mw = inner * main_pct / 100, sw = inner - mw;
+		/* Those that fit in no cell, before anything gets rolled up for them. A
+		 * window too tall for the whole column could never be unrolled. */
+		int fw, fh;
+		min_frame(list[0], &fw, &fh);
+		if (fw > mw || fh > h)
+			return list[0];
+		for (int i = 1; i < n; i++) {
+			min_frame(list[i], &fw, &fh);
+			if (fw > sw || fh > h)
+				return list[i];
+		}
 		list[0]->tile = (struct wlr_box){ a.x + 2 * TILE_GAP + sw, top, mw, h };
 		if (!layout_stack(list + 1, n - 1, a, a.x + TILE_GAP, sw)) {
 			*overflow = true;

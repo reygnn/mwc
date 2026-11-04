@@ -195,6 +195,7 @@ struct view {
 	bool tiled;
 	bool tile_main;  /* the main window on the right */
 	bool shaded;     /* in the stack, rolled up to its title bar */
+	bool auto_shaded; /* by the layout for lack of room, not by the user */
 	bool tile_back;  /* fullscreen from the layout: back into it after */
 	bool tile_nofit; /* this round: too big for its cell, floats */
 	bool no_tile;    /* DoNotTile or not in TileOnly: always floats */
@@ -202,6 +203,7 @@ struct view {
 	struct wlr_box tile; /* its cell: the frame's box */
 	struct mwc_shade shade_active, shade_inactive; /* frame and icon colours */
 	struct wlr_box saved;  /* geometry before maximize/snap/fullscreen */
+	double fit_px, fit_py; /* a point on the output its state fills */
 	/* xdg clients answer a size request later, possibly after the button
 	 * was released: these edges stay put until the client has caught up. */
 	uint32_t anchor_edges;
@@ -225,6 +227,7 @@ struct view {
 	struct wl_listener request_fullscreen;
 	struct wl_listener request_show_window_menu;
 	struct wl_listener set_title;
+	struct wl_listener set_app_id; /* or WM_CLASS */
 	/* xwayland only */
 	struct wl_listener associate;
 	struct wl_listener dissociate;
@@ -298,6 +301,7 @@ struct menu {
 	int x, y, width, height;
 	int item_y[MENU_MAX_ITEMS], item_h[MENU_MAX_ITEMS];
 	uint32_t opened_msec;
+	bool from_button;      /* opened by a click on the frame's menu button */
 	double open_x, open_y; /* pointer position when it opened */
 };
 
@@ -386,6 +390,7 @@ struct server {
 	bool grab_outline;  /* wireframe: the window changes when the grab ends */
 	bool grab_detached; /* a move got going, past the drag threshold */
 	bool grab_changed;  /* the target differs from where the grab began */
+	bool grab_detaching; /* the grab itself is freeing the window right now */
 	double grab_px, grab_py;    /* pointer where the grab began */
 	struct wlr_box grab_orig;   /* x/y of the frame, client size: for Escape */
 	bool grab_orig_maximized;
@@ -482,6 +487,8 @@ struct wlr_box output_usable_area(struct server *server, double lx, double ly);
 struct wlr_box output_full_area(struct server *server, double lx, double ly);
 /* Maximized windows and icons follow when panels come and go. */
 void views_usable_area_changed(struct server *server);
+/* Outputs came, went or changed: nothing may stay out of reach. */
+void views_layout_changed(struct server *server);
 
 /* ---- hints.c ------------------------------------------------------------ */
 
@@ -490,7 +497,9 @@ void view_update_properties(struct view *view);
 void view_update_decorations(struct view *view);
 bool view_fixed(struct view *view);
 void view_apply_size_hints(struct view *view, int *w, int *h, bool incr);
-void view_gravity_to_frame(struct view *view, int x, int y, int *fx, int *fy);
+/* The frame's position when the client asks for x, y at the size w, h. */
+void view_gravity_to_frame(struct view *view, int x, int y, int w, int h, int *fx,
+	int *fy);
 struct view *view_parent(struct view *view);
 bool view_is_transient_of(struct view *view, struct view *ancestor);
 struct view *view_transient_root(struct view *view);
@@ -537,6 +546,10 @@ void input_init(struct server *server);
 void grab_started(struct server *server);
 /* The grabbed window went away. */
 void grab_forget(struct server *server);
+/* The window's state changes under a grab, which has to give way: it ends, and the
+ * window stays as it is now. Does nothing unless this window is being moved or
+ * resized. */
+void grab_give_way(struct view *view);
 void input_add_device(struct server *server, struct wlr_input_device *dev);
 void cursor_set_name(struct server *server, const char *name);
 void process_cursor_motion(struct server *server, uint32_t time);
@@ -596,6 +609,10 @@ void layer_publish_workarea(struct server *server);
 void layer_output_gone(struct output *output);
 void layer_handle_click(struct server *server, struct wlr_surface *surface);
 bool layer_surface_is_desktop(struct wlr_surface *surface);
+/* Back to the layer surface that holds the keyboard, if one does. */
+bool layer_keyboard_back(struct server *server);
+/* The position of the layer surface at the root of this popup parent. */
+bool layer_root_coords(struct wlr_surface *surface, int *lx, int *ly);
 
 /* ---- wallpaper.c -------------------------------------------------------- */
 

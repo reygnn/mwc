@@ -81,7 +81,22 @@ static void new_output(struct wl_listener *listener, void *data)
 	struct wlr_output_mode *mode = wlr_output_preferred_mode(wlr_output);
 	if (mode)
 		wlr_output_state_set_mode(&state, mode);
-	wlr_output_commit_state(wlr_output, &state);
+	/* The preferred mode may not be possible, two 4K monitors on one link say. */
+	if (!wlr_output_test_state(wlr_output, &state)) {
+		struct wlr_output_mode *m;
+		wl_list_for_each(m, &wlr_output->modes, link) {
+			wlr_output_state_set_mode(&state, m);
+			if (wlr_output_test_state(wlr_output, &state)) {
+				mode = m;
+				break;
+			}
+		}
+	}
+	if (!wlr_output_commit_state(wlr_output, &state)) {
+		wlr_log(WLR_ERROR, "no usable mode for output %s", wlr_output->name);
+		wlr_output_state_finish(&state);
+		return;
+	}
 	wlr_output_state_finish(&state);
 
 	struct output *output = calloc(1, sizeof(*output));
@@ -129,6 +144,7 @@ static void layout_change(struct wl_listener *listener, void *data)
 		layer_arrange(output);
 	}
 	icons_arrange(server);
+	views_layout_changed(server);
 }
 
 /* ---- startup ------------------------------------------------------------ */
