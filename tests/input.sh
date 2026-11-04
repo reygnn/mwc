@@ -25,61 +25,9 @@ start_mwc "foot sh -c '$marker' foot-up & \
 wait_for "foot connected (Wayland)" test -e "$SMOKE_DIR/foot-up"
 wait_for "xterm connected (XWayland)" test -e "$SMOKE_DIR/xterm-up"
 
-coproc VINPUT { WAYLAND_DISPLAY=wayland-0 build/vinput "$SCREEN_W" "$SCREEN_H" 2>&1; }
+start_vinput
 
 # ---- helpers ---------------------------------------------------------------
-
-# do_input <command>: send one command to vinput and wait for its answer.
-do_input() {
-	local answer
-	echo "$*" >&"${VINPUT[1]}" || fail "vinput is gone (sending: $*)"
-	read -r answer <&"${VINPUT[0]}" || fail "vinput is gone (sending: $*)"
-	[ "$answer" = ok ] || fail "vinput said '$answer' to: $*"
-}
-
-refresh() {
-	rm -f "$MWC_TEST_STATE"
-	kill -USR1 "$pid" 2>/dev/null || fail "mwc died"
-	local i
-	for ((i = 0; i < 100; i++)); do
-		[ -e "$MWC_TEST_STATE" ] && return 0
-		sleep 0.02
-	done
-	fail "mwc wrote no state"
-}
-
-# get <app> <field>: a value from the last refreshed state.
-get() {
-	awk -v app="app=$1" -v key="$2=" '$1 == "view" && $2 == app {
-		for (i = 3; i <= NF; i++)
-			if (index($i, key) == 1) { print substr($i, length(key) + 1); exit }
-	}' "$MWC_TEST_STATE"
-}
-
-# global <kind> <field>: a value from the "menu" or "cursor" line.
-global() {
-	awk -v kind="$1" -v key="$2=" '$1 == kind {
-		for (i = 2; i <= NF; i++)
-			if (index($i, key) == 1) { print substr($i, length(key) + 1); exit }
-	}' "$MWC_TEST_STATE"
-}
-
-# check <description> <shell condition>: poll, because clients resize
-# asynchronously. The condition sees freshly refreshed state.
-check() {
-	local what=$1 cond=$2 i
-	for ((i = 0; i < 100; i++)); do
-		refresh
-		if eval "$cond"; then
-			echo "ok: $what"
-			return 0
-		fi
-		sleep 0.05
-	done
-	echo "--- state"
-	cat "$MWC_TEST_STATE"
-	fail "$what: never true: $cond"
-}
 
 outer_w() { echo $(($(get "$1" w) + 2 * B)); }
 outer_h() { echo $(($(get "$1" h) + 2 * B + T)); }

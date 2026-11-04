@@ -57,3 +57,75 @@ start_mwc() {
 	pid=$!
 	wait_for "Wayland socket" test -S "$SMOKE_DIR/wayland-0"
 }
+
+stop_mwc() {
+	kill "$pid" 2>/dev/null
+	wait "$pid" 2>/dev/null
+	pid=
+	# Killed compositors leave their socket behind, which would make the
+	# next start_mwc see it before the new one is listening.
+	rm -f "$SMOKE_DIR"/wayland-*
+}
+
+# ---- simulated input and window state (needs MWC_TEST_STATE) -----------------
+
+start_vinput() {
+	coproc VINPUT { WAYLAND_DISPLAY=wayland-0 build/vinput 1280 720 2>&1; }
+}
+
+stop_vinput() {
+	eval "exec ${VINPUT[1]}>&-"
+	wait "$VINPUT_PID" 2>/dev/null
+}
+
+# do_input <command>: send one command to vinput and wait for its answer.
+do_input() {
+	local answer
+	echo "$*" >&"${VINPUT[1]}" || fail "vinput is gone (sending: $*)"
+	read -r answer <&"${VINPUT[0]}" || fail "vinput is gone (sending: $*)"
+	[ "$answer" = ok ] || fail "vinput said '$answer' to: $*"
+}
+
+refresh() {
+	rm -f "$MWC_TEST_STATE"
+	kill -USR1 "$pid" 2>/dev/null || fail "mwc died"
+	local i
+	for ((i = 0; i < 100; i++)); do
+		[ -e "$MWC_TEST_STATE" ] && return 0
+		sleep 0.02
+	done
+	fail "mwc wrote no state"
+}
+
+# get <app> <field>: a value from the last refreshed state.
+get() {
+	awk -v app="app=$1" -v key="$2=" '$1 == "view" && $2 == app {
+		for (i = 3; i <= NF; i++)
+			if (index($i, key) == 1) { print substr($i, length(key) + 1); exit }
+	}' "$MWC_TEST_STATE"
+}
+
+# global <kind> <field>: a value from the "menu" or "cursor" line.
+global() {
+	awk -v kind="$1" -v key="$2=" '$1 == kind {
+		for (i = 2; i <= NF; i++)
+			if (index($i, key) == 1) { print substr($i, length(key) + 1); exit }
+	}' "$MWC_TEST_STATE"
+}
+
+# check <description> <shell condition>: poll, because clients resize
+# asynchronously. The condition sees freshly refreshed state.
+check() {
+	local what=$1 cond=$2 i
+	for ((i = 0; i < 100; i++)); do
+		refresh
+		if eval "$cond"; then
+			echo "ok: $what"
+			return 0
+		fi
+		sleep 0.05
+	done
+	echo "--- state"
+	cat "$MWC_TEST_STATE"
+	fail "$what: never true: $cond"
+}

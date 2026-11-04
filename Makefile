@@ -21,7 +21,7 @@ CFLAGS += -std=c11 -Wall -Wextra -Wno-unused-parameter -Werror=implicit \
 LDLIBS += $(shell $(PKG_CONFIG) --libs $(PKGS))
 
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
-	src/input.c src/draw.c src/testhook.c
+	src/input.c src/draw.c src/wallpaper.c src/testhook.c
 OBJ = $(SRC:src/%.c=build/%.o)
 PROTO = build/xdg-shell-protocol.h
 
@@ -73,10 +73,19 @@ build/vinput: tests/vinput.c $(VINPUT_HEADERS) $(VINPUT_CODE)
 input-test: mwc build/vinput
 	tests/input.sh
 
-test: smoke input-test
+# Writes test images and reads pixels from screenshots.
+build/pngtool: tests/pngtool.c | build
+	$(CC) -O2 -g -std=c11 -Wall -Wextra \
+		$(shell $(PKG_CONFIG) --cflags cairo) \
+		-o $@ tests/pngtool.c $(shell $(PKG_CONFIG) --libs cairo)
+
+wallpaper-test: mwc build/vinput build/pngtool
+	tests/wallpaper.sh
+
+test: smoke input-test wallpaper-test
 
 clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE)
-.PHONY: all install uninstall smoke input-test test clean
+.PHONY: all install uninstall smoke input-test wallpaper-test test clean

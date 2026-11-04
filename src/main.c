@@ -61,6 +61,8 @@ static void output_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&output->destroy.link);
 	wl_list_remove(&output->link);
 	wlr_scene_node_destroy(&output->background->node);
+	if (output->wallpaper)
+		wlr_scene_node_destroy(&output->wallpaper->node);
 	free(output);
 }
 
@@ -92,6 +94,8 @@ static void new_output(struct wl_listener *listener, void *data)
 
 	float c[4] = { theme.root.r, theme.root.g, theme.root.b, 1 };
 	output->background = wlr_scene_rect_create(server->layer_bg, 0, 0, c);
+	if (server->wallpaper)
+		output->wallpaper = wlr_scene_buffer_create(server->layer_bg, NULL);
 	wl_list_insert(&server->outputs, &output->link);
 
 	struct wlr_output_layout_output *lo =
@@ -114,6 +118,7 @@ static void layout_change(struct wl_listener *listener, void *data)
 			box.x, box.y);
 		wlr_scene_rect_set_size(output->background, box.width,
 			box.height);
+		wallpaper_place(output, &box);
 	}
 	icons_arrange(server);
 }
@@ -181,7 +186,8 @@ static void usage(const char *argv0)
 		"  -d       debug logging\n"
 		"\n"
 		"Environment: MWC_TERMINAL, MWC_ACTIVE, MWC_INACTIVE, MWC_ROOT,\n"
-		"MWC_FONT, XCURSOR_THEME, XCURSOR_SIZE, XKB_DEFAULT_LAYOUT.\n"
+		"MWC_WALLPAPER, MWC_FONT, XCURSOR_THEME, XCURSOR_SIZE,\n"
+		"XKB_DEFAULT_LAYOUT.\n"
 		"Without -s, ~/.config/mwc/autostart is run if executable.\n",
 		argv0);
 }
@@ -209,6 +215,7 @@ int main(int argc, char *argv[])
 
 	struct server server = { 0 };
 	server.terminal = pick_terminal();
+	wallpaper_init(&server);
 	server.display = wl_display_create();
 	server.event_loop = wl_display_get_event_loop(server.display);
 	server.backend = wlr_backend_autocreate(server.event_loop,
@@ -314,5 +321,6 @@ int main(int argc, char *argv[])
 	wlr_allocator_destroy(server.allocator);
 	wlr_renderer_destroy(server.renderer);
 	wl_display_destroy(server.display);
+	wallpaper_fini(&server);
 	return 0;
 }

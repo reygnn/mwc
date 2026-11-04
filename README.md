@@ -43,7 +43,9 @@ resize, maximize, minimize, menu and key binding. The simulated devices and the
 state file only exist when `MWC_TEST_STATE` is set, because those protocols let
 any client type on the user's behalf.
 
-`make test` runs both. None of this tests real input hardware, DRM/KMS or VT
+`make wallpaper-test` renders generated images and checks pixels in screenshots.
+
+`make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
 
 Inside the box, the host's X server isn't reachable: `/tmp/.X11-unix` is a
@@ -75,8 +77,14 @@ Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit.
 | `MWC_ACTIVE`      | `#7387ad`      | focused frame colour             |
 | `MWC_INACTIVE`    | `#aeb2c3`      | other frames, menus, icons       |
 | `MWC_ROOT`        | `#5b7792`      | desktop colour                   |
+| `MWC_WALLPAPER`   | none           | PNG on the desktop, see below    |
 | `MWC_FONT`        | `Sans Bold 10` | Pango font for titles and menus  |
 | `MWC_TERMINAL`    | first of xterm, foot, alacritty, … | "New Window"  |
+
+`MWC_WALLPAPER` is the path of a PNG file; a leading `~/` is expanded. The image
+is scaled to cover each monitor: the aspect ratio stays and what sticks out is
+cut off evenly. If it can't be read, mwc logs why and shows the `MWC_ROOT`
+colour.
 
 ## Decorations
 

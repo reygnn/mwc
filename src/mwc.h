@@ -279,6 +279,7 @@ struct server {
 
 	int cascade;
 	const char *terminal;
+	cairo_surface_t *wallpaper; /* NULL: plain desktop colour */
 };
 
 struct output {
@@ -286,6 +287,8 @@ struct output {
 	struct server *server;
 	struct wlr_output *wlr_output;
 	struct wlr_scene_rect *background;
+	struct wlr_scene_buffer *wallpaper; /* above background, may be NULL */
+	int wallpaper_w, wallpaper_h;       /* size it was rendered for */
 	struct wl_listener frame;
 	struct wl_listener request_state;
 	struct wl_listener destroy;
@@ -361,6 +364,12 @@ void input_add_device(struct server *server, struct wlr_input_device *dev);
 void cursor_set_name(struct server *server, const char *name);
 void process_cursor_motion(struct server *server, uint32_t time);
 void spawn(const char *cmd);
+
+/* ---- wallpaper.c -------------------------------------------------------- */
+
+void wallpaper_init(struct server *server);
+void wallpaper_fini(struct server *server);
+void wallpaper_place(struct output *output, const struct wlr_box *box);
 
 /* ---- testhook.c --------------------------------------------------------- */
 
