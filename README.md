@@ -10,7 +10,7 @@ and get the same frame.
 
     sudo apt install build-essential pkg-config libwlroots-0.19-dev \
         wayland-protocols libwayland-dev libxkbcommon-dev libpixman-1-dev \
-        libcairo2-dev libpango1.0-dev xwayland
+        libcairo2-dev libpango1.0-dev libxcb1-dev libxcb-icccm4-dev xwayland
     make
     sudo make install   # /usr/local/bin/mwc + GDM session entry
 
@@ -46,7 +46,8 @@ any client type on the user's behalf.
 `make wallpaper-test` renders generated images and checks pixels in screenshots,
 and `make config-test` does the same for `mwmrc`, including reloading it.
 `make layer-test` checks panels with a small layer-shell client
-(`tests/layerc.c`).
+(`tests/layerc.c`), and `make window-test` window behaviour with clients that can
+ask for any hint (`tests/xclient.c`, `tests/xdgc.c`).
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
@@ -141,6 +142,28 @@ the focus. The overlay layer goes above everything. A click on the background
 layer counts as a click on the desktop, so a wallpaper tool doesn't cost the root
 menu. While a surface holds the keyboard exclusively, the window key bindings are
 off, except VT switching and Ctrl+Alt+Backspace.
+
+X11 panels work as well: a window of type dock with `_NET_WM_STRUT_PARTIAL`
+reserves space the same way, and `_NET_WORKAREA` tells X11 programs what is free.
+
+## Window behaviour
+
+- **Dialogs** stay above the window they belong to and minimize with it, without
+  an icon of their own. They open centred over it, without Minimize and Maximize.
+- **Size limits** hold while resizing: minimum and maximum size for all windows,
+  resize steps, base size and aspect ratio from `WM_NORMAL_HINTS` for X11 ones. A
+  window with a fixed size gets a thin border and no Size or Maximize.
+- **`_MOTIF_WM_HINTS`** decide which decorations and functions an X11 window gets.
+  Functions it doesn't have are grey in its menu and their keys do nothing.
+- **`_NET_WM_WINDOW_TYPE`**: dialog, utility/toolbar/menu, splash, dock, desktop,
+  notification. Docks and notifications stay above normal windows, desktop windows
+  below them, none of the three takes the focus. `_NET_WM_STATE_ABOVE` and `BELOW`
+  work too, as do programs that ask to start maximized or fullscreen.
+- **Placement** of X11 windows follows `USPosition`, `PPosition` and `win_gravity`.
+  An X11 window that takes no input focus (`WM_HINTS`) only comes to the front.
+
+Only `_NET_WM_STRUT_PARTIAL` counts for X11 panels, not the older `_NET_WM_STRUT`,
+because that is what wlroots reads.
 
 ## Decorations
 

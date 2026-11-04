@@ -92,6 +92,37 @@ enum view_type {
 	VIEW_XWAYLAND,
 };
 
+/* What a window gets, as in Motif's clientDecoration/clientFunctions. The bits
+ * are those of _MOTIF_WM_HINTS. */
+enum {
+	DECOR_BORDER = 1 << 1,
+	DECOR_RESIZEH = 1 << 2,
+	DECOR_TITLE = 1 << 3,
+	DECOR_MENU = 1 << 4,
+	DECOR_MINIMIZE = 1 << 5,
+	DECOR_MAXIMIZE = 1 << 6,
+	DECOR_ALL = 0x7e,
+};
+
+enum {
+	FUNC_RESIZE = 1 << 1,
+	FUNC_MOVE = 1 << 2,
+	FUNC_MINIMIZE = 1 << 3,
+	FUNC_MAXIMIZE = 1 << 4,
+	FUNC_CLOSE = 1 << 5,
+	FUNC_ALL = 0x3e,
+};
+
+enum window_type {
+	WT_NORMAL,
+	WT_DIALOG,
+	WT_UTILITY,
+	WT_SPLASH,
+	WT_DOCK,
+	WT_DESKTOP,
+	WT_NOTIFICATION,
+};
+
 /* Frame regions, used for hit testing, cursor shapes and button state. */
 enum frame_part {
 	PART_NONE = 0,
@@ -124,6 +155,14 @@ struct view {
 	bool placed;    /* position chosen by the client, skip cascading */
 	bool ssd;       /* client accepted server-side decorations */
 	bool decorated; /* frame currently drawn: ssd && !fullscreen */
+	enum window_type wtype;
+	unsigned decor, funcs; /* see view_update_properties() */
+	uint32_t motif_flags, motif_funcs, motif_decor; /* X11 only */
+	/* Size limits of the client: 0 means none. */
+	int min_w, min_h, max_w, max_h, base_w, base_h, inc_w, inc_h;
+	float min_aspect, max_aspect;
+	int gravity;
+	bool hidden_with_parent; /* a dialog gone with its minimized window */
 	void *deco;     /* xdg-decoration object, if any */
 	bool activated;
 	bool maximized;
@@ -159,6 +198,11 @@ struct view {
 	struct wl_listener request_configure;
 	struct wl_listener request_activate;
 	struct wl_listener set_decorations;
+	struct wl_listener set_parent;
+	struct wl_listener set_window_type;
+	struct wl_listener set_strut_partial;
+	struct wl_listener request_above;
+	struct wl_listener request_below;
 };
 
 /* Unmanaged XWayland windows: override-redirect menus, tooltips, DnD icons. */
@@ -243,6 +287,7 @@ struct server {
 	struct wlr_scene_tree *layer_bg;
 	struct wlr_scene_tree *layer_shell[MWC_SHELL_LAYERS]; /* see main() */
 	struct wlr_scene_tree *layer_icons;
+	struct wlr_scene_tree *layer_below; /* _NET_WM_STATE_BELOW */
 	struct wlr_scene_tree *layer_views;
 	struct wlr_scene_tree *layer_fullscreen; /* the focused fullscreen window */
 	struct wlr_scene_tree *layer_unmanaged;
@@ -263,6 +308,10 @@ struct server {
 	struct wlr_xwayland *xwayland;
 	struct wl_listener xwayland_ready;
 	struct wl_listener new_xwayland_surface;
+	bool xwayland_up;
+	uint32_t atom_motif_hints;
+	uint32_t atom_net_wm_state, atom_state_above, atom_state_below;
+	uint32_t atom_state_fullscreen, atom_state_max_vert, atom_state_max_horz;
 
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
@@ -336,6 +385,8 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 /* Un-maximizes under the pointer, keeping the grab point proportional. */
 void view_drag_unmaximize(struct view *view);
 void view_update_title(struct view *view);
+/* The frame's size changed: move the client and redraw. */
+void view_frame_changed(struct view *view);
 /* Colours or frame size changed: pick up the new theme and redraw. */
 void view_theme_changed(struct view *view);
 const char *view_title(struct view *view);
@@ -353,11 +404,24 @@ struct view *view_at(struct server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy,
 	enum frame_part *part, uint32_t *edges, bool *on_icon);
 /* The output there, or else the first one; NULL when there are none. */
+/* Puts every window into its scene layer, by type, state and focus. */
+void views_update_layers(struct server *server);
 struct output *output_at(struct server *server, double lx, double ly);
 struct wlr_box output_usable_area(struct server *server, double lx, double ly);
 struct wlr_box output_full_area(struct server *server, double lx, double ly);
 /* Maximized windows and icons follow when panels come and go. */
 void views_usable_area_changed(struct server *server);
+
+/* ---- hints.c ------------------------------------------------------------ */
+
+/* Reads type and size limits from the client, derives decor and funcs. */
+void view_update_properties(struct view *view);
+void view_apply_size_hints(struct view *view, int *w, int *h, bool incr);
+void view_gravity_to_frame(struct view *view, int x, int y, int *fx, int *fy);
+struct view *view_parent(struct view *view);
+bool view_is_transient_of(struct view *view, struct view *ancestor);
+struct view *view_transient_root(struct view *view);
+bool view_focusable(struct view *view);
 
 /* ---- xwayland.c --------------------------------------------------------- */
 
@@ -365,6 +429,8 @@ void xwayland_init(struct server *server);
 
 /* ---- frame.c ------------------------------------------------------------ */
 
+int frame_border(struct view *view);
+int frame_title(struct view *view);
 int frame_left(struct view *view);
 int frame_top(struct view *view);
 int frame_extra_w(struct view *view);
@@ -401,6 +467,8 @@ void spawn(const char *cmd);
 
 void layer_init(struct server *server);
 void layer_arrange(struct output *output);
+void layers_arrange_all(struct server *server);
+void layer_publish_workarea(struct server *server);
 void layer_output_gone(struct output *output);
 void layer_handle_click(struct server *server, struct wlr_surface *surface);
 bool layer_surface_is_desktop(struct wlr_surface *surface);

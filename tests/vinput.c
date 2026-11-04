@@ -226,8 +226,12 @@ static const char *run_command(char *line)
 	if (strcmp(cmd, "move") == 0 && a && b) {
 		/* Aim at the pixel centre: an exact X/width lands just below
 		 * X after the compositor's floating-point mapping. */
+		/* A real mouse stops at the screen's edge, too. */
+		int x = atoi(a), y = atoi(b);
+		x = x < 0 ? 0 : x >= width ? width - 1 : x;
+		y = y < 0 ? 0 : y >= height ? height - 1 : y;
 		zwlr_virtual_pointer_v1_motion_absolute(pointer, now_msec(),
-			2 * atoi(a) + 1, 2 * atoi(b) + 1, 2 * width, 2 * height);
+			2 * x + 1, 2 * y + 1, 2 * width, 2 * height);
 		zwlr_virtual_pointer_v1_frame(pointer);
 		return NULL;
 	}

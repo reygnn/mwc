@@ -17,6 +17,7 @@
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/util/log.h>
+#include <wlr/xwayland.h>
 #include "mwc.h"
 
 static struct server *test_server;
@@ -55,14 +56,29 @@ static int dump_state(int signal, void *data)
 		if (!v->mapped)
 			continue;
 		fprintf(f, "view app=%s x=%d y=%d w=%d h=%d active=%d kbfocus=%d "
-			"max=%d min=%d full=%d frame=%d icon_x=%d icon_y=%d\n",
+			"max=%d min=%d full=%d frame=%d icon_x=%d icon_y=%d hidden=%d "
+			"bw=%d th=%d above=%d below=%d\n",
 			view_app_id(v), v->x, v->y, v->width, v->height,
 			v->activated, kb_focus && kb_focus == view_surface(v),
 			v->maximized, v->minimized, v->fullscreen, v->decorated,
-			v->icon_x, v->icon_y);
+			v->icon_x, v->icon_y, v->hidden_with_parent,
+			frame_border(v), frame_title(v),
+			v->type == VIEW_XWAYLAND && v->xsurface->above,
+			v->type == VIEW_XWAYLAND && v->xsurface->below);
 	}
-	fprintf(f, "menu open=%d title=%s\n", server->menu.open,
-		server->menu.open && server->menu.title ? "yes" : "no");
+	/* The mnemonics of what can be chosen, without spaces for the parser. */
+	char sensitive[MENU_MAX_ITEMS + 1];
+	int n = 0;
+	if (server->menu.open) {
+		for (int i = 0; i < server->menu.n_items; i++) {
+			const struct menu_item *it = &server->menu.items[i];
+			if (it->label && it->sensitive && it->mnemonic)
+				sensitive[n++] = it->mnemonic;
+		}
+	}
+	sensitive[n] = '\0';
+	fprintf(f, "menu open=%d title=%s sensitive=%s\n", server->menu.open,
+		server->menu.open && server->menu.title ? "yes" : "no", sensitive);
 	struct output *o = output_at(server, 0, 0);
 	if (o)
 		fprintf(f, "output ux=%d uy=%d uw=%d uh=%d\n", o->usable.x,

@@ -16,24 +16,93 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include "mwc.h"
 
+static unsigned frame_decor(struct view *view)
+{
+	return view->decorated ? view->decor : 0;
+}
+
+int frame_border(struct view *view)
+{
+	unsigned d = frame_decor(view);
+	if (d & DECOR_RESIZEH)
+		return theme.border;
+	if (d & DECOR_BORDER)
+		return theme.bevel + 1;
+	return 0;
+}
+
+int frame_title(struct view *view)
+{
+	return (frame_decor(view) & DECOR_TITLE) ? theme.title_height : 0;
+}
+
 int frame_left(struct view *view)
 {
-	return view->decorated ? theme.border : 0;
+	return frame_border(view);
 }
 
 int frame_top(struct view *view)
 {
-	return view->decorated ? theme.border + theme.title_height : 0;
+	return frame_border(view) + frame_title(view);
 }
 
 int frame_extra_w(struct view *view)
 {
-	return view->decorated ? 2 * theme.border : 0;
+	return 2 * frame_border(view);
 }
 
 int frame_extra_h(struct view *view)
 {
-	return view->decorated ? 2 * theme.border + theme.title_height : 0;
+	return 2 * frame_border(view) + frame_title(view);
+}
+
+struct title_layout {
+	int menu_x, title_x, title_w, min_x, max_x;
+};
+
+static void title_layout(struct view *view, struct title_layout *tl)
+{
+	unsigned d = frame_decor(view);
+	int B = frame_border(view), T = theme.title_height;
+	int left = B, right = B + view->width;
+	tl->menu_x = tl->min_x = tl->max_x = -1;
+
+	/* Drop the buttons a narrow window has no room for, minimize first, so
+	 * drawing and hit testing never see them overlap. */
+	static const unsigned order[] = {
+		DECOR_MINIMIZE, DECOR_MAXIMIZE, DECOR_MENU,
+	};
+	int n = !!(d & DECOR_MENU) + !!(d & DECOR_MINIMIZE) +
+		!!(d & DECOR_MAXIMIZE);
+	for (int i = 0; i < 3 && n * T > view->width; i++) {
+		if (d & order[i]) {
+			d &= ~order[i];
+			n--;
+		}
+	}
+	if (d & DECOR_MENU) {
+		tl->menu_x = left;
+		left += T;
+	}
+	if (d & DECOR_MAXIMIZE) {
+		right -= T;
+		tl->max_x = right;
+	}
+	if (d & DECOR_MINIMIZE) {
+		right -= T;
+		tl->min_x = right;
+	}
+	tl->title_x = left;
+	tl->title_w = right - left;
+}
+
+/* How far the resize corners reach along each side of a W x H frame: B+T, at
+ * most half the frame. Hit testing and the grooves agree. */
+static void corner_reach(int W, int H, int *kx, int *ky)
+{
+	int k = theme.border + theme.title_height;
+	*kx = k < W / 2 ? k : W / 2;
+	*ky = k < H / 2 ? k : H / 2;
 }
 
 void draw_text(cairo_t *cr, const char *text, const char *font,
@@ -98,12 +167,15 @@ static void draw_button(cairo_t *cr, struct view *view, enum frame_part part,
 
 void frame_render(struct view *view)
 {
-	if (!view->decorated) {
+	const int B = frame_border(view), T = frame_title(view);
+	if (!B && !T) {
+		/* The client covers the whole window. */
 		wlr_scene_node_set_enabled(&view->frame_node->node, false);
 		return;
 	}
 
-	const int B = theme.border, T = theme.title_height, bv = theme.bevel;
+	const int bv = theme.bevel < B ? theme.bevel : B;
+	const bool full = B == theme.border;
 	const int W = view->width + 2 * B;
 	const int H = view->height + 2 * B + T;
 	const struct mwc_shade *s = view->activated ?
@@ -117,33 +189,43 @@ void frame_render(struct view *view)
 	set_source(cr, s->bg);
 	cairo_paint(cr);
 
-	/* Outer raised edge, inner sunken edge around title + client. */
-	draw_bevel(cr, 0, 0, W, H, bv, s, false);
-	draw_bevel(cr, B - 1, B - 1, W - 2 * B + 2, H - 2 * B + 2, 1, s, true);
+	if (B) {
+		/* Outer raised edge, inner sunken edge around title + client. */
+		draw_bevel(cr, 0, 0, W, H, bv, s, false);
+		if (full)
+			draw_bevel(cr, B - 1, B - 1, W - 2 * B + 2,
+				H - 2 * B + 2, 1, s, true);
+	}
 
 	/* Resize corner grooves, cutting the border at title-bar distance. */
-	if (!view->maximized) {
-		int c = B + T;
-		draw_groove_v(cr, c, bv, B - bv - 1, s);
-		draw_groove_v(cr, W - c - 2, bv, B - bv - 1, s);
-		draw_groove_v(cr, c, H - B + 1, B - bv - 1, s);
-		draw_groove_v(cr, W - c - 2, H - B + 1, B - bv - 1, s);
-		draw_groove_h(cr, bv, c, B - bv - 1, s);
-		draw_groove_h(cr, W - B + 1, c, B - bv - 1, s);
-		draw_groove_h(cr, bv, H - c - 2, B - bv - 1, s);
-		draw_groove_h(cr, W - B + 1, H - c - 2, B - bv - 1, s);
+	if (full && (view->funcs & FUNC_RESIZE) && !view->maximized) {
+		int kx, ky;
+		corner_reach(W, H, &kx, &ky);
+		draw_groove_v(cr, kx, bv, B - bv - 1, s);
+		draw_groove_v(cr, W - kx - 2, bv, B - bv - 1, s);
+		draw_groove_v(cr, kx, H - B + 1, B - bv - 1, s);
+		draw_groove_v(cr, W - kx - 2, H - B + 1, B - bv - 1, s);
+		draw_groove_h(cr, bv, ky, B - bv - 1, s);
+		draw_groove_h(cr, W - B + 1, ky, B - bv - 1, s);
+		draw_groove_h(cr, bv, H - ky - 2, B - bv - 1, s);
+		draw_groove_h(cr, W - B + 1, H - ky - 2, B - bv - 1, s);
 	}
 
 	/* Title bar: menu button | title | minimize | maximize */
-	int inner_w = W - 2 * B;
-	int title_x = B + T, title_w = inner_w - 3 * T;
-	draw_button(cr, view, PART_MENU_BUTTON, B, B, T, s);
-	draw_bevel(cr, title_x, B, title_w, T, 1, s,
-		view->pressed == PART_TITLE);
-	draw_text(cr, view_title(view), theme.font, s->fg,
-		title_x + 4, B + 1, title_w - 8, T - 2, true);
-	draw_button(cr, view, PART_MINIMIZE_BUTTON, W - B - 2 * T, B, T, s);
-	draw_button(cr, view, PART_MAXIMIZE_BUTTON, W - B - T, B, T, s);
+	if (T) {
+		struct title_layout tl;
+		title_layout(view, &tl);
+		if (tl.menu_x >= 0)
+			draw_button(cr, view, PART_MENU_BUTTON, tl.menu_x, B, T, s);
+		draw_bevel(cr, tl.title_x, B, tl.title_w, T, 1, s,
+			view->pressed == PART_TITLE);
+		draw_text(cr, view_title(view), theme.font, s->fg,
+			tl.title_x + 4, B + 1, tl.title_w - 8, T - 2, true);
+		if (tl.min_x >= 0)
+			draw_button(cr, view, PART_MINIMIZE_BUTTON, tl.min_x, B, T, s);
+		if (tl.max_x >= 0)
+			draw_button(cr, view, PART_MAXIMIZE_BUTTON, tl.max_x, B, T, s);
+	}
 
 	wlr_scene_buffer_set_buffer(view->frame_node, &buf->base);
 	cairo_buffer_drop(buf);
@@ -153,10 +235,9 @@ void frame_render(struct view *view)
 enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges)
 {
 	*edges = 0;
-	if (!view->decorated)
+	const int B = frame_border(view), T = frame_title(view);
+	if (!B && !T)
 		return PART_CLIENT;
-
-	const int B = theme.border, T = theme.title_height;
 	const int W = view->width + 2 * B;
 	const int H = view->height + 2 * B + T;
 
@@ -164,29 +245,35 @@ enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges)
 		return PART_NONE;
 	if (fx >= B && fx < W - B && fy >= B + T && fy < H - B)
 		return PART_CLIENT;
-	if (fx >= B && fx < W - B && fy >= B && fy < B + T) {
-		if (fx < B + T)
+	if (T && fx >= B && fx < W - B && fy >= B && fy < B + T) {
+		struct title_layout tl;
+		title_layout(view, &tl);
+		if (tl.menu_x >= 0 && fx < tl.menu_x + T)
 			return PART_MENU_BUTTON;
-		if (fx >= W - B - T)
+		if (tl.max_x >= 0 && fx >= tl.max_x)
 			return PART_MAXIMIZE_BUTTON;
-		if (fx >= W - B - 2 * T)
+		if (tl.min_x >= 0 && fx >= tl.min_x && (tl.max_x < 0 || fx < tl.max_x))
 			return PART_MINIMIZE_BUTTON;
 		return PART_TITLE;
 	}
-	if (view->maximized)
+	/* A border that can't resize moves the window, like the title. */
+	if (B != theme.border || !(view->funcs & FUNC_RESIZE) || view->maximized)
 		return PART_TITLE;
 
-	/* Border: the corner pieces extend B+T along each side. */
-	int c = B + T;
+	/* Border: the corner pieces extend B+T along each side, but no further
+	 * than half the frame, or a short window would be at its top and bottom
+	 * edge at once. */
+	int kx, ky;
+	corner_reach(W, H, &kx, &ky);
 	bool in_lr = fx < B || fx >= W - B;
 	bool in_tb = fy < B || fy >= H - B;
-	if (fx < B || (in_tb && fx < c))
+	if (fx < B || (in_tb && fx < kx))
 		*edges |= WLR_EDGE_LEFT;
-	if (fx >= W - B || (in_tb && fx >= W - c))
+	else if (fx >= W - B || (in_tb && fx >= W - kx))
 		*edges |= WLR_EDGE_RIGHT;
-	if (fy < B || (in_lr && fy < c))
+	if (fy < B || (in_lr && fy < ky))
 		*edges |= WLR_EDGE_TOP;
-	if (fy >= H - B || (in_lr && fy >= H - c))
+	else if (fy >= H - B || (in_lr && fy >= H - ky))
 		*edges |= WLR_EDGE_BOTTOM;
 	return PART_RESIZE;
 }

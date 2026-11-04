@@ -133,24 +133,6 @@ static void process_resize(struct server *server)
 	int bx = lround(server->cursor->x - server->grab_x);
 	int by = lround(server->cursor->y - server->grab_y);
 
-	int min_w = 3 * theme.title_height + 24, min_h = 8;
-	int max_w = 0, max_h = 0;
-	if (view->type == VIEW_XDG) {
-		struct wlr_xdg_toplevel_state *st = &view->xdg_toplevel->current;
-		if (st->min_width > min_w)
-			min_w = st->min_width;
-		if (st->min_height > min_h)
-			min_h = st->min_height;
-		max_w = st->max_width;
-		max_h = st->max_height;
-	}
-	min_w += frame_extra_w(view);
-	min_h += frame_extra_h(view);
-	if (max_w)
-		max_w += frame_extra_w(view);
-	if (max_h)
-		max_h += frame_extra_h(view);
-
 	int left = g->x, right = g->x + g->width;
 	int top = g->y, bottom = g->y + g->height;
 	if (edges & WLR_EDGE_LEFT)
@@ -162,21 +144,20 @@ static void process_resize(struct server *server)
 	else if (edges & WLR_EDGE_BOTTOM)
 		bottom = by;
 
-	int w = right - left, h = bottom - top;
-	if (w < min_w)
-		w = min_w;
-	if (h < min_h)
-		h = min_h;
-	if (max_w && w > max_w)
-		w = max_w;
-	if (max_h && h > max_h)
-		h = max_h;
+	/* Never so small that the frame's buttons don't fit, unless the client
+	 * insists; then what the client asks for. The opposite edge stays. */
+	int cw = right - left - frame_extra_w(view);
+	int ch = bottom - top - frame_extra_h(view);
+	if (cw < 3 * theme.title_height + 24)
+		cw = 3 * theme.title_height + 24;
+	if (ch < 8)
+		ch = 8;
+	view_apply_size_hints(view, &cw, &ch, true);
 	if (edges & WLR_EDGE_LEFT)
-		left = right - w;
+		left = right - cw - frame_extra_w(view);
 	if (edges & WLR_EDGE_TOP)
-		top = bottom - h;
+		top = bottom - ch - frame_extra_h(view);
 
-	int cw = w - frame_extra_w(view), ch = h - frame_extra_h(view);
 	if (view->type == VIEW_XWAYLAND) {
 		/* X windows get position and size in one configure; the
 		 * commit handler re-anchors with the same values. */
@@ -328,7 +309,8 @@ static bool handle_press(struct server *server, uint32_t button,
 			uint32_t e = (cx < mx ? WLR_EDGE_LEFT : WLR_EDGE_RIGHT) |
 				(cy < my ? WLR_EDGE_TOP : WLR_EDGE_BOTTOM);
 			view_begin_interactive(view, CURSOR_RESIZE, e, false);
-			cursor_set_name(server, edge_cursor(e));
+			if (server->cursor_mode == CURSOR_RESIZE)
+				cursor_set_name(server, edge_cursor(e));
 			return true;
 		}
 		if (button == BTN_MIDDLE) {
@@ -345,9 +327,10 @@ static bool handle_press(struct server *server, uint32_t button,
 		if (button == BTN_RIGHT) {
 			menu_open_window(server, view, cx, cy);
 		} else if (button == BTN_LEFT) {
-			if (is_double_click(server, view, part, time))
-				view_set_maximized(view, !view->maximized);
-			else
+			if (is_double_click(server, view, part, time)) {
+				if (view->maximized || (view->funcs & FUNC_MAXIMIZE))
+					view_set_maximized(view, !view->maximized);
+			} else
 				view_begin_interactive(view, CURSOR_MOVE, 0,
 					false);
 		} else if (button == BTN_MIDDLE) {
@@ -357,10 +340,12 @@ static bool handle_press(struct server *server, uint32_t button,
 	case PART_MENU_BUTTON:
 		if (is_double_click(server, view, part, time)) {
 			menu_close(server);
-			view_close(view);
+			if (view->funcs & FUNC_CLOSE)
+				view_close(view);
 		} else {
-			menu_open_window(server, view, view->x + theme.border,
-				view->y + theme.border + theme.title_height);
+			menu_open_window(server, view,
+				view->x + frame_border(view),
+				view->y + frame_top(view));
 		}
 		return true;
 	case PART_MINIMIZE_BUTTON:
@@ -395,7 +380,8 @@ static void handle_button_release(struct server *server)
 		return;
 	if (part == PART_MINIMIZE_BUTTON)
 		view_minimize(v);
-	else if (part == PART_MAXIMIZE_BUTTON)
+	else if (part == PART_MAXIMIZE_BUTTON && (v->maximized ||
+			(v->funcs & FUNC_MAXIMIZE)))
 		view_set_maximized(v, !v->maximized);
 }
 
@@ -483,8 +469,8 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		return false;
 	if (shift && !alt && !ctrl && sym == XKB_KEY_Escape && view) {
 		/* mwm: Shift+Escape posts the window menu */
-		menu_open_window(server, view, view->x + theme.border,
-			view->y + theme.border + theme.title_height);
+		menu_open_window(server, view, view->x + frame_border(view),
+			view->y + frame_top(view));
 		return true;
 	}
 	if (!alt || ctrl)
@@ -502,8 +488,9 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		return true;
 	case XKB_KEY_space:
 		if (view)
-			menu_open_window(server, view, view->x + theme.border,
-				view->y + theme.border + theme.title_height);
+			menu_open_window(server, view,
+				view->x + frame_border(view),
+				view->y + frame_top(view));
 		return true;
 	case XKB_KEY_F3:
 		run_action(server, ACT_LOWER, view);
@@ -524,7 +511,7 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		run_action(server, ACT_MINIMIZE, view);
 		return true;
 	case XKB_KEY_F10:
-		if (view)
+		if (view && (view->maximized || (view->funcs & FUNC_MAXIMIZE)))
 			view_set_maximized(view, !view->maximized);
 		return true;
 	case XKB_KEY_F11:

@@ -13,6 +13,8 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
+#include <wlr/xwayland.h>
+#include <xcb/xcb_ewmh.h>
 #include "mwc.h"
 
 struct layer_surface {
@@ -43,6 +45,65 @@ static void arrange_pass(struct output *output, const struct wlr_box *full,
 	}
 }
 
+static bool ranges_overlap(long a0, long a1, long b0, long b1)
+{
+	return a0 <= b1 && b0 <= a1;
+}
+
+/* _NET_WM_STRUT_PARTIAL of X11 panels. Its right and bottom values count from
+ * the far edges of the X screen, which spans all outputs. */
+static void apply_struts(struct output *output, struct wlr_box *usable)
+{
+	struct server *server = output->server;
+	struct wlr_box m, all;
+	wlr_output_layout_get_box(server->output_layout, output->wlr_output, &m);
+	wlr_output_layout_get_box(server->output_layout, NULL, &all);
+	int sw = all.x + all.width, sh = all.y + all.height;
+	int left = usable->x, right = usable->x + usable->width;
+	int top = usable->y, bottom = usable->y + usable->height;
+
+	struct view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->type != VIEW_XWAYLAND || !v->mapped || v->minimized ||
+				v->hidden_with_parent || !v->xsurface->strut_partial)
+			continue;
+		const xcb_ewmh_wm_strut_partial_t *s = v->xsurface->strut_partial;
+		if ((int)s->left > m.x && ranges_overlap(s->left_start_y,
+				s->left_end_y, m.y, m.y + m.height - 1) &&
+				(int)s->left > left)
+			left = s->left;
+		if (s->right && sw - (int)s->right < m.x + m.width &&
+				ranges_overlap(s->right_start_y, s->right_end_y, m.y,
+				m.y + m.height - 1) && sw - (int)s->right < right)
+			right = sw - s->right;
+		if ((int)s->top > m.y && ranges_overlap(s->top_start_x, s->top_end_x,
+				m.x, m.x + m.width - 1) && (int)s->top > top)
+			top = s->top;
+		if (s->bottom && sh - (int)s->bottom < m.y + m.height &&
+				ranges_overlap(s->bottom_start_x, s->bottom_end_x, m.x,
+				m.x + m.width - 1) && sh - (int)s->bottom < bottom)
+			bottom = sh - s->bottom;
+	}
+	if (right - left < 100 || bottom - top < 100)
+		return; /* nonsensical struts */
+	*usable = (struct wlr_box){ left, top, right - left, bottom - top };
+}
+
+/* _NET_WORKAREA, for X11 programs placing their own windows. There is one per
+ * desktop rather than per output, so the first output's has to do. */
+static void publish_workarea(struct server *server)
+{
+	if (!server->xwayland_up || wl_list_empty(&server->outputs))
+		return;
+	struct output *first = wl_container_of(server->outputs.prev, first, link);
+	wlr_xwayland_set_workareas(server->xwayland, &first->usable, 1);
+}
+
+void layer_publish_workarea(struct server *server)
+{
+	publish_workarea(server);
+}
+
 void layer_arrange(struct output *output)
 {
 	struct wlr_box full;
@@ -52,10 +113,19 @@ void layer_arrange(struct output *output)
 	/* Surfaces that reserve space first, so the others fit around them. */
 	arrange_pass(output, &full, &usable, true);
 	arrange_pass(output, &full, &usable, false);
+	apply_struts(output, &usable);
 	if (!wlr_box_equal(&usable, &output->usable)) {
 		output->usable = usable;
 		views_usable_area_changed(output->server);
+		publish_workarea(output->server);
 	}
+}
+
+void layers_arrange_all(struct server *server)
+{
+	struct output *output;
+	wl_list_for_each(output, &server->outputs, link)
+		layer_arrange(output);
 }
 
 /* ---- keyboard focus ------------------------------------------------------- */

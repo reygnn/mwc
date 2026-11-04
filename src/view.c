@@ -137,29 +137,99 @@ static void view_apply_size(struct view *view, int w, int h)
 	frame_render(view);
 }
 
-/* A fullscreen window covers top-layer panels only while it has the focus,
- * or a window focused beside it would end up behind them. */
-static void view_update_layer(struct view *view)
+/* Scene layers windows can be in, bottom to top. */
+enum view_layer {
+	VL_DESKTOP,
+	VL_BELOW,
+	VL_NORMAL,
+	VL_ABOVE,
+	VL_FULLSCREEN,
+};
+
+static enum view_layer own_layer(struct view *view, struct view *focus)
 {
-	struct server *server = view->server;
-	wlr_scene_node_reparent(&view->tree->node,
-		view->fullscreen && view->activated ?
-		server->layer_fullscreen : server->layer_views);
+	if (view->wtype == WT_DESKTOP)
+		return VL_DESKTOP;
+	/* A fullscreen window covers top-layer panels only while it or one of
+	 * its dialogs has the focus. Otherwise a window focused beside it, or a
+	 * panel, would come up in the wrong place. */
+	if (view->fullscreen && focus && view_transient_root(focus) == view)
+		return VL_FULLSCREEN;
+	bool x11 = view->type == VIEW_XWAYLAND;
+	if (x11 && view->xsurface->below)
+		return VL_BELOW;
+	if ((x11 && view->xsurface->above) || view->wtype == WT_DOCK ||
+			view->wtype == WT_NOTIFICATION)
+		return VL_ABOVE;
+	return VL_NORMAL;
+}
+
+void views_update_layers(struct server *server)
+{
+	struct view *focus = NULL, *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->activated)
+			focus = v;
+	}
+	wl_list_for_each(v, &server->views, link) {
+		enum view_layer layer = own_layer(v, focus);
+		/* Dialogs follow the window they belong to into its layer, at
+		 * least the normal one. */
+		struct view *root = view_transient_root(v);
+		if (root != v) {
+			enum view_layer r = own_layer(root, focus);
+			if (r < VL_NORMAL)
+				r = VL_NORMAL;
+			if (r > layer)
+				layer = r;
+		}
+		struct wlr_scene_tree *tree[] = {
+			[VL_DESKTOP] = server->layer_shell[1],
+			[VL_BELOW] = server->layer_below,
+			[VL_NORMAL] = server->layer_views,
+			[VL_ABOVE] = server->layer_shell[2],
+			[VL_FULLSCREEN] = server->layer_fullscreen,
+		};
+		wlr_scene_node_reparent(&v->tree->node, tree[layer]);
+	}
 }
 
 void view_set_activated(struct view *view, bool activated)
 {
 	view->activated = activated;
-	view_update_layer(view);
-	if (view->type == VIEW_XDG) {
+	if (view->type == VIEW_XDG)
 		wlr_xdg_toplevel_set_activated(view->xdg_toplevel, activated);
-	} else {
+	else
 		wlr_xwayland_surface_activate(view->xsurface, activated);
-		if (activated)
-			wlr_xwayland_surface_restack(view->xsurface, NULL,
-				XCB_STACK_MODE_ABOVE);
-	}
+	views_update_layers(view->server);
 	frame_render(view);
+}
+
+static void raise_one(struct view *view)
+{
+	wlr_scene_node_raise_to_top(&view->tree->node);
+	wl_list_remove(&view->link);
+	wl_list_insert(&view->server->views, &view->link);
+	if (view->type == VIEW_XWAYLAND)
+		wlr_xwayland_surface_restack(view->xsurface, NULL,
+			XCB_STACK_MODE_ABOVE);
+}
+
+/* Dialogs stay above the window they belong to, in their own order. */
+static void view_raise(struct view *view)
+{
+	struct server *server = view->server;
+	raise_one(view);
+	int n = 0, count = wl_list_length(&server->views);
+	struct view **kids = calloc(count, sizeof(*kids));
+	struct view *v;
+	wl_list_for_each_reverse(v, &server->views, link) {
+		if (v->mapped && view_is_transient_of(v, view))
+			kids[n++] = v;
+	}
+	for (int i = 0; i < n; i++)
+		raise_one(kids[i]);
+	free(kids);
 }
 
 static struct view *focused_view(struct server *server)
@@ -179,20 +249,22 @@ void view_focus(struct view *view)
 	struct server *server = view->server;
 	struct wlr_seat *seat = server->seat;
 
-	struct view *prev = focused_view(server);
-	if (prev && prev != view)
-		view_set_activated(prev, false);
-
-	if (view->minimized) {
+	if (view->minimized || view->hidden_with_parent) {
 		view_restore(view);
 		return;
 	}
+	/* A panel or a window without input focus only comes to the front. */
+	if (!view_focusable(view)) {
+		view_raise(view);
+		return;
+	}
 
-	wlr_scene_node_raise_to_top(&view->tree->node);
-	wl_list_remove(&view->link);
-	wl_list_insert(&server->views, &view->link);
+	struct view *prev = focused_view(server);
+	if (prev && prev != view)
+		view_set_activated(prev, false);
 	if (!view->activated)
 		view_set_activated(view, true);
+	view_raise(view);
 
 	/* An exclusive layer surface keeps the keyboard until it goes away. */
 	if (server->exclusive_layer)
@@ -213,7 +285,7 @@ static void focus_next(struct server *server, struct view *except)
 {
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (v != except && v->mapped && !v->minimized) {
+		if (v != except && view_focusable(v)) {
 			view_focus(v);
 			return;
 		}
@@ -245,19 +317,27 @@ void view_lower(struct view *view)
 	}
 }
 
+/* Fill the usable area, as far as the client's limits allow. */
+static void view_refit_maximized(struct view *view)
+{
+	struct wlr_box a = output_usable_area(view->server,
+		view->x + view->width / 2.0, view->y + view->height / 2.0);
+	int w = a.width - frame_extra_w(view), h = a.height - frame_extra_h(view);
+	view_apply_size_hints(view, &w, &h, false);
+	view_set_geometry(view, a.x, a.y, w, h);
+}
+
 void view_set_maximized(struct view *view, bool maximized)
 {
 	if (view->maximized == maximized || view->fullscreen)
 		goto ack;
+	if (maximized && !(view->funcs & FUNC_MAXIMIZE))
+		goto ack;
 	if (maximized) {
 		view->saved = (struct wlr_box){ view->x, view->y,
 			view->width, view->height };
-		struct wlr_box a = output_usable_area(view->server,
-			view->x + view->width / 2.0, view->y + view->height / 2.0);
 		view->maximized = true;
-		view_set_geometry(view, a.x, a.y,
-			a.width - frame_extra_w(view),
-			a.height - frame_extra_h(view));
+		view_refit_maximized(view);
 	} else {
 		view->maximized = false;
 		view_set_geometry(view, view->saved.x, view->saved.y,
@@ -286,7 +366,7 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 				view->x + view->width / 2.0,
 				view->y + view->height / 2.0);
 			view->fullscreen = true;
-			view_update_layer(view);
+			views_update_layers(view->server);
 			/* Fullscreen windows lose their frame for the duration. */
 			view->decorated = false;
 			frame_render(view);
@@ -294,7 +374,7 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 			view_focus(view);
 		} else {
 			view->fullscreen = false;
-			view_update_layer(view);
+			views_update_layers(view->server);
 			view->decorated = view->ssd;
 			if (view->maximized) {
 				view->maximized = false;
@@ -317,31 +397,72 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 	}
 }
 
+/* Only X11 panels reserve space through their window. */
+static void struts_changed(struct view *view)
+{
+	if (view->type == VIEW_XWAYLAND && view->xsurface->strut_partial)
+		layers_arrange_all(view->server);
+}
+
+static void view_show(struct view *view, bool show)
+{
+	wlr_scene_node_set_enabled(&view->tree->node, show);
+	if (view->type == VIEW_XWAYLAND)
+		wlr_xwayland_surface_set_minimized(view->xsurface, !show);
+}
+
 void view_minimize(struct view *view)
 {
 	if (view->minimized || !view->mapped)
 		return;
 	struct server *server = view->server;
+	bool had_focus = view->activated;
 	view->minimized = true;
-	wlr_scene_node_set_enabled(&view->tree->node, false);
+	view_show(view, false);
+	/* Dialogs go away with the window they belong to, without icons. */
+	struct view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->mapped && !v->minimized && !v->hidden_with_parent &&
+				view_is_transient_of(v, view)) {
+			had_focus |= v->activated;
+			v->hidden_with_parent = true;
+			view_show(v, false);
+			if (v->activated)
+				view_set_activated(v, false);
+		}
+	}
 	icon_render(view);
 	icons_arrange(server);
 	wlr_scene_node_set_enabled(&view->icon_node->node, true);
-	if (view->type == VIEW_XWAYLAND)
-		wlr_xwayland_surface_set_minimized(view->xsurface, true);
-	if (view->activated)
+	if (had_focus)
 		focus_next(server, view);
+	struts_changed(view);
 }
 
 void view_restore(struct view *view)
 {
+	if (view->hidden_with_parent) {
+		/* It comes back with the nearest window up the chain that was
+		 * minimized itself. */
+		struct view *a = view;
+		while (a && a->hidden_with_parent)
+			a = view_parent(a);
+		if (a)
+			view_restore(a);
+		return;
+	}
 	if (view->minimized) {
 		view->minimized = false;
 		wlr_scene_node_set_enabled(&view->icon_node->node, false);
-		wlr_scene_node_set_enabled(&view->tree->node, true);
-		if (view->type == VIEW_XWAYLAND)
-			wlr_xwayland_surface_set_minimized(view->xsurface,
-				false);
+		view_show(view, true);
+		struct view *v;
+		wl_list_for_each(v, &view->server->views, link) {
+			if (v->hidden_with_parent && view_is_transient_of(v, view)) {
+				v->hidden_with_parent = false;
+				view_show(v, true);
+			}
+		}
+		struts_changed(view);
 		view_focus(view);
 	} else if (view->fullscreen) {
 		view_set_fullscreen(view, false);
@@ -358,13 +479,6 @@ void view_update_title(struct view *view)
 }
 
 /* Fill the usable area again after it, or the frame's size, has changed. */
-static void view_refit_maximized(struct view *view)
-{
-	struct wlr_box a = output_usable_area(view->server,
-		view->x + view->width / 2.0, view->y + view->height / 2.0);
-	view_set_geometry(view, a.x, a.y, a.width - frame_extra_w(view),
-		a.height - frame_extra_h(view));
-}
 
 void views_usable_area_changed(struct server *server)
 {
@@ -377,19 +491,24 @@ void views_usable_area_changed(struct server *server)
 	icons_arrange(server);
 }
 
-void view_theme_changed(struct view *view)
+void view_frame_changed(struct view *view)
 {
-	config_view_shades(view);
-	if (!view->mapped)
-		return;
-	/* The title bar grows with the font. The client keeps its size and
-	 * the frame around it changes, except where the frame's size is fixed. */
+	/* The client keeps its size and the frame around it changes, except
+	 * where the frame's size is fixed. */
 	view_update_content_pos(view);
 	if (view->maximized && !view->fullscreen)
 		view_refit_maximized(view);
 	else
 		xwayland_configure(view);
 	frame_render(view);
+}
+
+void view_theme_changed(struct view *view)
+{
+	config_view_shades(view);
+	if (!view->mapped)
+		return;
+	view_frame_changed(view); /* the title bar grows with the font */
 	if (view->minimized)
 		icon_render(view);
 }
@@ -398,7 +517,7 @@ void view_cycle(struct server *server, bool backwards)
 {
 	struct view *top = NULL, *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (v->mapped && !v->minimized) {
+		if (view_focusable(v)) {
 			top = v;
 			break;
 		}
@@ -411,7 +530,7 @@ void view_cycle(struct server *server, bool backwards)
 		return;
 	}
 	wl_list_for_each_reverse(v, &server->views, link) {
-		if (v->mapped && !v->minimized) {
+		if (view_focusable(v)) {
 			view_focus(v);
 			return;
 		}
@@ -424,7 +543,12 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	struct server *server = view->server;
 	if (view->fullscreen)
 		return;
-	if (view->maximized && mode == CURSOR_RESIZE)
+	/* The client's limits may have changed since it was mapped. */
+	view_update_properties(view);
+	if (mode == CURSOR_RESIZE &&
+			(view->maximized || !(view->funcs & FUNC_RESIZE)))
+		return;
+	if (mode == CURSOR_MOVE && !(view->funcs & FUNC_MOVE))
 		return;
 	server->grabbed_view = view;
 	server->cursor_mode = mode;
@@ -465,7 +589,7 @@ void view_drag_unmaximize(struct view *view)
 	view_set_maximized(view, false);
 	int nw = view->saved.width + frame_extra_w(view);
 	view_set_position(view, server->cursor->x - frac * nw,
-		server->cursor->y - theme.border - theme.title_height / 2);
+		server->cursor->y - frame_border(view) - frame_title(view) / 2);
 	server->grab_x = server->cursor->x - view->x;
 	server->grab_y = server->cursor->y - view->y;
 }
@@ -531,9 +655,12 @@ void view_init_common(struct view *view)
 	wl_list_insert(&server->views, &view->link);
 	view->shade_active = theme.active;
 	view->shade_inactive = theme.inactive;
+	view->decor = DECOR_ALL;
+	view->funcs = FUNC_ALL;
 }
 
-/* Cascade new windows from the top-left of the output under the pointer. */
+/* New windows cascade from the top-left of the output under the pointer. A
+ * dialog goes over the window it belongs to, or to the centre. */
 static void view_place(struct view *view)
 {
 	struct server *server = view->server;
@@ -541,20 +668,35 @@ static void view_place(struct view *view)
 		server->cursor->y);
 	int w = view->width + frame_extra_w(view);
 	int h = view->height + frame_extra_h(view);
-	int step = theme.title_height + theme.border;
-	int x = a.x + 32 + server->cascade * step;
-	int y = a.y + 32 + server->cascade * step;
-	if (x + w > a.x + a.width || y + h > a.y + a.height) {
-		server->cascade = 0;
+	int x, y;
+	struct view *parent = view_parent(view);
+	if (parent && parent->mapped && !parent->minimized) {
+		x = parent->x + (parent->width + frame_extra_w(parent) - w) / 2;
+		y = parent->y + (parent->height + frame_extra_h(parent) - h) / 2;
+	} else if (view->wtype == WT_DIALOG || view->wtype == WT_SPLASH) {
 		x = a.x + (a.width - w) / 2;
 		y = a.y + (a.height - h) / 2;
-		if (x < a.x)
-			x = a.x;
-		if (y < a.y)
-			y = a.y;
 	} else {
-		server->cascade = (server->cascade + 1) % 10;
+		int step = theme.title_height + theme.border;
+		x = a.x + 32 + server->cascade * step;
+		y = a.y + 32 + server->cascade * step;
+		if (x + w > a.x + a.width || y + h > a.y + a.height) {
+			server->cascade = 0;
+			x = a.x + (a.width - w) / 2;
+			y = a.y + (a.height - h) / 2;
+		} else {
+			server->cascade = (server->cascade + 1) % 10;
+		}
 	}
+	/* Keep at least the title bar reachable. */
+	if (x + w > a.x + a.width)
+		x = a.x + a.width - w;
+	if (y + h > a.y + a.height)
+		y = a.y + a.height - h;
+	if (x < a.x)
+		x = a.x;
+	if (y < a.y)
+		y = a.y;
 	view_set_position(view, x, y);
 }
 
@@ -562,6 +704,7 @@ void view_handle_map(struct view *view)
 {
 	view->mapped = true;
 	config_view_shades(view); /* the class or app_id is known by now */
+	view_update_properties(view);
 	wlr_scene_node_set_enabled(&view->tree->node, true);
 	view_update_content_pos(view);
 	if (view->placed)
@@ -569,7 +712,12 @@ void view_handle_map(struct view *view)
 	else if (!view->maximized && !view->fullscreen)
 		view_place(view);
 	frame_render(view);
-	view_focus(view);
+	views_update_layers(view->server);
+	struts_changed(view);
+	if (view->wtype != WT_SPLASH)
+		view_focus(view);
+	else
+		view_raise(view);
 }
 
 void view_handle_unmap(struct view *view)
@@ -583,14 +731,27 @@ void view_handle_unmap(struct view *view)
 		menu_close(server);
 	if (server->last_click_view == view)
 		server->last_click_view = NULL;
+	/* Dialogs hidden with it have nothing left to come back with. */
+	struct view *v, *shown = NULL;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->hidden_with_parent && view_is_transient_of(v, view)) {
+			v->hidden_with_parent = false;
+			view_show(v, true);
+			shown = v;
+		}
+	}
+	if (shown && !focused_view(server))
+		view_focus(shown);
 	bool was_active = view->activated;
 	view->mapped = false;
 	view->activated = false;
 	view->minimized = false;
+	view->hidden_with_parent = false;
 	wlr_scene_node_set_enabled(&view->tree->node, false);
 	wlr_scene_node_set_enabled(&view->icon_node->node, false);
 	if (was_active)
 		focus_next(server, view);
+	struts_changed(view);
 }
 
 void view_handle_destroy(struct view *view)
@@ -642,6 +803,8 @@ static void xdg_commit(struct wl_listener *listener, void *data)
 	if (!view->mapped)
 		return;
 	view_apply_size(view, base->geometry.width, base->geometry.height);
+	/* Its limits may have changed. */
+	view_update_properties(view);
 
 	/* The drag is over and the client has answered the last size request. */
 	struct server *server = view->server;
@@ -684,7 +847,14 @@ static void xdg_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&view->request_fullscreen.link);
 	wl_list_remove(&view->request_show_window_menu.link);
 	wl_list_remove(&view->set_title.link);
+	wl_list_remove(&view->set_parent.link);
 	view_handle_destroy(view);
+}
+
+static void xdg_set_parent(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, set_parent);
+	view_update_properties(view);
 }
 
 static void xdg_request_move(struct wl_listener *listener, void *data)
@@ -774,6 +944,8 @@ static void new_xdg_toplevel(struct wl_listener *listener, void *data)
 		&view->request_show_window_menu);
 	view->set_title.notify = xdg_set_title;
 	wl_signal_add(&toplevel->events.set_title, &view->set_title);
+	view->set_parent.notify = xdg_set_parent;
+	wl_signal_add(&toplevel->events.set_parent, &view->set_parent);
 }
 
 /* ---- popups ------------------------------------------------------------- */

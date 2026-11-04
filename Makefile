@@ -2,7 +2,7 @@
 
 PREFIX ?= /usr/local
 PKG_CONFIG ?= pkg-config
-PKGS = wlroots-0.19 wayland-server xkbcommon pixman-1 cairo pangocairo
+PKGS = wlroots-0.19 wayland-server xkbcommon pixman-1 cairo pangocairo xcb xcb-icccm
 
 ifeq ($(filter clean uninstall,$(MAKECMDGOALS)),)
 MISSING := $(foreach p,$(PKGS) wayland-protocols wayland-scanner,\
@@ -22,7 +22,7 @@ LDLIBS += $(shell $(PKG_CONFIG) --libs $(PKGS))
 
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
 	src/input.c src/draw.c src/wallpaper.c src/config.c src/layer.c \
-	src/testhook.c
+	src/hints.c src/testhook.c
 OBJ = $(SRC:src/%.c=build/%.o)
 PROTO = build/xdg-shell-protocol.h build/wlr-layer-shell-unstable-v1-protocol.h
 
@@ -105,16 +105,42 @@ build/layerc: tests/layerc.c $(LAYERC_GEN)
 		build/wlr-layer-shell-unstable-v1-code.c build/xdg-shell-code.c \
 		$(shell $(PKG_CONFIG) --libs wayland-client)
 
+# Clients that can ask for any window property.
+build/xclient: tests/xclient.c | build
+	$(CC) -O2 -g -std=c11 -Wall -Wextra -o $@ tests/xclient.c \
+		$(shell $(PKG_CONFIG) --cflags --libs x11)
+
+build/xdg-decoration-unstable-v1-client.h: | build
+	$(WAYLAND_SCANNER) client-header \
+		$(WAYLAND_PROTOCOLS)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml $@
+
+build/xdg-decoration-unstable-v1-code.c: | build
+	$(WAYLAND_SCANNER) private-code \
+		$(WAYLAND_PROTOCOLS)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml $@
+
+XDGC_GEN = build/xdg-decoration-unstable-v1-client.h \
+	build/xdg-decoration-unstable-v1-code.c build/xdg-shell-client.h \
+	build/xdg-shell-code.c
+
+build/xdgc: tests/xdgc.c $(XDGC_GEN)
+	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
+		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/xdgc.c \
+		build/xdg-decoration-unstable-v1-code.c build/xdg-shell-code.c \
+		$(shell $(PKG_CONFIG) --libs wayland-client)
+
+window-test: mwc build/vinput build/pngtool build/xclient build/xdgc
+	tests/window.sh
+
 layer-test: mwc build/vinput build/pngtool build/layerc
 	tests/layer.sh
 
 config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
-test: smoke input-test wallpaper-test config-test layer-test
+test: smoke input-test wallpaper-test config-test layer-test window-test
 
 clean:
 	rm -rf build mwc
 
-.SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN)
-.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test test clean
+.SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN)
+.PHONY: all install uninstall smoke input-test wallpaper-test config-test layer-test window-test test clean

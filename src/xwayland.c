@@ -5,6 +5,7 @@
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
+#include <string.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_seat.h>
@@ -12,6 +13,7 @@
 #include <wlr/util/log.h>
 #include <wlr/xcursor.h>
 #include <wlr/xwayland.h>
+#include <xcb/xcb_icccm.h>
 #include "mwc.h"
 
 /* ---- managed windows -------------------------------------------------- */
@@ -42,6 +44,71 @@ static void xw_commit(struct wl_listener *listener, void *data)
 	frame_render(view);
 }
 
+/* wlroots parses only the decoration part of _MOTIF_WM_HINTS. Reading it here
+ * blocks on the X server, as wlroots' own property reads do. */
+static void read_motif_hints(struct view *view)
+{
+	struct server *server = view->server;
+	view->motif_flags = 0;
+	xcb_connection_t *conn = wlr_xwayland_get_xwm_connection(server->xwayland);
+	if (!conn || !server->atom_motif_hints)
+		return;
+	xcb_get_property_cookie_t cookie = xcb_get_property(conn, 0,
+		view->xsurface->window_id, server->atom_motif_hints,
+		XCB_GET_PROPERTY_TYPE_ANY, 0, 5);
+	xcb_get_property_reply_t *reply = xcb_get_property_reply(conn, cookie, NULL);
+	if (!reply)
+		return;
+	/* Toolkits disagree on the type, but not on the format. */
+	if (reply->format == 32 && xcb_get_property_value_length(reply) >= 12) {
+		const uint32_t *h = xcb_get_property_value(reply);
+		view->motif_flags = h[0];
+		view->motif_funcs = h[1];
+		view->motif_decor = h[2];
+	}
+	free(reply);
+}
+
+/*
+ * A client may set _NET_WM_STATE before wlroots has started watching its window.
+ * That makes no PropertyNotify, so wlroots doesn't see it, and overwrites it when
+ * the window maps. Reading it here, on creation, covers that side of the race;
+ * wlroots hears about anything later.
+ */
+static void read_initial_state(struct view *view)
+{
+	struct server *server = view->server;
+	struct wlr_xwayland_surface *xs = view->xsurface;
+	xcb_connection_t *conn = wlr_xwayland_get_xwm_connection(server->xwayland);
+	if (!conn || !server->atom_net_wm_state)
+		return;
+	xcb_get_property_cookie_t cookie = xcb_get_property(conn, 0, xs->window_id,
+		server->atom_net_wm_state, XCB_ATOM_ATOM, 0, 32);
+	xcb_get_property_reply_t *reply = xcb_get_property_reply(conn, cookie, NULL);
+	if (!reply)
+		return;
+	if (reply->format == 32) {
+		const xcb_atom_t *atoms = xcb_get_property_value(reply);
+		int n = xcb_get_property_value_length(reply) / sizeof(*atoms);
+		bool max_v = false, max_h = false;
+		for (int i = 0; i < n; i++) {
+			if (atoms[i] == server->atom_state_above)
+				wlr_xwayland_surface_set_above(xs, true);
+			else if (atoms[i] == server->atom_state_below)
+				wlr_xwayland_surface_set_below(xs, true);
+			else if (atoms[i] == server->atom_state_fullscreen)
+				wlr_xwayland_surface_set_fullscreen(xs, true);
+			else if (atoms[i] == server->atom_state_max_vert)
+				max_v = true;
+			else if (atoms[i] == server->atom_state_max_horz)
+				max_h = true;
+		}
+		if (max_v || max_h)
+			wlr_xwayland_surface_set_maximized(xs, max_h, max_v);
+	}
+	free(reply);
+}
+
 static void xw_map(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, map);
@@ -53,12 +120,30 @@ static void xw_map(struct wl_listener *listener, void *data)
 		xs->surface->current.width : xs->width;
 	view->height = xs->surface->current.height ?
 		xs->surface->current.height : xs->height;
-	view->ssd = xs->decorations == WLR_XWAYLAND_SURFACE_DECORATIONS_ALL;
-	view->decorated = view->ssd && !view->fullscreen;
+	view->ssd = true;
+	view->decorated = !view->fullscreen;
+	read_motif_hints(view);
+	view_update_properties(view);
+
+	/* As in mwm-x11: only a position the program or user insisted on counts,
+	 * and panels know where they belong. */
+	const xcb_size_hints_t *sh = xs->size_hints;
+	uint32_t flags = sh ? sh->flags : 0;
+	view->placed = view->wtype == WT_DOCK || view->wtype == WT_DESKTOP ||
+		(flags & XCB_ICCCM_SIZE_HINT_US_POSITION) ||
+		((flags & XCB_ICCCM_SIZE_HINT_P_POSITION) && (xs->x || xs->y));
+	if (view->placed)
+		view_gravity_to_frame(view, xs->x, xs->y, &view->x, &view->y);
 
 	view->commit.notify = xw_commit;
 	wl_signal_add(&xs->surface->events.commit, &view->commit);
 	view_handle_map(view);
+
+	/* States it asked for before it was mapped. */
+	if (xs->fullscreen)
+		view_set_fullscreen(view, true);
+	else if (xs->maximized_horz || xs->maximized_vert)
+		view_set_maximized(view, true);
 }
 
 static void xw_unmap(struct wl_listener *listener, void *data)
@@ -78,6 +163,11 @@ static void xw_associate(struct wl_listener *listener, void *data)
 	wl_signal_add(&surface->events.map, &view->map);
 	view->unmap.notify = xw_unmap;
 	wl_signal_add(&surface->events.unmap, &view->unmap);
+	/* Xwayland may commit the content before it says which window the surface
+	 * belongs to. wlroots would then wait for the next commit to map it, which
+	 * a window that doesn't redraw never makes. */
+	if (wlr_surface_has_buffer(surface) && !surface->mapped)
+		wlr_surface_map(surface);
 }
 
 static void xw_dissociate(struct wl_listener *listener, void *data)
@@ -102,6 +192,11 @@ static void xw_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&view->request_fullscreen.link);
 	wl_list_remove(&view->set_title.link);
 	wl_list_remove(&view->set_decorations.link);
+	wl_list_remove(&view->set_parent.link);
+	wl_list_remove(&view->set_window_type.link);
+	wl_list_remove(&view->set_strut_partial.link);
+	wl_list_remove(&view->request_above.link);
+	wl_list_remove(&view->request_below.link);
 	view_handle_destroy(view);
 }
 
@@ -110,12 +205,7 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 	struct view *view = wl_container_of(listener, view, request_configure);
 	struct wlr_xwayland_surface_configure_event *ev = data;
 	if (!view->mapped) {
-		/* Honour an explicit initial position, otherwise cascade. */
-		if (ev->x != 0 || ev->y != 0) {
-			view->placed = true;
-			view->x = ev->x - frame_left(view);
-			view->y = ev->y - frame_top(view);
-		}
+		/* xw_map decides what the position means. */
 		wlr_xwayland_surface_configure(view->xsurface, ev->x, ev->y,
 			ev->width, ev->height);
 		return;
@@ -180,15 +270,42 @@ static void xw_set_title(struct wl_listener *listener, void *data)
 static void xw_set_decorations(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, set_decorations);
-	view->ssd = view->xsurface->decorations ==
-		WLR_XWAYLAND_SURFACE_DECORATIONS_ALL;
-	view->decorated = view->ssd && !view->fullscreen;
-	if (view->mapped) {
-		wlr_scene_node_set_position(&view->content_tree->node,
-			frame_left(view), frame_top(view));
-		frame_render(view);
-		view_send_size(view, view->width, view->height);
-	}
+	if (!view->mapped)
+		return; /* xw_map reads them */
+	read_motif_hints(view);
+	view_update_properties(view);
+}
+
+static void xw_set_parent(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, set_parent);
+	view_update_properties(view);
+}
+
+static void xw_set_window_type(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, set_window_type);
+	view_update_properties(view);
+}
+
+static void xw_set_strut_partial(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, set_strut_partial);
+	layers_arrange_all(view->server);
+}
+
+static void xw_request_above(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, request_above);
+	wlr_xwayland_surface_set_above(view->xsurface, view->xsurface->above);
+	views_update_layers(view->server);
+}
+
+static void xw_request_below(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, request_below);
+	wlr_xwayland_surface_set_below(view->xsurface, view->xsurface->below);
+	views_update_layers(view->server);
 }
 
 static void new_managed(struct server *server, struct wlr_xwayland_surface *xs)
@@ -216,7 +333,13 @@ static void new_managed(struct server *server, struct wlr_xwayland_surface *xs)
 	LISTEN(request_fullscreen, request_fullscreen, xw_request_fullscreen);
 	LISTEN(set_title, set_title, xw_set_title);
 	LISTEN(set_decorations, set_decorations, xw_set_decorations);
+	LISTEN(set_parent, set_parent, xw_set_parent);
+	LISTEN(set_window_type, set_window_type, xw_set_window_type);
+	LISTEN(set_strut_partial, set_strut_partial, xw_set_strut_partial);
+	LISTEN(request_above, request_above, xw_request_above);
+	LISTEN(request_below, request_below, xw_request_below);
 #undef LISTEN
+	read_initial_state(view);
 }
 
 /* ---- unmanaged (override-redirect) windows ------------------------------ */
@@ -274,6 +397,10 @@ static void um_associate(struct wl_listener *listener, void *data)
 	wl_signal_add(&um->xsurface->surface->events.map, &um->map);
 	um->unmap.notify = um_unmap;
 	wl_signal_add(&um->xsurface->surface->events.unmap, &um->unmap);
+	/* See xw_associate(). */
+	if (wlr_surface_has_buffer(um->xsurface->surface) &&
+			!um->xsurface->surface->mapped)
+		wlr_surface_map(um->xsurface->surface);
 }
 
 static void um_dissociate(struct wl_listener *listener, void *data)
@@ -332,11 +459,34 @@ static void new_surface(struct wl_listener *listener, void *data)
 		new_managed(server, xs);
 }
 
+static uint32_t intern_atom(xcb_connection_t *conn, const char *name)
+{
+	xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(conn,
+		xcb_intern_atom(conn, 0, strlen(name), name), NULL);
+	uint32_t atom = reply ? reply->atom : 0;
+	free(reply);
+	return atom;
+}
+
 static void xwayland_ready(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server,
 		xwayland_ready);
 	wlr_xwayland_set_seat(server->xwayland, server->seat);
+
+	xcb_connection_t *conn = wlr_xwayland_get_xwm_connection(server->xwayland);
+	server->atom_motif_hints = intern_atom(conn, "_MOTIF_WM_HINTS");
+	server->atom_net_wm_state = intern_atom(conn, "_NET_WM_STATE");
+	server->atom_state_above = intern_atom(conn, "_NET_WM_STATE_ABOVE");
+	server->atom_state_below = intern_atom(conn, "_NET_WM_STATE_BELOW");
+	server->atom_state_fullscreen = intern_atom(conn,
+		"_NET_WM_STATE_FULLSCREEN");
+	server->atom_state_max_vert = intern_atom(conn,
+		"_NET_WM_STATE_MAXIMIZED_VERT");
+	server->atom_state_max_horz = intern_atom(conn,
+		"_NET_WM_STATE_MAXIMIZED_HORZ");
+	server->xwayland_up = true;
+	layer_publish_workarea(server);
 
 	/* X clients that never set a cursor get the default arrow. */
 	struct wlr_xcursor *xc = wlr_xcursor_manager_get_xcursor(

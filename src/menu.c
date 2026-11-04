@@ -219,16 +219,20 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 	m->title = NULL;
 	m->n_items = 0;
 	m->target = view;
+	view_update_properties(view);
 	bool normal = !view->minimized && !view->maximized && !view->fullscreen;
+	unsigned f = view->funcs;
 	add(m, "Restore", 'R', "Alt+F5", ACT_RESTORE, !normal);
-	add(m, "Move", 'M', "Alt+F7", ACT_MOVE, !view->fullscreen);
-	add(m, "Size", 'S', "Alt+F8", ACT_SIZE, normal);
-	add(m, "Minimize", 'n', "Alt+F9", ACT_MINIMIZE, !view->minimized);
+	add(m, "Move", 'M', "Alt+F7", ACT_MOVE,
+		(f & FUNC_MOVE) && !view->fullscreen);
+	add(m, "Size", 'S', "Alt+F8", ACT_SIZE, (f & FUNC_RESIZE) && normal);
+	add(m, "Minimize", 'n', "Alt+F9", ACT_MINIMIZE,
+		(f & FUNC_MINIMIZE) && !view->minimized);
 	add(m, "Maximize", 'x', "Alt+F10", ACT_MAXIMIZE,
-		!view->maximized && !view->fullscreen);
+		(f & FUNC_MAXIMIZE) && !view->maximized && !view->fullscreen);
 	add(m, "Lower", 'L', "Alt+F3", ACT_LOWER, true);
 	add(m, NULL, 0, NULL, ACT_NONE, false);
-	add(m, "Close", 'C', "Alt+F4", ACT_CLOSE, true);
+	add(m, "Close", 'C', "Alt+F4", ACT_CLOSE, f & FUNC_CLOSE);
 	open_at(server, x, y);
 }
 
@@ -411,7 +415,7 @@ void run_action(struct server *server, enum menu_action action,
 			view_restore(view);
 		break;
 	case ACT_MOVE:
-		if (!view)
+		if (!view || !(view->funcs & FUNC_MOVE))
 			break;
 		if (view->minimized)
 			view_restore(view);
@@ -419,11 +423,11 @@ void run_action(struct server *server, enum menu_action action,
 		 * the window follows it until the next click. */
 		wlr_cursor_warp(c, NULL, view->x + (view->width +
 			frame_extra_w(view)) / 2.0,
-			view->y + theme.border + theme.title_height / 2.0);
+			view->y + frame_border(view) + frame_title(view) / 2.0);
 		view_begin_interactive(view, CURSOR_MOVE, 0, true);
 		break;
 	case ACT_SIZE:
-		if (!view)
+		if (!view || !(view->funcs & FUNC_RESIZE))
 			break;
 		if (view->minimized)
 			view_restore(view);
@@ -434,7 +438,7 @@ void run_action(struct server *server, enum menu_action action,
 			WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT, true);
 		break;
 	case ACT_MINIMIZE:
-		if (view)
+		if (view && (view->funcs & FUNC_MINIMIZE))
 			view_minimize(view);
 		break;
 	case ACT_MAXIMIZE:
@@ -449,7 +453,7 @@ void run_action(struct server *server, enum menu_action action,
 			view_lower(view);
 		break;
 	case ACT_CLOSE:
-		if (view)
+		if (view && (view->funcs & FUNC_CLOSE))
 			view_close(view);
 		break;
 	case ACT_NEW_WINDOW:
