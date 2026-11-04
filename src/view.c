@@ -553,15 +553,24 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	server->grabbed_view = view;
 	server->cursor_mode = mode;
 	server->grab_until_click = until_click;
+	server->grab_outline = outline_wanted();
+	server->grab_detached = false;
+	server->grab_changed = false;
+	server->grab_px = server->cursor->x;
+	server->grab_py = server->cursor->y;
+	server->grab_orig = (struct wlr_box){ view->x, view->y, view->width,
+		view->height };
+	server->grab_orig_maximized = view->maximized;
+	server->grab_target = server->grab_orig;
+	server->grab_geobox = (struct wlr_box){ view->x, view->y,
+		view->width + frame_extra_w(view),
+		view->height + frame_extra_h(view) };
 
 	if (mode == CURSOR_MOVE) {
 		server->grab_x = server->cursor->x - view->x;
 		server->grab_y = server->cursor->y - view->y;
 		cursor_set_name(server, "move");
 	} else {
-		server->grab_geobox = (struct wlr_box){ view->x, view->y,
-			view->width + frame_extra_w(view),
-			view->height + frame_extra_h(view) };
 		double bx = view->x + ((edges & WLR_EDGE_RIGHT) ?
 			server->grab_geobox.width : 0);
 		double by = view->y + ((edges & WLR_EDGE_BOTTOM) ?
@@ -570,7 +579,8 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 		server->grab_y = server->cursor->y - by;
 		server->resize_edges = edges;
 		if (view->type == VIEW_XDG) {
-			wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, true);
+			if (!server->grab_outline)
+				wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, true);
 			view->anchor_edges = edges;
 			view->anchor_right = view->x + server->grab_geobox.width;
 			view->anchor_bottom = view->y + server->grab_geobox.height;
@@ -579,6 +589,7 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 		}
 	}
 	wlr_seat_pointer_notify_clear_focus(server->seat);
+	grab_started(server);
 }
 
 void view_drag_unmaximize(struct view *view)
@@ -592,6 +603,11 @@ void view_drag_unmaximize(struct view *view)
 		server->cursor->y - frame_border(view) - frame_title(view) / 2);
 	server->grab_x = server->cursor->x - view->x;
 	server->grab_y = server->cursor->y - view->y;
+	/* The client hasn't committed its old size yet, so don't go by view->width. */
+	server->grab_target.width = view->saved.width;
+	server->grab_target.height = view->saved.height;
+	server->grab_geobox.width = nw;
+	server->grab_geobox.height = view->saved.height + frame_extra_h(view);
 }
 
 struct view *view_at(struct server *server, double lx, double ly,
@@ -723,10 +739,8 @@ void view_handle_map(struct view *view)
 void view_handle_unmap(struct view *view)
 {
 	struct server *server = view->server;
-	if (server->grabbed_view == view) {
-		server->cursor_mode = CURSOR_PASSTHROUGH;
-		server->grabbed_view = NULL;
-	}
+	if (server->grabbed_view == view)
+		grab_forget(server);
 	if (server->menu.open && server->menu.target == view)
 		menu_close(server);
 	if (server->last_click_view == view)

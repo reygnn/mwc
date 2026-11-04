@@ -303,6 +303,7 @@ int main(int argc, char *argv[])
 	server.layer_unmanaged = wlr_scene_tree_create(root);
 	server.layer_shell[3] = wlr_scene_tree_create(root);
 	server.layer_menu = wlr_scene_tree_create(root);
+	server.layer_feedback = wlr_scene_tree_create(root);
 
 	wl_list_init(&server.views);
 	xdg_init(&server);

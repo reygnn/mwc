@@ -292,6 +292,7 @@ struct server {
 	struct wlr_scene_tree *layer_fullscreen; /* the focused fullscreen window */
 	struct wlr_scene_tree *layer_unmanaged;
 	struct wlr_scene_tree *layer_menu;
+	struct wlr_scene_tree *layer_feedback; /* outline and move/size box */
 
 	struct wl_listener new_layer_surface;
 	struct wlr_layer_surface_v1 *focused_layer;   /* has the keyboard */
@@ -336,6 +337,13 @@ struct server {
 	uint32_t resize_edges;
 	bool grab_until_click; /* move/size started from menu or keyboard */
 	enum frame_part grab_part;
+	bool grab_outline;  /* wireframe: the window changes when the grab ends */
+	bool grab_detached; /* a move got going, past the drag threshold */
+	bool grab_changed;  /* the target differs from where the grab began */
+	double grab_px, grab_py;    /* pointer where the grab began */
+	struct wlr_box grab_orig;   /* x/y of the frame, client size: for Escape */
+	bool grab_orig_maximized;
+	struct wlr_box grab_target; /* same, where the window is to go */
 
 	/* Double-click detection */
 	uint32_t last_click_msec;
@@ -458,10 +466,24 @@ void run_action(struct server *server, enum menu_action action,
 /* ---- input.c ------------------------------------------------------------ */
 
 void input_init(struct server *server);
+/* After view_begin_interactive() set the grab up: show what it needs. */
+void grab_started(struct server *server);
+/* The grabbed window went away. */
+void grab_forget(struct server *server);
 void input_add_device(struct server *server, struct wlr_input_device *dev);
 void cursor_set_name(struct server *server, const char *name);
 void process_cursor_motion(struct server *server, uint32_t time);
 void spawn(const char *cmd);
+
+/* ---- outline.c ---------------------------------------------------------- */
+
+bool outline_wanted(void);
+void outline_show(struct view *view, struct wlr_box frame_box);
+void outline_hide(void);
+bool outline_get(struct wlr_box *box); /* false while hidden */
+void feedback_show(struct server *server, const char *text, double lx, double ly);
+void feedback_hide(void);
+const char *feedback_get(struct wlr_box *box); /* "" while hidden */
 
 /* ---- layer.c ------------------------------------------------------------ */
 
@@ -486,6 +508,8 @@ void wallpaper_place(struct output *output, bool force);
 void config_load(void);
 const char *config_get(const char *resource);
 bool config_color(const char *value, struct mwc_color *out);
+/* 1 or 0, or -1 when value is unset or no boolean; name is for the log. */
+int config_bool(const char *name, const char *value);
 void config_view_shades(struct view *view);
 /* "Restart..." and SIGHUP: a Wayland compositor can't re-exec and keep its
  * clients, so this reads mwmrc again and applies it to what is running. */

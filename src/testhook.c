@@ -88,6 +88,17 @@ static int dump_state(int signal, void *data)
 	wl_list_for_each(um, &server->unmanaged, link)
 		unmanaged += um->tree != NULL;
 	fprintf(f, "unmanaged count=%d\n", unmanaged);
+	struct wlr_box box;
+	bool outline = outline_get(&box);
+	fprintf(f, "outline shown=%d x=%d y=%d w=%d h=%d\n", outline, box.x, box.y,
+		box.width, box.height);
+	/* Spaces become _, for the parser. */
+	const char *text = feedback_get(&box);
+	char label[64];
+	snprintf(label, sizeof(label), "%s", text);
+	for (char *p = label; *p; p++)
+		*p = *p == ' ' ? '_' : *p;
+	fprintf(f, "feedback text=%s x=%d y=%d\n", label, box.x, box.y);
 	fprintf(f, "theme border=%d title=%d\n", theme.border,
 		theme.title_height);
 	fprintf(f, "cursor x=%d y=%d mode=%d\n", (int)server->cursor->x,

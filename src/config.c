@@ -8,6 +8,7 @@
  *   Mwm*fontList:                  Sans Bold 10
  *   Mwm*rootBackground:            #5b7792
  *   Mwm*wallpaper:                 ~/pictures/desk.png
+ *   Mwm*moveOpaque:                true       drag windows, not an outline
  *   Mwm*XTerm*activeBackground:    #8a0303    per client
  *   Mwm*foot*activeBackground:     gold
  *
@@ -164,6 +165,24 @@ bool config_color(const char *value, struct mwc_color *out)
 	*out = (struct mwc_color){ c.red / 65535.0f, c.green / 65535.0f,
 		c.blue / 65535.0f };
 	return true;
+}
+
+int config_bool(const char *name, const char *s)
+{
+	static const char *warned; /* log each bad value once, not per drag */
+	if (!s || !*s)
+		return -1;
+	if (!strcasecmp(s, "true") || !strcasecmp(s, "on") ||
+			!strcasecmp(s, "yes") || !strcmp(s, "1"))
+		return 1;
+	if (!strcasecmp(s, "false") || !strcasecmp(s, "off") ||
+			!strcasecmp(s, "no") || !strcmp(s, "0"))
+		return 0;
+	if (s != warned) {
+		wlr_log(WLR_ERROR, "ignoring %s value %s, not a boolean", name, s);
+		warned = s;
+	}
+	return -1;
 }
 
 static const struct rule *client_rule(const char *name, const char *class,

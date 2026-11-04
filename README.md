@@ -47,7 +47,8 @@ any client type on the user's behalf.
 and `make config-test` does the same for `mwmrc`, including reloading it.
 `make layer-test` checks panels with a small layer-shell client
 (`tests/layerc.c`), and `make window-test` window behaviour with clients that can
-ask for any hint (`tests/xclient.c`, `tests/xdgc.c`).
+ask for any hint (`tests/xclient.c`, `tests/xdgc.c`). `make move-test` checks the
+outline, the box and the keys during a move or resize.
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
@@ -100,6 +101,7 @@ Mwm*wallpaper:                 ~/pictures/desk.png
 | `fontList` | Pango font name for titles and menus, title bars grow with it (global only) |
 | `rootBackground` | desktop colour, or `none` to leave the desktop to a wallpaper tool such as `swaybg` (global only) |
 | `wallpaper` | PNG on the desktop, see below (global only) |
+| `moveOpaque` | `true`: drag windows themselves instead of an outline (global only) |
 
 Copying a file from mwm-x11 works, except that `fontList` takes Pango names
 like `Sans Bold 10`: a fontconfig pattern like `Sans:bold:size=10` is logged and
@@ -125,6 +127,7 @@ The environment overrides the global entries:
 | `MWC_ROOT`        | `#5b7792`      | desktop colour, `none`: not drawn |
 | `MWC_WALLPAPER`   | none           | PNG on the desktop, see below    |
 | `MWC_FONT`        | `Sans Bold 10` | Pango font for titles and menus  |
+| `MWC_MOVE_OPAQUE` | `0`            | `1`: opaque move/resize          |
 | `MWC_TERMINAL`    | first of xterm, foot, alacritty, … | "New Window"  |
 
 The wallpaper is the path of a PNG file; a leading `~/` is expanded. The image is
@@ -145,6 +148,19 @@ off, except VT switching and Ctrl+Alt+Backspace.
 
 X11 panels work as well: a window of type dock with `_NET_WM_STRUT_PARTIAL`
 reserves space the same way, and `_NET_WORKAREA` tells X11 programs what is free.
+
+## Moving and resizing
+
+As in Motif mwm (`moveOpaque: False`), a window being moved or resized is shown as
+an outline that follows the pointer; the window itself moves and resizes once, when
+you let go. A box in the middle of the screen shows the position, or the size in the
+program's own units, such as 80 x 24 for a terminal. For opaque dragging put
+`Mwm*moveOpaque: true` in mwmrc or set `MWC_MOVE_OPAQUE=1`.
+
+During a move or resize, also a drag, the arrow keys nudge the window (Shift for
+1 px steps), Return confirms and Escape cancels, which also maximizes again a window
+that was dragged out of its maximized state. Alt+F7 and Alt+F8 start one from the
+keyboard.
 
 ## Window behaviour
 

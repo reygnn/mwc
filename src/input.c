@@ -5,6 +5,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <math.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -95,34 +96,141 @@ static struct view *focused_view(struct server *server)
 
 /* ---- interactive move / resize ---------------------------------------- */
 
-static void end_grab(struct server *server)
+static void update_feedback(struct server *server)
 {
 	struct view *view = server->grabbed_view;
-	if (view && server->cursor_mode == CURSOR_RESIZE &&
-			view->type == VIEW_XDG)
-		wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, false);
+	const struct wlr_box *t = &server->grab_target;
+	char buf[64];
+	if (server->cursor_mode == CURSOR_MOVE) {
+		snprintf(buf, sizeof(buf), "%+d %+d", t->x, t->y);
+	} else {
+		/* Sizes in the client's own units, e.g. 80 x 24 for xterm. */
+		int w = t->width, h = t->height;
+		if (view->inc_w > 1)
+			w = (w - view->base_w) / view->inc_w;
+		if (view->inc_h > 1)
+			h = (h - view->base_h) / view->inc_h;
+		snprintf(buf, sizeof(buf), "%d x %d", w, h);
+	}
+	feedback_show(server, buf, view->x + 1, view->y + 1);
+}
+
+static void show_outline(struct server *server)
+{
+	struct view *view = server->grabbed_view;
+	const struct wlr_box *t = &server->grab_target;
+	outline_show(view, (struct wlr_box){ t->x, t->y,
+		t->width + frame_extra_w(view), t->height + frame_extra_h(view) });
+}
+
+void grab_started(struct server *server)
+{
+	/* From the menu or keyboard there is no press to drag from yet, so show
+	 * where the window is. A drag shows it on the first motion. */
+	if (server->grab_outline && server->grab_until_click)
+		show_outline(server);
+	update_feedback(server);
+}
+
+/* The grab is over; the caller decides what becomes of the window. */
+static void clear_grab(struct server *server)
+{
 	server->cursor_mode = CURSOR_PASSTHROUGH;
 	server->grabbed_view = NULL;
 	server->grab_until_click = false;
 	server->cursor_name = NULL;
+	outline_hide();
+	feedback_hide();
+}
+
+/* No more configures for a window going away: its surface may be half gone. */
+void grab_forget(struct server *server)
+{
+	clear_grab(server);
+}
+
+static void stop_resizing_state(struct server *server)
+{
+	struct view *view = server->grabbed_view;
+	if (!server->grab_outline && server->cursor_mode == CURSOR_RESIZE &&
+			view->type == VIEW_XDG)
+		wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, false);
+}
+
+static void resize_to(struct view *view, const struct wlr_box *b)
+{
+	/* An xdg client answers later, and its anchor keeps the opposite edge
+	 * in place then. X windows get position and size in one configure. */
+	if (view->type == VIEW_XWAYLAND)
+		view_set_geometry(view, b->x, b->y, b->width, b->height);
+	else
+		view_send_size(view, b->width, b->height);
+}
+
+static void end_grab(struct server *server)
+{
+	struct view *view = server->grabbed_view;
+	enum cursor_mode mode = server->cursor_mode;
+	bool apply = server->grab_outline && server->grab_changed;
+	struct wlr_box target = server->grab_target;
+	stop_resizing_state(server);
+	clear_grab(server);
+	if (!apply)
+		return;
+	if (mode == CURSOR_MOVE)
+		view_set_position(view, target.x, target.y);
+	else
+		resize_to(view, &target);
+}
+
+/* Escape: back to where it was, including out of a maximized state. */
+static void cancel_grab(struct server *server)
+{
+	struct view *view = server->grabbed_view;
+	enum cursor_mode mode = server->cursor_mode;
+	bool opaque = !server->grab_outline;
+	bool was_maximized = server->grab_orig_maximized;
+	struct wlr_box orig = server->grab_orig;
+	stop_resizing_state(server);
+	clear_grab(server);
+	if (was_maximized && !view->maximized) {
+		/* What it restores to must survive this round trip. */
+		struct wlr_box saved = view->saved;
+		view_set_maximized(view, true);
+		view->saved = saved;
+	} else if (opaque && mode == CURSOR_MOVE) {
+		view_set_position(view, orig.x, orig.y);
+	} else if (opaque) {
+		resize_to(view, &orig);
+	}
 }
 
 static void process_move(struct server *server)
 {
 	struct view *view = server->grabbed_view;
-	if (view->maximized) {
-		/* Only a real drag restores it: a click on the title must
-		 * leave it alone, or a double click could never un-maximize. */
-		double dx = server->cursor->x - (view->x + server->grab_x);
-		double dy = server->cursor->y - (view->y + server->grab_y);
-		if (fabs(dx) < DRAG_THRESHOLD && fabs(dy) < DRAG_THRESHOLD)
+	if (!server->grab_detached) {
+		/* From the menu or keyboard every step counts, down to the 1 px
+		 * of Shift+arrow. A drag needs to get going first: a click on the
+		 * title must leave the window alone, or a double click could
+		 * never un-maximize it. */
+		double t = server->grab_until_click ? 1 : DRAG_THRESHOLD;
+		if (fabs(server->cursor->x - server->grab_px) < t &&
+				fabs(server->cursor->y - server->grab_py) < t)
 			return;
-		view_drag_unmaximize(view);
+		server->grab_detached = true;
+		if (view->maximized)
+			view_drag_unmaximize(view);
 	}
 	/* The pointer has sub-pixel positions: round, don't truncate, or the
 	 * window ends up a pixel off and jumps when crossing zero. */
-	view_set_position(view, lround(server->cursor->x - server->grab_x),
-		lround(server->cursor->y - server->grab_y));
+	server->grab_target.x = lround(server->cursor->x - server->grab_x);
+	server->grab_target.y = lround(server->cursor->y - server->grab_y);
+	server->grab_changed = true;
+	if (server->grab_outline)
+		show_outline(server);
+	else
+		view_set_position(view, server->grab_target.x, server->grab_target.y);
+	update_feedback(server);
 }
 
 static void process_resize(struct server *server)
@@ -148,23 +256,33 @@ static void process_resize(struct server *server)
 	 * insists; then what the client asks for. The opposite edge stays. */
 	int cw = right - left - frame_extra_w(view);
 	int ch = bottom - top - frame_extra_h(view);
-	if (cw < 3 * theme.title_height + 24)
-		cw = 3 * theme.title_height + 24;
+	int min_cw = frame_title(view) ? 3 * theme.title_height + 24 : 16;
+	if (cw < min_cw)
+		cw = min_cw;
 	if (ch < 8)
 		ch = 8;
 	view_apply_size_hints(view, &cw, &ch, true);
+	/* The axis not being dragged keeps its size: rounding it to the client's
+	 * steps would change it for no reason. */
+	if (!(edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)))
+		cw = server->grab_orig.width;
+	if (!(edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)))
+		ch = server->grab_orig.height;
 	if (edges & WLR_EDGE_LEFT)
 		left = right - cw - frame_extra_w(view);
 	if (edges & WLR_EDGE_TOP)
 		top = bottom - ch - frame_extra_h(view);
 
-	if (view->type == VIEW_XWAYLAND) {
-		/* X windows get position and size in one configure; the
-		 * commit handler re-anchors with the same values. */
-		view_set_geometry(view, left, top, cw, ch);
-	} else {
-		view_send_size(view, cw, ch);
-	}
+	struct wlr_box target = { left, top, cw, ch };
+	if (wlr_box_equal(&target, &server->grab_target))
+		return;
+	server->grab_target = target;
+	server->grab_changed = true;
+	if (server->grab_outline)
+		show_outline(server);
+	else
+		resize_to(view, &target);
+	update_feedback(server);
 }
 
 /* ---- pointer ------------------------------------------------------------ */
@@ -436,6 +554,41 @@ static void cursor_frame(struct wl_listener *listener, void *data)
 
 /* ---- keyboard ----------------------------------------------------------- */
 
+/* During a move or resize: arrows nudge the pointer, and so the window. */
+static void grab_key(struct server *server, uint32_t mods, xkb_keysym_t sym)
+{
+	int step = (mods & WLR_MODIFIER_SHIFT) ? 1 : 10;
+	int dx = 0, dy = 0;
+	switch (sym) {
+	case XKB_KEY_Escape:
+		cancel_grab(server);
+		process_cursor_motion(server, 0);
+		return;
+	case XKB_KEY_Return:
+	case XKB_KEY_KP_Enter:
+		end_grab(server);
+		process_cursor_motion(server, 0);
+		return;
+	case XKB_KEY_Left:
+		dx = -step;
+		break;
+	case XKB_KEY_Right:
+		dx = step;
+		break;
+	case XKB_KEY_Up:
+		dy = -step;
+		break;
+	case XKB_KEY_Down:
+		dy = step;
+		break;
+	default:
+		return;
+	}
+	wlr_cursor_warp(server->cursor, NULL, server->cursor->x + dx,
+		server->cursor->y + dy);
+	process_cursor_motion(server, 0);
+}
+
 static bool handle_keybinding(struct server *server, uint32_t mods,
 	xkb_keysym_t sym)
 {
@@ -447,6 +600,11 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		if (server->session)
 			wlr_session_change_vt(server->session,
 				sym - XKB_KEY_XF86Switch_VT_1 + 1);
+		return true;
+	}
+	if (server->cursor_mode == CURSOR_MOVE ||
+			server->cursor_mode == CURSOR_RESIZE) {
+		grab_key(server, mods, sym);
 		return true;
 	}
 
