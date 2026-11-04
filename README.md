@@ -57,7 +57,8 @@ and keyboard when, including drag and drop, and `make crash-test` tries what use
 end the session, which is worth running against a sanitizer build too:
 
     make clean
-    CFLAGS="-O1 -g -fsanitize=address,undefined" LDFLAGS="-fsanitize=address,undefined" \
+    CFLAGS="-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined" \
+        LDFLAGS="-fsanitize=address,undefined" \
         ASAN_OPTIONS=detect_leaks=0 make test
 
 `make state-test` tries orderings of window states, and `make misc-test` key bindings,

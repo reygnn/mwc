@@ -214,5 +214,70 @@ start_mwc "sleep 120"
 pixel_is "an unusable value falls back" 640 360 5b7792
 log_has "an unusable value is reported" 'ignoring MWC_ROOT=not-a-colour'
 stop_mwc
+unset MWC_ROOT
+
+# The file against the environment, for what a window shows as well.
+cat >"$RC" <<'EOF'
+Mwm*rootBackground:     #123456
+Mwm*activeBackground:   #102030
+Mwm*fontList:           Sans Bold 30
+EOF
+export MWC_ROOT='#010203' MWC_ACTIVE='#405060' MWC_FONT='Sans Bold 10'
+rm -f "$SMOKE_DIR/foot-up"
+start_mwc "exec foot sh -c '$marker' foot-up"
+wait_for "foot connected" test -e "$SMOKE_DIR/foot-up"
+check "foot is mapped" "[ -n \"\$(get foot x)\" ]"
+pixel_is "MWC_ROOT beats Mwm*rootBackground" 1270 700 010203
+border_is "MWC_ACTIVE beats Mwm*activeBackground" foot 405060
+check "MWC_FONT beats Mwm*fontList" "[ \"\$(global theme title)\" = $T ]"
+stop_mwc
+unset MWC_ROOT MWC_ACTIVE MWC_FONT
+
+# ---- later lines win, and a reload redoes everything ----------------------------------
+
+build/pngtool stripes "$SMOKE_DIR/same.png" 1280 720 ff0000 ff0000
+cat >"$RC" <<EOF
+Mwm*rootBackground:         #111111
+Mwm*rootBackground:         #222222
+Mwm*activeBackground:       #333333
+Mwm*activeBackground:       #440000
+Mwm*foreground:             #ff00ff
+Mwm*activeForeground:       #00ff00
+Mwm*foot*activeBackground:  #005500
+Mwm*foot*activeBackground:  #006600
+Mwm*foot*background:        #aa0000
+EOF
+rm -f "$SMOKE_DIR/foot-up" "$SMOKE_DIR/xterm-up"
+start_mwc "foot sh -c '$marker' foot-up & \
+	while [ ! -e \"\$SMOKE_DIR/foot-up\" ]; do sleep 0.1; done; \
+	exec xterm -e sh -c '$marker' xterm-up"
+wait_for "foot connected" test -e "$SMOKE_DIR/foot-up"
+wait_for "xterm connected" test -e "$SMOKE_DIR/xterm-up"
+start_vinput
+check "both windows are mapped" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get XTerm x)\" ]"
+check "xterm has the focus" "[ \"\$(get XTerm active)\" = 1 ]"
+pixel_is "the later of two global lines" 1270 700 222222
+border_is "for frames as well" XTerm 440000
+title_has "global activeForeground" XTerm 00ff00
+title_has "global foreground, on a window that isn't focused" foot ff00ff
+do_input key alt+Tab
+check "foot has the focus" "[ \"\$(get foot active)\" = 1 ]"
+border_is "the later of two lines for a client" foot 006600
+
+do_input key alt+F9
+check "foot is an icon" "[ \"\$(get foot min)\" = 1 ]"
+refresh
+pixel_near "the icon has its colour" $(($(get foot icon_x) + 3)) $(($(get foot icon_y) + 30)) aa0000
+sed -i 's/Mwm\*foot\*background:.*/Mwm*foot*background: #0000aa/' "$RC"
+echo "Mwm*wallpaper: $SMOKE_DIR/same.png" >>"$RC"
+kill -HUP "$pid"
+pixel_near "a reload paints the icon anew" $(($(get foot icon_x) + 3)) $(($(get foot icon_y) + 30)) 0000aa
+pixel_is "the wallpaper comes" 1270 700 ff0000
+# Same name, same size, other picture: only rendering it again can show that.
+build/pngtool stripes "$SMOKE_DIR/same.png" 1280 720 00ff00 00ff00
+kill -HUP "$pid"
+pixel_is "a reload reads the wallpaper again" 1270 700 00ff00
+stop_vinput
+stop_mwc
 
 echo "PASS: config"
