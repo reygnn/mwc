@@ -261,6 +261,7 @@ int main(int argc, char *argv[])
 	wl_list_init(&server.views);
 	xdg_init(&server);
 	input_init(&server);
+	testhook_init(&server);
 	xwayland_init(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);
@@ -282,15 +283,36 @@ int main(int argc, char *argv[])
 	run_autostart(startup_cmd);
 	wl_display_run(server.display);
 
+	/* wlroots asserts that nobody listens to an object it destroys. */
 	wl_display_destroy_clients(server.display);
-	if (server.xwayland)
+	testhook_fini();
+	if (server.xwayland) {
+		wl_list_remove(&server.xwayland_ready.link);
+		wl_list_remove(&server.new_xwayland_surface.link);
 		wlr_xwayland_destroy(server.xwayland);
+	}
+	wl_list_remove(&server.new_xdg_toplevel.link);
+	wl_list_remove(&server.new_xdg_popup.link);
+	wl_list_remove(&server.new_xdg_decoration.link);
+	wl_list_remove(&server.new_server_decoration.link);
+	wl_list_remove(&server.cursor_motion.link);
+	wl_list_remove(&server.cursor_motion_absolute.link);
+	wl_list_remove(&server.cursor_button.link);
+	wl_list_remove(&server.cursor_axis.link);
+	wl_list_remove(&server.cursor_frame.link);
+	wl_list_remove(&server.new_input.link);
+	wl_list_remove(&server.request_cursor.link);
+	wl_list_remove(&server.request_set_selection.link);
+	wl_list_remove(&server.request_set_primary_selection.link);
+	wl_list_remove(&server.new_output.link);
+	wl_list_remove(&server.layout_change.link);
+	/* The backend goes first: output_destroy() still needs the scene. */
+	wlr_backend_destroy(server.backend);
 	wlr_scene_node_destroy(&server.scene->tree.node);
 	wlr_xcursor_manager_destroy(server.cursor_mgr);
 	wlr_cursor_destroy(server.cursor);
 	wlr_allocator_destroy(server.allocator);
 	wlr_renderer_destroy(server.renderer);
-	wlr_backend_destroy(server.backend);
 	wl_display_destroy(server.display);
 	return 0;
 }

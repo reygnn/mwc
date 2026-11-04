@@ -17,6 +17,7 @@
 #include <wlr/util/box.h>
 #include <wlr/util/edges.h>
 
+struct wlr_input_device;
 struct wlr_xdg_toplevel;
 struct wlr_xwayland_surface;
 
@@ -114,6 +115,11 @@ struct view {
 	bool minimized;
 	bool fullscreen;
 	struct wlr_box saved;  /* geometry before maximize/fullscreen */
+	/* xdg clients answer a size request later, possibly after the button
+	 * was released: these edges stay put until the client has caught up. */
+	uint32_t anchor_edges;
+	int anchor_right, anchor_bottom;
+	uint32_t anchor_serial; /* last configure sent with a new size */
 	int icon_x, icon_y;
 	bool icon_placed;
 
@@ -192,6 +198,7 @@ struct menu {
 	int x, y, width, height;
 	int item_y[MENU_MAX_ITEMS], item_h[MENU_MAX_ITEMS];
 	uint32_t opened_msec;
+	double open_x, open_y; /* pointer position when it opened */
 };
 
 /* ---- server ------------------------------------------------------------- */
@@ -298,6 +305,8 @@ void view_minimize(struct view *view);
 void view_restore(struct view *view);
 void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	uint32_t edges, bool until_click);
+/* Un-maximizes under the pointer, keeping the grab point proportional. */
+void view_drag_unmaximize(struct view *view);
 void view_update_title(struct view *view);
 const char *view_title(struct view *view);
 const char *view_app_id(struct view *view);
@@ -348,8 +357,14 @@ void run_action(struct server *server, enum menu_action action,
 /* ---- input.c ------------------------------------------------------------ */
 
 void input_init(struct server *server);
+void input_add_device(struct server *server, struct wlr_input_device *dev);
 void cursor_set_name(struct server *server, const char *name);
 void process_cursor_motion(struct server *server, uint32_t time);
 void spawn(const char *cmd);
+
+/* ---- testhook.c --------------------------------------------------------- */
+
+void testhook_init(struct server *server);
+void testhook_fini(void);
 
 #endif

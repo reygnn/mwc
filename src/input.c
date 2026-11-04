@@ -3,6 +3,7 @@
  * resize, mwm's default key bindings.
  */
 #define _POSIX_C_SOURCE 200809L
+#include <math.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -23,6 +24,7 @@
 #include "mwc.h"
 
 #define DOUBLE_CLICK_MS 400
+#define DRAG_THRESHOLD 4
 
 struct keyboard {
 	struct wl_list link;
@@ -102,8 +104,19 @@ static void end_grab(struct server *server)
 static void process_move(struct server *server)
 {
 	struct view *view = server->grabbed_view;
-	view_set_position(view, server->cursor->x - server->grab_x,
-		server->cursor->y - server->grab_y);
+	if (view->maximized) {
+		/* Only a real drag restores it: a click on the title must
+		 * leave it alone, or a double click could never un-maximize. */
+		double dx = server->cursor->x - (view->x + server->grab_x);
+		double dy = server->cursor->y - (view->y + server->grab_y);
+		if (fabs(dx) < DRAG_THRESHOLD && fabs(dy) < DRAG_THRESHOLD)
+			return;
+		view_drag_unmaximize(view);
+	}
+	/* The pointer has sub-pixel positions: round, don't truncate, or the
+	 * window ends up a pixel off and jumps when crossing zero. */
+	view_set_position(view, lround(server->cursor->x - server->grab_x),
+		lround(server->cursor->y - server->grab_y));
 }
 
 static void process_resize(struct server *server)
@@ -111,8 +124,8 @@ static void process_resize(struct server *server)
 	struct view *view = server->grabbed_view;
 	struct wlr_box *g = &server->grab_geobox;
 	uint32_t edges = server->resize_edges;
-	double bx = server->cursor->x - server->grab_x;
-	double by = server->cursor->y - server->grab_y;
+	int bx = lround(server->cursor->x - server->grab_x);
+	int by = lround(server->cursor->y - server->grab_y);
 
 	int min_w = 3 * theme.title_height + 24, min_h = 8;
 	int max_w = 0, max_h = 0;
@@ -579,10 +592,8 @@ static void new_keyboard(struct server *server, struct wlr_input_device *dev)
 	wl_list_insert(&server->keyboards, &kb->link);
 }
 
-static void new_input(struct wl_listener *listener, void *data)
+void input_add_device(struct server *server, struct wlr_input_device *dev)
 {
-	struct server *server = wl_container_of(listener, server, new_input);
-	struct wlr_input_device *dev = data;
 	switch (dev->type) {
 	case WLR_INPUT_DEVICE_KEYBOARD:
 		new_keyboard(server, dev);
@@ -597,6 +608,12 @@ static void new_input(struct wl_listener *listener, void *data)
 	if (!wl_list_empty(&server->keyboards))
 		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
 	wlr_seat_set_capabilities(server->seat, caps);
+}
+
+static void new_input(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server, new_input);
+	input_add_device(server, data);
 }
 
 static void request_cursor(struct wl_listener *listener, void *data)

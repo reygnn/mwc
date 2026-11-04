@@ -21,7 +21,7 @@ CFLAGS += -std=c11 -Wall -Wextra -Wno-unused-parameter -Werror=implicit \
 LDLIBS += $(shell $(PKG_CONFIG) --libs $(PKGS))
 
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
-	src/input.c src/draw.c
+	src/input.c src/draw.c src/testhook.c
 OBJ = $(SRC:src/%.c=build/%.o)
 PROTO = build/xdg-shell-protocol.h
 
@@ -52,7 +52,31 @@ uninstall:
 smoke: mwc
 	tests/smoke.sh
 
+# Simulated mouse and keyboard for the input test.
+VINPUT_PROTOS = wlr-virtual-pointer-unstable-v1 virtual-keyboard-unstable-v1
+VINPUT_HEADERS = $(VINPUT_PROTOS:%=build/%-client.h)
+VINPUT_CODE = $(VINPUT_PROTOS:%=build/%-code.c)
+VINPUT_PKGS = wayland-client xkbcommon
+
+build/%-client.h: protocols/%.xml | build
+	$(WAYLAND_SCANNER) client-header $< $@
+
+build/%-code.c: protocols/%.xml | build
+	$(WAYLAND_SCANNER) private-code $< $@
+
+build/vinput: tests/vinput.c $(VINPUT_HEADERS) $(VINPUT_CODE)
+	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
+		$(shell $(PKG_CONFIG) --cflags $(VINPUT_PKGS)) \
+		-o $@ tests/vinput.c $(VINPUT_CODE) \
+		$(shell $(PKG_CONFIG) --libs $(VINPUT_PKGS))
+
+input-test: mwc build/vinput
+	tests/input.sh
+
+test: smoke input-test
+
 clean:
 	rm -rf build mwc
 
-.PHONY: all install uninstall smoke clean
+.SECONDARY: $(VINPUT_CODE)
+.PHONY: all install uninstall smoke input-test test clean

@@ -6,6 +6,7 @@
  * are underlined and accelerators sit right-aligned, as in mwm.
  */
 #define _POSIX_C_SOURCE 200809L
+#include <math.h>
 #include <string.h>
 #include <time.h>
 #include <pango/pangocairo.h>
@@ -184,6 +185,8 @@ static void open_at(struct server *server, int x, int y)
 {
 	struct menu *m = &server->menu;
 	m->opened_msec = now_msec();
+	m->open_x = server->cursor->x;
+	m->open_y = server->cursor->y;
 	layout_menu(m);
 	struct wlr_box a = output_usable_area(server, x, y);
 	if (x + m->width > a.x + a.width)
@@ -326,9 +329,17 @@ bool menu_button(struct server *server, double lx, double ly, bool pressed,
 			arm(server, idx);
 		return true;
 	}
+	/* Signed: an event is stamped before we get to handle it, so it can
+	 * be slightly older than the moment the menu opened. */
+	int32_t age = time_msec - m->opened_msec;
 	if (idx >= 0) {
+		/* The release of the click that opened the menu: when the menu
+		 * had to shift to fit, an item is now under the pointer. */
+		if (age < 400 && fabs(lx - m->open_x) < 4 &&
+				fabs(ly - m->open_y) < 4)
+			return true;
 		activate(server, idx, time_msec);
-	} else if (idx == -2 && time_msec - m->opened_msec > 400) {
+	} else if (idx == -2 && age > 400) {
 		/* Press-drag-release that ended outside the menu. */
 		menu_close(server);
 	}

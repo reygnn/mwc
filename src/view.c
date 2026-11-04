@@ -71,13 +71,16 @@ static void xwayland_configure(struct view *view)
 {
 	if (view->type != VIEW_XWAYLAND)
 		return;
+	/* The size last requested, not view->width: a new size may not have
+	 * been committed yet, and this configure must not take it back. */
 	wlr_xwayland_surface_configure(view->xsurface,
 		view->x + frame_left(view), view->y + frame_top(view),
-		view->width, view->height);
+		view->xsurface->width, view->xsurface->height);
 }
 
 void view_set_position(struct view *view, int x, int y)
 {
+	view->anchor_edges = 0;
 	view->x = x;
 	view->y = y;
 	wlr_scene_node_set_position(&view->tree->node, x, y);
@@ -87,7 +90,8 @@ void view_set_position(struct view *view, int x, int y)
 void view_send_size(struct view *view, int w, int h)
 {
 	if (view->type == VIEW_XDG) {
-		wlr_xdg_toplevel_set_size(view->xdg_toplevel, w, h);
+		view->anchor_serial = wlr_xdg_toplevel_set_size(
+			view->xdg_toplevel, w, h);
 	} else {
 		wlr_xwayland_surface_configure(view->xsurface,
 			view->x + frame_left(view), view->y + frame_top(view),
@@ -97,6 +101,7 @@ void view_send_size(struct view *view, int w, int h)
 
 void view_set_geometry(struct view *view, int x, int y, int w, int h)
 {
+	view->anchor_edges = 0;
 	view->x = x;
 	view->y = y;
 	wlr_scene_node_set_position(&view->tree->node, x, y);
@@ -106,19 +111,16 @@ void view_set_geometry(struct view *view, int x, int y, int w, int h)
 /* Called from the commit handlers once the client has a (new) size. */
 static void view_apply_size(struct view *view, int w, int h)
 {
-	struct server *server = view->server;
 	if (w == view->width && h == view->height) {
 		view_update_content_pos(view);
 		return;
 	}
 	/* Keep the opposite edge anchored while resizing from left/top. */
-	if (server->cursor_mode == CURSOR_RESIZE &&
-			server->grabbed_view == view) {
-		struct wlr_box *g = &server->grab_geobox;
-		if (server->resize_edges & WLR_EDGE_LEFT)
-			view->x = g->x + g->width - (w + frame_extra_w(view));
-		if (server->resize_edges & WLR_EDGE_TOP)
-			view->y = g->y + g->height - (h + frame_extra_h(view));
+	if (view->anchor_edges) {
+		if (view->anchor_edges & WLR_EDGE_LEFT)
+			view->x = view->anchor_right - (w + frame_extra_w(view));
+		if (view->anchor_edges & WLR_EDGE_TOP)
+			view->y = view->anchor_bottom - (h + frame_extra_h(view));
 		wlr_scene_node_set_position(&view->tree->node,
 			view->x, view->y);
 	}
@@ -359,16 +361,6 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 		return;
 	if (view->maximized && mode == CURSOR_RESIZE)
 		return;
-	if (view->maximized && mode == CURSOR_MOVE) {
-		/* Dragging a maximized window un-maximizes it under the
-		 * pointer, keeping the grab point proportional. */
-		double frac = (server->cursor->x - view->x) /
-			(double)(view->width + frame_extra_w(view));
-		view_set_maximized(view, false);
-		int nw = view->saved.width + frame_extra_w(view);
-		view_set_position(view, server->cursor->x - frac * nw,
-			server->cursor->y - theme.border - theme.title_height / 2);
-	}
 	server->grabbed_view = view;
 	server->cursor_mode = mode;
 	server->grab_until_click = until_click;
@@ -388,10 +380,29 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 		server->grab_x = server->cursor->x - bx;
 		server->grab_y = server->cursor->y - by;
 		server->resize_edges = edges;
-		if (view->type == VIEW_XDG)
+		if (view->type == VIEW_XDG) {
 			wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, true);
+			view->anchor_edges = edges;
+			view->anchor_right = view->x + server->grab_geobox.width;
+			view->anchor_bottom = view->y + server->grab_geobox.height;
+			view->anchor_serial = view->xdg_toplevel->base->
+				scheduled_serial;
+		}
 	}
 	wlr_seat_pointer_notify_clear_focus(server->seat);
+}
+
+void view_drag_unmaximize(struct view *view)
+{
+	struct server *server = view->server;
+	double frac = (server->cursor->x - view->x) /
+		(double)(view->width + frame_extra_w(view));
+	view_set_maximized(view, false);
+	int nw = view->saved.width + frame_extra_w(view);
+	view_set_position(view, server->cursor->x - frac * nw,
+		server->cursor->y - theme.border - theme.title_height / 2);
+	server->grab_x = server->cursor->x - view->x;
+	server->grab_y = server->cursor->y - view->y;
 }
 
 struct view *view_at(struct server *server, double lx, double ly,
@@ -561,6 +572,14 @@ static void xdg_commit(struct wl_listener *listener, void *data)
 	if (!view->mapped)
 		return;
 	view_apply_size(view, base->geometry.width, base->geometry.height);
+
+	/* The drag is over and the client has answered the last size request. */
+	struct server *server = view->server;
+	bool grabbed = server->cursor_mode == CURSOR_RESIZE &&
+		server->grabbed_view == view;
+	if (view->anchor_edges && !grabbed &&
+			base->current.configure_serial >= view->anchor_serial)
+		view->anchor_edges = 0;
 }
 
 static void xdg_map(struct wl_listener *listener, void *data)

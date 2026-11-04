@@ -31,12 +31,20 @@ be installed on the host except Podman and Distrobox:
     sudo apt install podman distrobox uidmap
     distrobox assemble create --replace --file distrobox.ini
     distrobox enter mwc-dev
-    make smoke          # headless test, screenshot in build/smoke.png
+    make test           # headless tests
     ./mwc -s xterm      # nested, opens as a window
 
 `make smoke` starts mwc headless and checks that a Wayland client (foot) and an
-X11 client (xterm) connect. It doesn't test real input, DRM/KMS or VT switching:
-use a VM or a free TTY for those.
+X11 client (xterm) connect, with a screenshot in `build/smoke.png`.
+
+`make input-test` drives the same two clients with a simulated mouse and
+keyboard (`tests/vinput.c`) and checks geometry and focus after each move,
+resize, maximize, minimize, menu and key binding. The simulated devices and the
+state file only exist when `MWC_TEST_STATE` is set, because those protocols let
+any client type on the user's behalf.
+
+`make test` runs both. None of this tests real input hardware, DRM/KMS or VT
+switching: use a VM or a free TTY for those.
 
 Inside the box, the host's X server isn't reachable: `/tmp/.X11-unix` is a
 private tmpfs because XWayland won't start without it. X11 apps only run inside
