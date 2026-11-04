@@ -13,6 +13,10 @@ base=${XDG_RUNTIME_DIR:-/tmp}
 SMOKE_DIR=$(mktemp -d "$base/mwc.XXXXXX") || exit 1
 export SMOKE_DIR
 
+# Don't let the developer's own settings change what the tests see.
+export XDG_CONFIG_HOME=$SMOKE_DIR/config
+unset MWC_ACTIVE MWC_INACTIVE MWC_ROOT MWC_FONT MWC_WALLPAPER MWC_TERMINAL
+
 pid=
 cleanup() {
 	if [ -n "$pid" ]; then
@@ -58,13 +62,30 @@ start_mwc() {
 	wait_for "Wayland socket" test -S "$SMOKE_DIR/wayland-0"
 }
 
+# stop_mwc: SIGTERM must end it cleanly, so a crash on shutdown fails the test.
 stop_mwc() {
+	local status
 	kill "$pid" 2>/dev/null
 	wait "$pid" 2>/dev/null
+	status=$?
 	pid=
+	[ "$status" = 0 ] || fail "mwc exited with status $status"
 	# Killed compositors leave their socket behind, which would make the
 	# next start_mwc see it before the new one is listening.
 	rm -f "$SMOKE_DIR"/wayland-*
+}
+
+# pixel_is <description> <x> <y> <rrggbb>: poll, frames take a moment to appear.
+pixel_is() {
+	local what=$1 x=$2 y=$3 want=$4 shot=$SMOKE_DIR/shot.png got i
+	for ((i = 0; i < 50; i++)); do
+		if WAYLAND_DISPLAY=wayland-0 grim "$shot" 2>/dev/null; then
+			got=$(build/pngtool pixel "$shot" "$x" "$y")
+			[ "$got" = "$want" ] && { echo "ok: $what"; return 0; }
+		fi
+		sleep 0.1
+	done
+	fail "$what: pixel $x,$y is ${got:-unreadable}, expected $want"
 }
 
 # ---- simulated input and window state (needs MWC_TEST_STATE) -----------------

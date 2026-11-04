@@ -33,18 +33,27 @@ struct mwc_shade {
 };
 
 struct mwc_theme {
-	struct mwc_shade active, inactive, menu, icon;
+	struct mwc_shade active, inactive, menu;
 	struct mwc_color select; /* menu item armed background */
 	struct mwc_color root;   /* desktop background */
-	const char *font;        /* pango font description */
+	/* Global title text colours from mwmrc, for clients with their own
+	 * background. Unset, the text is black or white by contrast. */
+	struct mwc_color active_fg, inactive_fg;
+	bool has_active_fg, has_inactive_fg;
+	char *font;              /* pango font description */
 	int border;              /* resize border width */
 	int title_height;        /* title bar height */
+	int menu_item_height;
 	int bevel;               /* shadow thickness */
 };
 
 extern struct mwc_theme theme;
 
+/* Reads the configuration, so config_load() goes first. */
 void theme_init(void);
+struct mwc_shade shade_from(struct mwc_color bg, struct mwc_color fg);
+struct mwc_color color_mix(struct mwc_color a, struct mwc_color b, float f);
+struct mwc_color color_contrast(struct mwc_color bg);
 void set_source(cairo_t *cr, struct mwc_color c);
 /* Raised (in == false) or sunken (in == true) Motif bevel. */
 void draw_bevel(cairo_t *cr, double x, double y, double w, double h,
@@ -114,6 +123,7 @@ struct view {
 	bool maximized;
 	bool minimized;
 	bool fullscreen;
+	struct mwc_shade shade_active, shade_inactive; /* frame and icon colours */
 	struct wlr_box saved;  /* geometry before maximize/fullscreen */
 	/* xdg clients answer a size request later, possibly after the button
 	 * was released: these edges stay put until the client has caught up. */
@@ -174,6 +184,7 @@ enum menu_action {
 	ACT_NEW_WINDOW,
 	ACT_SHUFFLE_UP,
 	ACT_SHUFFLE_DOWN,
+	ACT_RESTART,
 	ACT_QUIT,
 };
 
@@ -311,6 +322,8 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 /* Un-maximizes under the pointer, keeping the grab point proportional. */
 void view_drag_unmaximize(struct view *view);
 void view_update_title(struct view *view);
+/* Colours or frame size changed: pick up the new theme and redraw. */
+void view_theme_changed(struct view *view);
 const char *view_title(struct view *view);
 const char *view_app_id(struct view *view);
 struct wlr_surface *view_surface(struct view *view);
@@ -367,9 +380,21 @@ void spawn(const char *cmd);
 
 /* ---- wallpaper.c -------------------------------------------------------- */
 
+/* (Re)loads the image named by MWC_WALLPAPER or Mwm*wallpaper. */
 void wallpaper_init(struct server *server);
 void wallpaper_fini(struct server *server);
-void wallpaper_place(struct output *output, const struct wlr_box *box);
+/* Fits it to the output's current box; force redraws an unchanged size. */
+void wallpaper_place(struct output *output, bool force);
+
+/* ---- config.c ----------------------------------------------------------- */
+
+void config_load(void);
+const char *config_get(const char *resource);
+bool config_color(const char *value, struct mwc_color *out);
+void config_view_shades(struct view *view);
+/* "Restart..." and SIGHUP: a Wayland compositor can't re-exec and keep its
+ * clients, so this reads mwmrc again and applies it to what is running. */
+void config_reload(struct server *server);
 
 /* ---- testhook.c --------------------------------------------------------- */
 

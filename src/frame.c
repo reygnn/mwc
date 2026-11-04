@@ -107,7 +107,7 @@ void frame_render(struct view *view)
 	const int W = view->width + 2 * B;
 	const int H = view->height + 2 * B + T;
 	const struct mwc_shade *s = view->activated ?
-		&theme.active : &theme.inactive;
+		&view->shade_active : &view->shade_inactive;
 
 	struct cairo_buffer *buf = cairo_buffer_create(W, H);
 	if (!buf)
@@ -197,7 +197,8 @@ enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges)
 
 void icon_render(struct view *view)
 {
-	const struct mwc_shade *s = &theme.icon;
+	/* Icons wear the client's colours like its frame does. */
+	const struct mwc_shade *s = &view->shade_inactive;
 	struct cairo_buffer *buf = cairo_buffer_create(ICON_W, ICON_H);
 	if (!buf)
 		return;
@@ -215,7 +216,7 @@ void icon_render(struct view *view)
 	cairo_rectangle(cr, wx, wy, ww, wh);
 	cairo_fill(cr);
 	draw_bevel(cr, wx, wy, ww, wh, 1, s, true);
-	const struct mwc_shade *a = &theme.active;
+	const struct mwc_shade *a = &view->shade_active;
 	int mx = wx + 8, my = wy + 6, mw = ww - 16, mh = wh - 12;
 	set_source(cr, a->bg);
 	cairo_rectangle(cr, mx, my, mw, mh);

@@ -6,6 +6,7 @@
  */
 #define _POSIX_C_SOURCE 200809L
 #include <getopt.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -94,8 +95,6 @@ static void new_output(struct wl_listener *listener, void *data)
 
 	float c[4] = { theme.root.r, theme.root.g, theme.root.b, 1 };
 	output->background = wlr_scene_rect_create(server->layer_bg, 0, 0, c);
-	if (server->wallpaper)
-		output->wallpaper = wlr_scene_buffer_create(server->layer_bg, NULL);
 	wl_list_insert(&server->outputs, &output->link);
 
 	struct wlr_output_layout_output *lo =
@@ -118,7 +117,7 @@ static void layout_change(struct wl_listener *listener, void *data)
 			box.x, box.y);
 		wlr_scene_rect_set_size(output->background, box.width,
 			box.height);
-		wallpaper_place(output, &box);
+		wallpaper_place(output, false);
 	}
 	icons_arrange(server);
 }
@@ -178,6 +177,19 @@ static void run_autostart(const char *startup_cmd)
 		spawn(path);
 }
 
+static int handle_sighup(int signal, void *data)
+{
+	config_reload(data);
+	return 0;
+}
+
+static int handle_terminate(int signal, void *data)
+{
+	struct server *server = data;
+	wl_display_terminate(server->display);
+	return 0;
+}
+
 static void usage(const char *argv0)
 {
 	printf("Usage: %s [-s startup-command] [-d]\n"
@@ -188,7 +200,8 @@ static void usage(const char *argv0)
 		"Environment: MWC_TERMINAL, MWC_ACTIVE, MWC_INACTIVE, MWC_ROOT,\n"
 		"MWC_WALLPAPER, MWC_FONT, XCURSOR_THEME, XCURSOR_SIZE,\n"
 		"XKB_DEFAULT_LAYOUT.\n"
-		"Without -s, ~/.config/mwc/autostart is run if executable.\n",
+		"Without -s, ~/.config/mwc/autostart is run if executable.\n"
+		"~/.config/mwc/mwmrc is read at startup and on SIGHUP.\n",
 		argv0);
 }
 
@@ -211,13 +224,24 @@ int main(int argc, char *argv[])
 		}
 	}
 	wlr_log_init(log_level, NULL);
-	theme_init();
 
 	struct server server = { 0 };
-	server.terminal = pick_terminal();
-	wallpaper_init(&server);
 	server.display = wl_display_create();
 	server.event_loop = wl_display_get_event_loop(server.display);
+	/* Before anything that starts threads, Pango and Mesa do: these calls
+	 * block the signals, and a thread that doesn't would catch them and
+	 * die with its default action. */
+	wl_event_loop_add_signal(server.event_loop, SIGHUP, handle_sighup, &server);
+	wl_event_loop_add_signal(server.event_loop, SIGTERM, handle_terminate,
+		&server);
+	wl_event_loop_add_signal(server.event_loop, SIGINT, handle_terminate,
+		&server);
+	testhook_init(&server);
+
+	config_load();
+	theme_init();
+	server.terminal = pick_terminal();
+	wallpaper_init(&server);
 	server.backend = wlr_backend_autocreate(server.event_loop,
 		&server.session);
 	if (!server.backend) {
@@ -268,7 +292,6 @@ int main(int argc, char *argv[])
 	wl_list_init(&server.views);
 	xdg_init(&server);
 	input_init(&server);
-	testhook_init(&server);
 	xwayland_init(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);

@@ -12,10 +12,6 @@ require_tools foot xterm Xwayland
 
 SCREEN_W=1280
 SCREEN_H=720
-# Frame sizes from theme_init(): border 6, title bar 22.
-B=6
-T=22
-
 export MWC_TEST_STATE=$SMOKE_DIR/state
 
 marker='touch "$SMOKE_DIR/$0"; exec sleep 120'
@@ -26,6 +22,9 @@ wait_for "foot connected (Wayland)" test -e "$SMOKE_DIR/foot-up"
 wait_for "xterm connected (XWayland)" test -e "$SMOKE_DIR/xterm-up"
 
 start_vinput
+refresh
+B=$(global theme border)
+T=$(global theme title)
 
 # ---- helpers ---------------------------------------------------------------
 

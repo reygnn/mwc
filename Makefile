@@ -21,7 +21,7 @@ CFLAGS += -std=c11 -Wall -Wextra -Wno-unused-parameter -Werror=implicit \
 LDLIBS += $(shell $(PKG_CONFIG) --libs $(PKGS))
 
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
-	src/input.c src/draw.c src/wallpaper.c src/testhook.c
+	src/input.c src/draw.c src/wallpaper.c src/config.c src/testhook.c
 OBJ = $(SRC:src/%.c=build/%.o)
 PROTO = build/xdg-shell-protocol.h
 
@@ -82,10 +82,13 @@ build/pngtool: tests/pngtool.c | build
 wallpaper-test: mwc build/vinput build/pngtool
 	tests/wallpaper.sh
 
-test: smoke input-test wallpaper-test
+config-test: mwc build/vinput build/pngtool
+	tests/config.sh
+
+test: smoke input-test wallpaper-test config-test
 
 clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE)
-.PHONY: all install uninstall smoke input-test wallpaper-test test clean
+.PHONY: all install uninstall smoke input-test wallpaper-test config-test test clean

@@ -63,6 +63,8 @@ static int dump_state(int signal, void *data)
 	}
 	fprintf(f, "menu open=%d title=%s\n", server->menu.open,
 		server->menu.open && server->menu.title ? "yes" : "no");
+	fprintf(f, "theme border=%d title=%d\n", theme.border,
+		theme.title_height);
 	fprintf(f, "cursor x=%d y=%d mode=%d\n", (int)server->cursor->x,
 		(int)server->cursor->y, server->cursor_mode);
 	fclose(f);

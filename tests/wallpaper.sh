@@ -9,23 +9,9 @@ for tool in build/vinput build/pngtool; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
-SHOT=$SMOKE_DIR/shot.png
 RED=ff0000
 BLUE=0000ff
 ROOT=5b7792
-
-# pixel_is <description> <x> <y> <rrggbb>: poll, the first frame takes a moment.
-pixel_is() {
-	local what=$1 x=$2 y=$3 want=$4 got i
-	for ((i = 0; i < 50; i++)); do
-		if WAYLAND_DISPLAY=wayland-0 grim "$SHOT" 2>/dev/null; then
-			got=$(build/pngtool pixel "$SHOT" "$x" "$y")
-			[ "$got" = "$want" ] && { echo "ok: $what"; return 0; }
-		fi
-		sleep 0.1
-	done
-	fail "$what: pixel $x,$y is ${got:-unreadable}, expected $want"
-}
 
 # Same 16:9 as the 1280x720 output: the image fits exactly, scaled down.
 build/pngtool stripes "$SMOKE_DIR/fit.png" 2560 1440 "$RED" "$BLUE"

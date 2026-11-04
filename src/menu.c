@@ -16,13 +16,12 @@
 #include "mwc.h"
 
 #define PAD_X 10
-#define ITEM_H 24
 #define SEP_H 8
-#define TITLE_H 24
 #define ACCEL_GAP 28
 
 enum menu_action_private {
 	ACT_QUIT_CONFIRM = ACT_QUIT + 1,
+	ACT_RESTART_CONFIRM,
 };
 
 static PangoLayout *make_layout(cairo_t *cr, const char *text, char mnemonic)
@@ -70,14 +69,14 @@ static void layout_menu(struct menu *m)
 		label_w = text_width(cr, m->title);
 	int y = theme.bevel + 2;
 	if (m->title)
-		y += TITLE_H + 8;
+		y += theme.menu_item_height + 8;
 	for (int i = 0; i < m->n_items; i++) {
 		struct menu_item *it = &m->items[i];
 		m->item_y[i] = y;
 		if (!it->label) {
 			m->item_h[i] = SEP_H;
 		} else {
-			m->item_h[i] = ITEM_H;
+			m->item_h[i] = theme.menu_item_height;
 			int w = text_width(cr, it->label);
 			if (w > label_w)
 				label_w = w;
@@ -115,11 +114,11 @@ static void render_menu(struct server *server)
 	if (m->title) {
 		int ty = theme.bevel + 2;
 		draw_text(cr, m->title, theme.font, s->fg, theme.bevel,
-			ty, m->width - 2 * theme.bevel, TITLE_H, true);
+			ty, m->width - 2 * theme.bevel, theme.menu_item_height, true);
 		/* mwm puts a double separator under the menu title */
-		draw_groove_h(cr, theme.bevel, ty + TITLE_H,
+		draw_groove_h(cr, theme.bevel, ty + theme.menu_item_height,
 			m->width - 2 * theme.bevel, s);
-		draw_groove_h(cr, theme.bevel, ty + TITLE_H + 3,
+		draw_groove_h(cr, theme.bevel, ty + theme.menu_item_height + 3,
 			m->width - 2 * theme.bevel, s);
 	}
 
@@ -137,7 +136,7 @@ static void render_menu(struct server *server)
 		}
 		if (i == m->armed)
 			draw_bevel(cr, theme.bevel, y,
-				m->width - 2 * theme.bevel, ITEM_H, 2, s, false);
+				m->width - 2 * theme.bevel, theme.menu_item_height, 2, s, false);
 
 		struct mwc_color fg = it->sensitive ? s->fg : dim;
 		cairo_save(cr);
@@ -146,14 +145,14 @@ static void render_menu(struct server *server)
 		PangoLayout *l = make_layout(cr, it->label, it->mnemonic);
 		int tw, th;
 		pango_layout_get_pixel_size(l, &tw, &th);
-		cairo_move_to(cr, theme.bevel + PAD_X, y + (ITEM_H - th) / 2);
+		cairo_move_to(cr, theme.bevel + PAD_X, y + (theme.menu_item_height - th) / 2);
 		pango_cairo_show_layout(cr, l);
 		g_object_unref(l);
 		if (it->accel) {
 			l = make_layout(cr, it->accel, 0);
 			pango_layout_get_pixel_size(l, &tw, &th);
 			cairo_move_to(cr, m->width - theme.bevel - PAD_X - tw,
-				y + (ITEM_H - th) / 2);
+				y + (theme.menu_item_height - th) / 2);
 			pango_cairo_show_layout(cr, l);
 			g_object_unref(l);
 		}
@@ -245,17 +244,20 @@ void menu_open_root(struct server *server, int x, int y)
 	add(m, "Shuffle Up", 'U', NULL, ACT_SHUFFLE_UP, true);
 	add(m, "Shuffle Down", 'D', NULL, ACT_SHUFFLE_DOWN, true);
 	add(m, NULL, 0, NULL, ACT_NONE, false);
+	add(m, "Restart...", 'R', NULL, ACT_RESTART_CONFIRM, true);
 	add(m, "Quit...", 'Q', NULL, ACT_QUIT_CONFIRM, true);
 	open_at(server, x, y);
 }
 
-static void open_quit_confirm(struct server *server, int x, int y)
+/* mwm asks before f.restart and f.quit_mwm. */
+static void open_confirm(struct server *server, const char *title,
+	enum menu_action action, int x, int y)
 {
 	struct menu *m = &server->menu;
-	m->title = "QUIT Mwc?";
+	m->title = title;
 	m->n_items = 0;
 	m->target = NULL;
-	add(m, "OK", 'O', NULL, ACT_QUIT, true);
+	add(m, "OK", 'O', NULL, action, true);
 	add(m, "Cancel", 'C', NULL, ACT_NONE, true);
 	open_at(server, x, y);
 	m->armed = 1;
@@ -303,7 +305,9 @@ static void activate(struct server *server, int idx, uint32_t time_msec)
 	int x = m->x, y = m->y;
 	menu_close(server);
 	if ((int)action == ACT_QUIT_CONFIRM)
-		open_quit_confirm(server, x, y);
+		open_confirm(server, "QUIT Mwc?", ACT_QUIT, x, y);
+	else if ((int)action == ACT_RESTART_CONFIRM)
+		open_confirm(server, "Restart Mwc?", ACT_RESTART, x, y);
 	else
 		run_action(server, action, target);
 	(void)time_msec;
@@ -456,6 +460,9 @@ void run_action(struct server *server, enum menu_action action,
 		break;
 	case ACT_SHUFFLE_DOWN:
 		view_cycle(server, true);
+		break;
+	case ACT_RESTART:
+		config_reload(server);
 		break;
 	case ACT_QUIT:
 		wl_display_terminate(server->display);

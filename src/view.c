@@ -14,9 +14,6 @@
 #include <wlr/xwayland.h>
 #include "mwc.h"
 
-#define MIN_CLIENT_W (3 * 22 + 24)
-#define MIN_CLIENT_H 8
-
 struct wlr_surface *view_surface(struct view *view)
 {
 	if (view->type == VIEW_XDG)
@@ -329,6 +326,27 @@ void view_update_title(struct view *view)
 		icon_render(view);
 }
 
+void view_theme_changed(struct view *view)
+{
+	config_view_shades(view);
+	if (!view->mapped)
+		return;
+	/* The title bar grows with the font. The client keeps its size and
+	 * the frame around it changes, except where the frame's size is fixed. */
+	view_update_content_pos(view);
+	if (view->maximized && !view->fullscreen) {
+		struct wlr_box a = output_usable_area(view->server,
+			view->x + 1, view->y + 1);
+		view_set_geometry(view, a.x, a.y, a.width - frame_extra_w(view),
+			a.height - frame_extra_h(view));
+	} else {
+		xwayland_configure(view);
+	}
+	frame_render(view);
+	if (view->minimized)
+		icon_render(view);
+}
+
 void view_cycle(struct server *server, bool backwards)
 {
 	struct view *top = NULL, *v;
@@ -462,6 +480,8 @@ void view_init_common(struct view *view)
 	wlr_scene_node_set_enabled(&view->icon_node->node, false);
 	wlr_scene_node_set_enabled(&view->tree->node, false);
 	wl_list_insert(&server->views, &view->link);
+	view->shade_active = theme.active;
+	view->shade_inactive = theme.inactive;
 }
 
 /* Cascade new windows from the top-left of the output under the pointer. */
@@ -492,6 +512,7 @@ static void view_place(struct view *view)
 void view_handle_map(struct view *view)
 {
 	view->mapped = true;
+	config_view_shades(view); /* the class or app_id is known by now */
 	wlr_scene_node_set_enabled(&view->tree->node, true);
 	view_update_content_pos(view);
 	if (view->placed)

@@ -4,6 +4,7 @@
  */
 #define _POSIX_C_SOURCE 200809L
 #include <math.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -41,6 +42,11 @@ void spawn(const char *cmd)
 		return;
 	pid_t pid = fork();
 	if (pid == 0) {
+		/* wl_event_loop_add_signal() blocks our handled signals, and
+		 * programs would inherit that and ignore SIGTERM or SIGHUP. */
+		sigset_t none;
+		sigemptyset(&none);
+		sigprocmask(SIG_SETMASK, &none, NULL);
 		/* Double fork so we never collect zombies. */
 		setsid();
 		if (fork() == 0) {

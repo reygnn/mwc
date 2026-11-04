@@ -4,6 +4,7 @@
  *   pngtool stripes OUT W H OUTER INNER  image with outer quarters in colour
  *                                        OUTER and the middle half in INNER
  *   pngtool pixel FILE X Y               prints the pixel as rrggbb
+ *   pngtool count FILE X Y W H RRGGBB    prints how many pixels have that colour
  *
  * Colours are rrggbb. Each quarter is measured along the width.
  */
@@ -53,6 +54,28 @@ static int pixel(const char *file, int x, int y)
 	return 0;
 }
 
+static int count(const char *file, int x, int y, int w, int h, const char *hex)
+{
+	cairo_surface_t *s = cairo_image_surface_create_from_png(file);
+	if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS)
+		return 1;
+	cairo_surface_flush(s);
+	unsigned char *data = cairo_image_surface_get_data(s);
+	int stride = cairo_image_surface_get_stride(s);
+	uint32_t want = strtoul(hex, NULL, 16);
+	int n = 0;
+	for (int py = y; py < y + h && py < cairo_image_surface_get_height(s); py++) {
+		for (int px = x; px < x + w &&
+				px < cairo_image_surface_get_width(s); px++) {
+			uint32_t v = *(uint32_t *)(data + py * stride + px * 4);
+			n += (v & 0xffffff) == want;
+		}
+	}
+	printf("%d\n", n);
+	cairo_surface_destroy(s);
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc == 7 && strcmp(argv[1], "stripes") == 0)
@@ -60,7 +83,11 @@ int main(int argc, char *argv[])
 			argv[6]);
 	if (argc == 5 && strcmp(argv[1], "pixel") == 0)
 		return pixel(argv[2], atoi(argv[3]), atoi(argv[4]));
+	if (argc == 8 && strcmp(argv[1], "count") == 0)
+		return count(argv[2], atoi(argv[3]), atoi(argv[4]), atoi(argv[5]),
+			atoi(argv[6]), argv[7]);
 	fprintf(stderr, "usage: pngtool stripes OUT W H OUTER INNER\n"
-		"       pngtool pixel FILE X Y\n");
+		"       pngtool pixel FILE X Y\n"
+		"       pngtool count FILE X Y W H RRGGBB\n");
 	return 2;
 }

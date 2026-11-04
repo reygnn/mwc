@@ -43,7 +43,8 @@ resize, maximize, minimize, menu and key binding. The simulated devices and the
 state file only exist when `MWC_TEST_STATE` is set, because those protocols let
 any client type on the user's behalf.
 
-`make wallpaper-test` renders generated images and checks pixels in screenshots.
+`make wallpaper-test` renders generated images and checks pixels in screenshots,
+and `make config-test` does the same for `mwmrc`, including reloading it.
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
@@ -70,7 +71,49 @@ Alt+F3 lower · Alt+F4 close · Alt+F5 restore · Alt+F7 move · Alt+F8 size ·
 Alt+F9 minimize · Alt+F10 maximize · Alt+F11 fullscreen ·
 Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit.
 
-## Configuration (environment)
+## Configuration
+
+`~/.config/mwc/mwmrc` uses the same Motif resource syntax as mwm-x11. Each
+program can get its own frame colour, matched by an X11 window's `WM_CLASS`
+(instance or class name) or a Wayland client's `app_id`, ignoring case:
+
+```
+! ~/.config/mwc/mwmrc
+Mwm*XTerm*activeBackground:    #8a0303
+Mwm*foot*activeBackground:     gold
+
+! global defaults
+Mwm*activeBackground:          #7387ad
+Mwm*background:                #aeb2c3
+Mwm*fontList:                  Sans Bold 10
+Mwm*wallpaper:                 ~/pictures/desk.png
+```
+
+| Resource | Meaning |
+|---|---|
+| `activeBackground` | frame colour while focused |
+| `background` | frame colour while unfocused (globally: also menus and icons) |
+| `activeForeground`, `foreground` | title text; default is black or white, whichever contrasts |
+| `fontList` | Pango font name for titles and menus, title bars grow with it (global only) |
+| `rootBackground` | desktop colour (global only) |
+| `wallpaper` | PNG on the desktop, see below (global only) |
+
+Copying a file from mwm-x11 works, except that `fontList` takes Pango names
+like `Sans Bold 10`: a fontconfig pattern like `Sans:bold:size=10` is logged and
+ignored. Resources mwc doesn't know are ignored too.
+
+A program with its own `activeBackground` keeps its colour when unfocused, in a
+paler shade (mixed with the global `background`), and so does its desktop icon.
+Set `Mwm*Name*background` to choose the unfocused colour yourself. Colours are
+`#rrggbb`, names like `gold` or `firebrick`, or `rgb:rr/gg/bb`. Lines starting
+with `!` are comments; a `!` after a value is part of the value, so comments go
+on their own line. Later lines win.
+
+The file is read at startup, on `SIGHUP` and on "Restart..." in the root menu. A
+Wayland compositor can't restart and keep its windows, so "Restart..." only
+applies the file to what is running.
+
+The environment overrides the global entries:
 
 | Variable          | Default        |                                  |
 |-------------------|----------------|----------------------------------|
@@ -81,10 +124,9 @@ Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit.
 | `MWC_FONT`        | `Sans Bold 10` | Pango font for titles and menus  |
 | `MWC_TERMINAL`    | first of xterm, foot, alacritty, … | "New Window"  |
 
-`MWC_WALLPAPER` is the path of a PNG file; a leading `~/` is expanded. The image
-is scaled to cover each monitor: the aspect ratio stays and what sticks out is
-cut off evenly. If it can't be read, mwc logs why and shows the `MWC_ROOT`
-colour.
+The wallpaper is the path of a PNG file; a leading `~/` is expanded. The image is
+scaled to cover each monitor: the aspect ratio stays and what sticks out is cut
+off evenly. If it can't be read, mwc logs why and shows the desktop colour.
 
 ## Decorations
 
