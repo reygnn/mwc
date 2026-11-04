@@ -272,8 +272,8 @@ Mwm*HDMI-A-1*outputTransform: 90
 |---|---|
 | `keyboardLayout`, `keyboardVariant`, `keyboardOptions`, `keyboardModel` | as in XKB; `XKB_DEFAULT_*` in the environment wins. A layout that doesn't exist falls back to us, and the log says so |
 | `Name*outputMode` | `WIDTHxHEIGHT` or `WIDTHxHEIGHT@HZ`; default the monitor's preferred mode |
-| `Name*outputScale` | scale factor. Frames and menus are drawn at 1x and look soft on a scaled monitor, and X11 programs are not scaled by themselves |
-| `Name*outputPosition` | `X,Y` in the layout; default the next free place in the row |
+| `Name*outputScale` | scale factor from 0.1 to 10. Frames and menus are drawn at 1x and look soft on a scaled monitor, and X11 programs are not scaled by themselves |
+| `Name*outputPosition` | `X,Y` in the layout, up to ±1000000; default the next free place in the row |
 | `Name*outputTransform` | `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180`, `flipped-270` |
 
 mwc logs each monitor's name and modes when it appears. All of this also applies on

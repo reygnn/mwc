@@ -300,6 +300,8 @@ static void xw_request_maximize(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_maximize);
 	struct wlr_xwayland_surface *xs = view->xsurface;
+	if (!view->mapped)
+		return; /* xw_map reads it */
 	view_set_maximized(view, xs->maximized_horz || xs->maximized_vert);
 }
 
@@ -317,6 +319,8 @@ static void xw_request_minimize(struct wl_listener *listener, void *data)
 static void xw_request_fullscreen(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_fullscreen);
+	if (!view->mapped)
+		return; /* xw_map reads it */
 	view_set_fullscreen(view, view->xsurface->fullscreen);
 }
 

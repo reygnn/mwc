@@ -13,6 +13,9 @@
  *     motif=FUNCS,DECOR   _MOTIF_WM_HINTS
  *     input=0             WM_HINTS without input focus
  *     state=above|below|fullscreen|maximized   initial _NET_WM_STATE
+ *     ask_before=fullscreen|maximized  ask with a _NET_WM_STATE message, while unmapped
+ *     ask_after=fullscreen|maximized   ask with one right after XMapWindow, unsynced,
+ *                         as xterm -fullscreen does
  *     strut=L,R,T,B       _NET_WM_STRUT_PARTIAL along the whole edge
  *     color=rrggbb        background
  *     dialog=NAME         also open a transient dialog with this WM_CLASS
@@ -45,8 +48,26 @@
 static Display *dpy;
 static Atom wm_delete, wm_protocols;
 
+/* A _NET_WM_STATE message to add a state. */
+static void ask_state(Window win, const char *state)
+{
+	bool max = !strcmp(state, "maximized");
+	XEvent e = { 0 };
+	e.xclient.type = ClientMessage;
+	e.xclient.window = win;
+	e.xclient.message_type = XInternAtom(dpy, "_NET_WM_STATE", False);
+	e.xclient.format = 32;
+	e.xclient.data.l[0] = 1;
+	e.xclient.data.l[1] = XInternAtom(dpy, max ? "_NET_WM_STATE_MAXIMIZED_VERT" :
+		"_NET_WM_STATE_FULLSCREEN", False);
+	e.xclient.data.l[2] = max ? XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ",
+		False) : 0;
+	XSendEvent(dpy, DefaultRootWindow(dpy), False,
+		SubstructureRedirectMask | SubstructureNotifyMask, &e);
+}
+
 struct options {
-	const char *class, *type, *state, *dialog, *gravity;
+	const char *class, *type, *state, *dialog, *gravity, *ask_before, *ask_after;
 	int w, h, x, y;
 	bool has_pos;
 	int min_w, min_h, max_w, max_h, inc_w, inc_h, base_w, base_h;
@@ -343,6 +364,10 @@ int main(int argc, char *argv[])
 			sscanf(v, "%d/%d", &o.aspect_n, &o.aspect_d);
 		else if (!strcmp(k, "type"))
 			o.type = v;
+		else if (!strcmp(k, "ask_before"))
+			o.ask_before = v;
+		else if (!strcmp(k, "ask_after"))
+			o.ask_after = v;
 		else if (!strcmp(k, "state"))
 			o.state = v;
 		else if (!strcmp(k, "motif"))
@@ -415,7 +440,19 @@ int main(int argc, char *argv[])
 		usleep(100000);
 		set_override_redirect(main_win, false);
 	}
+	if (o.ask_before) {
+		/* It is known to the window manager by now, and still not mapped. */
+		XSync(dpy, False);
+		usleep(300000);
+		ask_state(main_win, o.ask_before);
+		XSync(dpy, False);
+		usleep(300000);
+	}
 	XMapWindow(dpy, main_win);
+	if (o.ask_after) {
+		ask_state(main_win, o.ask_after);
+		XFlush(dpy);
+	}
 	if (o.has_moveto) {
 		XSync(dpy, False);
 		usleep(500000);

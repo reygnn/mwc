@@ -112,6 +112,39 @@ echo "ok: the new first configure has the size"
 stop remap
 check "the window is gone" "[ -z \"\$(get bad x)\" ]"
 
+# ---- X windows asking for states before they are mapped ------------------------------
+
+for when in before after; do
+	x11 xfull$when ask_$when=fullscreen size=300x200
+	check "fullscreen asked for $when mapping: it maps fullscreen" \
+		"[ \"\$(get xfull$when full)\" = 1 ] && [ \"\$(get xfull$when frame)\" = 0 ] && \
+		[ \"\$(get xfull$when w)\" = 1280 ] && [ \"\$(get xfull$when h)\" = 720 ]"
+	do_input key alt+F11
+	check "leaving fullscreen: its own size, with a frame" \
+		"[ \"\$(get xfull$when full)\" = 0 ] && [ \"\$(get xfull$when frame)\" = 1 ] && \
+		[ \"\$(get xfull$when w)\" = 300 ] && [ \"\$(get xfull$when h)\" = 200 ]"
+	stop xfull$when
+	check "the window is gone" "[ -z \"\$(get xfull$when x)\" ]"
+
+	x11 xmax$when ask_$when=maximized size=300x200
+	check "maximized asked for $when mapping: it maps maximized" \
+		"[ \"\$(get xmax$when max)\" = 1 ] && [ \$((\$(get xmax$when w) + 2 * B)) = 1280 ] && \
+		[ \$((\$(get xmax$when h) + 2 * B + T)) = 720 ]"
+	do_input key alt+F10
+	check "un-maximized: its own size, not nothing" \
+		"[ \"\$(get xmax$when max)\" = 0 ] && [ \"\$(get xmax$when w)\" = 300 ] && \
+		[ \"\$(get xmax$when h)\" = 200 ]"
+	stop xmax$when
+	check "the window is gone" "[ -z \"\$(get xmax$when x)\" ]"
+done
+if command -v xterm >/dev/null; then
+	DISPLAY=$X_DISPLAY xterm -fullscreen -class XTermFull >/dev/null 2>&1 &
+	PID_xtermfull=$!
+	check "a real xterm -fullscreen" "[ \"\$(get XTermFull full)\" = 1 ] && [ \"\$(get XTermFull w)\" = 1280 ]"
+	stop xtermfull
+	check "the window is gone" "[ -z \"\$(get XTermFull x)\" ]"
+fi
+
 # ---- grabs and menus on windows that were never mapped --------------------------------
 
 bad nomove move

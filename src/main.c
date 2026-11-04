@@ -113,7 +113,8 @@ static void configure_scale(struct wlr_output *o, struct wlr_output_state *state
 	const char *value = config_get_for(o->name, "outputScale");
 	char *end;
 	double scale = value ? strtod(value, &end) : 1;
-	if (value && (end == value || *end || scale <= 0 || scale > 10)) {
+	/* Written so that NaN fails it too. Below this the layout overflows. */
+	if (value && (end == value || *end || !(scale >= 0.1 && scale <= 10))) {
 		wlr_log(WLR_ERROR, "ignoring outputScale \"%s\" for %s", value, o->name);
 		scale = 1;
 	}
@@ -191,7 +192,9 @@ static struct wlr_output_layout_output *output_place(struct server *server,
 	const char *value = config_get_for(o->name, "outputPosition");
 	int x, y, consumed = 0;
 	if (value) {
-		if (sscanf(value, "%d,%d%n", &x, &y, &consumed) == 2 && !value[consumed])
+		/* The limit keeps sums of positions and sizes from overflowing. */
+		if (sscanf(value, "%d,%d%n", &x, &y, &consumed) == 2 && !value[consumed] &&
+				abs(x) <= 1000000 && abs(y) <= 1000000)
 			return wlr_output_layout_add(server->output_layout, o, x, y);
 		wlr_log(WLR_ERROR, "ignoring outputPosition \"%s\" for %s", value, o->name);
 	}

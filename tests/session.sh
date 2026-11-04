@@ -127,6 +127,22 @@ log_has "a bad transform is reported" 'ignoring outputTransform "45"'
 log_has "a bad position is reported" 'ignoring outputPosition "here"'
 finish
 
+# Values a plain range check lets through, at startup and on a reload.
+for scale in nan 1e-9 1e-300 inf; do
+	echo "Mwm*HEADLESS-1*outputScale: $scale" >"$RC"
+	begin
+	output_is "outputScale $scale at startup changes nothing" HEADLESS-1 0 0 1280 720
+	log_has "and is reported" "ignoring outputScale \"$scale\""
+	kill -HUP "$pid"
+	output_is "nor on a reload" HEADLESS-1 0 0 1280 720
+	finish
+done
+echo 'Mwm*HEADLESS-1*outputPosition: 2147483647,2147483647' >"$RC"
+begin
+output_is "a position nothing can add to changes nothing" HEADLESS-1 0 0 1280 720
+log_has "and is reported" 'ignoring outputPosition "2147483647,2147483647"'
+finish
+
 # Two outputs, the other way round.
 export WLR_HEADLESS_OUTPUTS=2
 cat >"$RC" <<'RC'
