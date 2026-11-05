@@ -433,6 +433,12 @@ Mwm*gdialog*geometry:   +0+0
 Mwm*gpanel*geometry:    +0+0
 Mwm*gsized*geometry:    100x100-0-0
 Mwm*ghalf*geometry:     -0
+Mwm*gkept*geometry:     -10-20
+Mwm*gplain*geometry:    -0-0
+Mwm*gutil*geometry:     +0+0
+Mwm*gxdialog*geometry:  +0+0
+Mwm*gtab*geometry:      -0-0
+Mwm*gmaxed*geometry:    -0-0
 EOF
 kill -HUP "$pid"
 settle
@@ -464,11 +470,35 @@ check "+20+30 counts from the left and top" \
 	"[ \"\$(get gleft x)\" = 20 ] && [ \"\$(get gleft y)\" = 30 ]"
 stop gleft
 
-x11 gbig size=2000x1000
+x11 gbig size=2000x100
 mapped gbig
-check "a window too large for the screen stays reachable" \
-	"[ \"\$(get gbig x)\" = 0 ] && [ \"\$(get gbig y)\" = 0 ]"
+check "too wide for the screen: reachable, and still at the bottom" \
+	"[ \"\$(get gbig x)\" = 0 ] && [ \"\$(bottom gbig)\" = 720 ]"
 stop gbig
+
+x11 gkept pos=100,100 rehide=1 rehide_ms=2000
+mapped gkept
+check "the entry goes first when it appears" "[ \"\$(right gkept)\" = 1270 ]"
+settle
+drag $(($(get gkept x) + 100)) $(($(get gkept y) + 12)) 500 300
+check "it can be moved" "[ \"\$(right gkept)\" != 1270 ]"
+moved_x=$(get gkept x)
+moved_y=$(get gkept y)
+wait_for "gkept was hidden and shown" grep -q "reshown 1" "$SMOKE_DIR/gkept.events"
+settle
+check "shown again, a program with a position of its own stays where it was" \
+	"[ \"\$(get gkept x)\" = $moved_x ] && [ \"\$(get gkept y)\" = $moved_y ]"
+stop gkept
+
+x11 gplain rehide=1 rehide_ms=2000
+mapped gplain
+settle
+drag $(($(get gplain x) + 100)) $(($(get gplain y) + 12)) 500 300
+check "it can be moved" "[ \"\$(right gplain)\" != 1280 ]"
+wait_for "gplain was hidden and shown" grep -q "reshown 1" "$SMOKE_DIR/gplain.events"
+check "shown again, one without returns to its entry's place" \
+	"[ \"\$(right gplain)\" = 1280 ] && [ \"\$(bottom gplain)\" = 720 ]"
+stop gplain
 
 wayland gmain dialog=gdialog
 mapped gmain
@@ -476,6 +506,55 @@ mapped gdialog
 check "a dialog goes with its window, whatever its entry says" \
 	"[ \"\$(get gdialog x)\" != 0 ] && [ \"\$(get gdialog y)\" != 0 ]"
 stop gmain
+
+x11 gxmain dialog=gxdialog
+mapped gxmain
+mapped gxdialog
+check "an X11 dialog as well" \
+	"[ \"\$(get gxdialog x)\" != 0 ] && [ \"\$(get gxdialog y)\" != 0 ]"
+stop gxmain
+
+x11 gutil type=utility
+mapped gutil
+check "and a utility window" "[ \"\$(get gutil x)\" != 0 ] && [ \"\$(get gutil y)\" != 0 ]"
+stop gutil
+
+wayland gcorner
+mapped gcorner
+do_input key super+t
+check "tiling takes it over" "[ \"\$(get gcorner tiled)\" = 1 ]"
+do_input key super+t
+check "and gives it back to its place" \
+	"[ \"\$(get gcorner tiled)\" = 0 ] && [ \"\$(right gcorner)\" = 1280 ] && [ \"\$(bottom gcorner)\" = 720 ]"
+stop gcorner
+
+wayland gother
+mapped gother
+wayland gtab
+mapped gtab
+do_input key super+g
+check "gtab joins a group" "[ \"\$(get gtab tab)\" != -1 ]"
+do_input key super+shift+g
+check "taken out again" "[ \"\$(get gtab tab)\" = -1 ] && [ \"\$(get gtab tab_hidden)\" = 0 ]"
+check "it cascades, the entry is for appearing" "[ \"\$(right gtab)\" != 1280 ]"
+stop gtab
+stop gother
+
+wayland gmaxed pre=max
+mapped gmaxed
+check "gmaxed starts maximized" "[ \"\$(get gmaxed max)\" = 1 ]"
+settle
+do_input key alt+F10
+check "and goes back to the top left, as documented" \
+	"[ \"\$(get gmaxed max)\" = 0 ] && [ \"\$(get gmaxed x)\" = 32 ] && [ \"\$(get gmaxed y)\" = 32 ]"
+stop gmaxed
+
+wayland glate late_app=gcorner
+check "its app_id arrives" "[ -n \"\$(get gcorner x)\" ]"
+check "too late for the entry, as documented" "[ \"\$(right gcorner)\" != 1280 ]"
+kill "$PID_glate"
+wait "$PID_glate" 2>/dev/null
+check "glate is gone" "[ -z \"\$(get gcorner x)\" ]"
 
 x11 gpanel type=dock pos=0,500 size=1280x40 strut=0,0,0,40
 mapped gpanel
@@ -487,11 +566,13 @@ check "the corner is the usable area's" \
 stop gcorner
 stop gpanel
 
-wayland gsized
+x11 gsized
 wayland ghalf
 mapped gsized
 mapped ghalf
-check "a size in the value is reported" "grep -q 'mwmrc:7: expected a position' \"$LOG\""
+# Loaded twice by now, and the window asking adds nothing.
+check "a size in the value is reported once per load" \
+	"[ \"\$(grep -c 'mwmrc:7: expected a position' \"$LOG\")\" = 2 ]"
 check "half a position too" "grep -q 'mwmrc:8: expected a position' \"$LOG\""
 check "and such a window cascades as usual" "[ \"\$(right gsized)\" != 1280 ]"
 stop gsized

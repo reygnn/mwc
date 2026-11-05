@@ -186,6 +186,38 @@ void config_root_item(int i, const char **label, const char **command)
 	*command = root_items[i].command;
 }
 
+/* "+X+Y", with - for a distance from the right or bottom edge, as in X11's -geometry.
+ * No size: a program knows its own, and a Wayland client may overrule one anyway. */
+static bool parse_position(const char *s, struct config_position *out)
+{
+	int *value[2] = { &out->x, &out->y };
+	bool *from_end[2] = { &out->from_right, &out->from_bottom };
+	for (int i = 0; i < 2; i++) {
+		if (*s != '+' && *s != '-')
+			return false;
+		*from_end[i] = *s++ == '-';
+		/* Only digits, and few enough to add to a screen position safely. */
+		int digits = strspn(s, "0123456789");
+		if (digits < 1 || digits > 5)
+			return false;
+		*value[i] = strtol(s, NULL, 10);
+		s += digits;
+	}
+	return !*s;
+}
+
+/* Reported once per load, not each time a window asks. */
+static void check_positions(void)
+{
+	struct config_position pos;
+	for (int i = 0; i < n_rules; i++) {
+		if (rules[i].client && !strcasecmp(rules[i].resource, "geometry") &&
+				!parse_position(rules[i].value, &pos))
+			wlr_log(WLR_ERROR, "%s:%d: expected a position like -0-0 or +10+10, "
+				"not \"%s\"", path, rules[i].line, rules[i].value);
+	}
+}
+
 void config_load(void)
 {
 	for (int i = 0; i < n_rules; i++) {
@@ -233,6 +265,7 @@ void config_load(void)
 	wlr_log(WLR_DEBUG, "%s: %d rules", path, n_rules);
 	load_tile_filter();
 	load_root_items();
+	check_positions();
 }
 
 /* Global value of a resource, NULL when unset. */
@@ -335,26 +368,6 @@ static bool rule_color(const struct rule *r, struct mwc_color *out)
 	return false;
 }
 
-/* "+X+Y", with - for a distance from the right or bottom edge, as in X11's -geometry.
- * No size: a program knows its own, and a Wayland client may overrule one anyway. */
-static bool parse_position(const char *s, struct config_position *out)
-{
-	int *value[2] = { &out->x, &out->y };
-	bool *from_end[2] = { &out->from_right, &out->from_bottom };
-	for (int i = 0; i < 2; i++) {
-		if (*s != '+' && *s != '-')
-			return false;
-		*from_end[i] = *s++ == '-';
-		/* Only digits, and few enough to add to a screen position safely. */
-		int digits = strspn(s, "0123456789");
-		if (digits < 1 || digits > 5)
-			return false;
-		*value[i] = strtol(s, NULL, 10);
-		s += digits;
-	}
-	return !*s;
-}
-
 bool config_view_position(struct view *view, struct config_position *out)
 {
 	/* Dialogs belong with their window, not in the program's corner. */
@@ -364,13 +377,7 @@ bool config_view_position(struct view *view, struct config_position *out)
 	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
 		name = view->xsurface->instance;
 	const struct rule *r = client_rule(name, class, "geometry");
-	if (!r)
-		return false;
-	if (parse_position(r->value, out))
-		return true;
-	wlr_log(WLR_ERROR, "%s:%d: expected a position like -0-0 or +10+10, not \"%s\"",
-		path, r->line, r->value);
-	return false;
+	return r && parse_position(r->value, out);
 }
 
 void config_view_tiling(struct view *view)

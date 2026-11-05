@@ -1076,9 +1076,24 @@ void view_init_common(struct view *view)
 	view->funcs = FUNC_ALL;
 }
 
-/* New windows go where their mwmrc entry says, or cascade from the top-left, on the
- * output under the pointer. A dialog goes over the window it belongs to, or to the
- * centre. */
+/* Keep at least the title bar reachable. */
+static void view_place_within(struct view *view, struct wlr_box a, int x, int y)
+{
+	int w = view->width + frame_extra_w(view);
+	int h = view->height + frame_extra_h(view);
+	if (x + w > a.x + a.width)
+		x = a.x + a.width - w;
+	if (y + h > a.y + a.height)
+		y = a.y + a.height - h;
+	if (x < a.x)
+		x = a.x;
+	if (y < a.y)
+		y = a.y;
+	view_set_position(view, x, y);
+}
+
+/* New windows cascade from the top-left of the output under the pointer. A
+ * dialog goes over the window it belongs to, or to the centre. */
 void view_place(struct view *view)
 {
 	struct server *server = view->server;
@@ -1088,11 +1103,7 @@ void view_place(struct view *view)
 	int h = view->height + frame_extra_h(view);
 	int x, y;
 	struct view *parent = view_parent(view);
-	struct config_position pos;
-	if (config_view_position(view, &pos)) {
-		x = pos.from_right ? a.x + a.width - w - pos.x : a.x + pos.x;
-		y = pos.from_bottom ? a.y + a.height - h - pos.y : a.y + pos.y;
-	} else if (parent && parent->mapped && !parent->minimized) {
+	if (parent && parent->mapped && !parent->minimized) {
 		x = parent->x + (parent->width + frame_extra_w(parent) - w) / 2;
 		y = parent->y + (parent->height + frame_extra_h(parent) - h) / 2;
 	} else if (view->wtype == WT_DIALOG || view->wtype == WT_SPLASH) {
@@ -1110,16 +1121,25 @@ void view_place(struct view *view)
 			server->cascade = (server->cascade + 1) % 10;
 		}
 	}
-	/* Keep at least the title bar reachable. */
-	if (x + w > a.x + a.width)
-		x = a.x + a.width - w;
-	if (y + h > a.y + a.height)
-		y = a.y + a.height - h;
-	if (x < a.x)
-		x = a.x;
-	if (y < a.y)
-		y = a.y;
-	view_set_position(view, x, y);
+	view_place_within(view, a, x, y);
+}
+
+/* A window that appears goes where its mwmrc entry says, if it has one. A tab taken
+ * out of its group doesn't come through here. */
+static void view_place_mapped(struct view *view)
+{
+	struct config_position pos;
+	if (!config_view_position(view, &pos)) {
+		view_place(view);
+		return;
+	}
+	struct wlr_box a = output_usable_area(view->server, view->server->cursor->x,
+		view->server->cursor->y);
+	int w = view->width + frame_extra_w(view);
+	int h = view->height + frame_extra_h(view);
+	view_place_within(view, a,
+		pos.from_right ? a.x + a.width - w - pos.x : a.x + pos.x,
+		pos.from_bottom ? a.y + a.height - h - pos.y : a.y + pos.y);
 }
 
 void view_handle_map(struct view *view)
@@ -1141,7 +1161,7 @@ void view_handle_map(struct view *view)
 	if (view->placed)
 		view_set_position(view, view->x, view->y);
 	else if (!view->maximized && !view->fullscreen)
-		view_place(view);
+		view_place_mapped(view);
 	frame_render(view);
 	views_update_layers(view->server);
 	struts_changed(view);

@@ -143,6 +143,27 @@ frame_is "snapped there, it comes back snapped there" win 1920 0 640 720
 kill "$PID_win"
 wait "$PID_win" 2>/dev/null
 check "the window is gone" "[ -z \"\$(get win x)\" ]"
+
+# ---- a place from mwmrc is on the output under the pointer ------------------------
+
+RC=$XDG_CONFIG_HOME/mwc/mwmrc
+mkdir -p "$(dirname "$RC")"
+echo 'Mwm*corner*geometry: -0-0' >"$RC"
+kill -HUP "$pid"
+settle
+for edge in 2560 1280; do
+	do_input move $((edge - 640)) 300
+	DISPLAY=$X_DISPLAY build/xclient class=corner size=300x200 >/dev/null 2>&1 &
+	PID_corner=$!
+	check "the corner of the output ending at $edge" \
+		"[ -n \"\$(get corner x)\" ] && \
+		[ \$((\$(get corner x) + \$(get corner w) + 2 * \$(get corner bw))) = $edge ] && \
+		[ \$((\$(get corner y) + \$(get corner h) + 2 * \$(get corner bw) + \$(get corner th))) = 720 ]"
+	kill "$PID_corner"
+	wait "$PID_corner" 2>/dev/null
+	check "the window is gone" "[ -z \"\$(get corner x)\" ]"
+done
+rm "$RC"
 stop_vinput
 stop_mwc
 echo "PASS: outputs"

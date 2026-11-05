@@ -156,6 +156,12 @@ The entry goes before a position the program asks for itself, but not for dialog
 other secondary windows. Afterwards the window moves freely, and a reload moves
 nothing. In tiling mode the layout decides, unless the program is in `DoNotTile`.
 
+Hidden and shown again, a window returns to its entry's place, unless it is an X11
+program with a position of its own: that one stays where it was. A tab taken out of
+its group cascades as usual. The entry doesn't count for a window that starts
+maximized or fullscreen, which then goes back to the top left, nor if a client sets
+its `app_id` only after the window has appeared.
+
 The file is read at startup, on `SIGHUP` and on "Reload" in the root menu. A
 Wayland compositor can't restart and keep its windows, so "Reload" only
 applies the file to what is running.
