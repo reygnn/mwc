@@ -224,6 +224,39 @@ refresh
 do_input move $(($(get foot x) + 100)) $(($(get foot y) + 100))
 do_input click left
 check "a click on a window doesn't take the keyboard" "[ \"\$(get foot kbfocus)\" = 0 ]"
+
+# A menu or a grab from the mouse doesn't get its keys, and still ends with the mouse.
+sleep 0.45
+do_input move 1270 700
+do_input click right
+check "the root menu opens by mouse" "[ \"\$(global menu open)\" = 1 ]"
+do_input key r
+wait_for "its keys go to the surface" has_event lock "key 19"
+check "and the menu stays open" "[ \"\$(global menu open)\" = 1 ]"
+do_input move 900 100
+do_input click left
+check "the mouse closes the menu" "[ \"\$(global menu open)\" = 0 ]"
+sleep 0.45
+refresh
+foot_w=$(get foot w)
+edge_x=$(($(get foot x) + foot_w + 2 * $(get foot bw) - 2))
+edge_y=$(($(get foot y) + 200))
+do_input move "$edge_x" "$edge_y"
+do_input down left
+do_input move $((edge_x + 60)) "$edge_y"
+do_input key Escape
+wait_for "Escape during a resize goes to the surface" has_event lock "key 1\$"
+do_input up left
+check "and doesn't cancel it" "[ \"\$(get foot w)\" -gt $foot_w ]"
+refresh
+edge_x=$(($(get foot x) + $(get foot w) + 2 * $(get foot bw) - 2))
+sleep 0.45
+do_input move "$edge_x" "$edge_y"
+do_input down left
+do_input move $((edge_x - 60)) "$edge_y"
+do_input up left
+check "the window is back" "[ \"\$(get foot w)\" = $foot_w ]"
+
 layerc_stop lock
 check "the keyboard returns to the window" "[ \"\$(get foot kbfocus)\" = 1 ]"
 

@@ -966,6 +966,10 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		return true;
 	}
 
+	/* Its keys are its own, even with a menu or a grab from the mouse going on. Those
+	 * still end with the mouse. */
+	if (server->exclusive_layer)
+		return false;
 	if (server->menu.open)
 		return menu_key(server, sym);
 	if (server->cursor_mode == CURSOR_MOVE ||
@@ -975,8 +979,6 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	}
 	/* A frame button is held down: no other action until it is released. */
 	if (server->cursor_mode == CURSOR_BUTTON)
-		return false;
-	if (server->exclusive_layer)
 		return false;
 
 	struct view *view = focused_view(server);
