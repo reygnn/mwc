@@ -49,7 +49,6 @@ static void move_place(struct view *to, struct view *from)
 	to->tile = from->tile;
 	to->tile_main = from->tile_main;
 	to->tile_seq = from->tile_seq;
-	to->tile_back = from->tile_back;
 	to->shaded = from->shaded;
 	to->auto_shaded = from->auto_shaded;
 
@@ -110,7 +109,17 @@ static void switch_to(struct tab_group *g, struct view *to, struct view *from, b
 
 	int w, h;
 	asked_size(from, &w, &h);
+	/* Fullscreen doesn't move over, and the group's place is what it would go back to. */
+	bool from_full = from->fullscreen;
+	if (from_full) {
+		w = from->saved.width;
+		h = from->saved.height;
+	}
 	move_place(to, from);
+	if (from_full) {
+		to->x = to->saved.x;
+		to->y = to->saved.y;
+	}
 	from->tab_hidden = true;
 	to->tab_hidden = false;
 	g->shown = to;
@@ -186,7 +195,7 @@ void tabs_own_size(struct view *view, int *w, int *h)
 static void back_to_own_size(struct view *view)
 {
 	int w = view->tab_own_w, h = view->tab_own_h;
-	if (view->maximized || view->snap != SNAP_NONE || view->tiled) {
+	if (view->maximized || view->snap != SNAP_NONE || view->tiled || view->fullscreen) {
 		view->saved.width = w;
 		view->saved.height = h;
 		return;
@@ -308,6 +317,8 @@ void tabs_detach(struct view *view)
 	struct tab_group *g = view->group;
 	if (!g)
 		return;
+	if (view->fullscreen)
+		view_set_fullscreen(view, false);
 	if (g->shown == view)
 		switch_to(g, neighbour(view), view, false);
 	remove_member(view);

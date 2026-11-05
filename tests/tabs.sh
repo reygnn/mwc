@@ -760,6 +760,78 @@ alone "Detach Tab" m2
 alone "both alone" m1
 stop m1
 stop m2
+
+# ---- groups and fullscreen ------------------------------------------------------------
+
+# fullgroup <main> <other>: a group at a known place, the other shown and fullscreen.
+fullgroup() {
+	wayland "$1" size=400x300
+	refresh
+	AX=$(get "$1" x) AY=$(get "$1" y)
+	x11 "$2" size=300x200
+	do_input key super+g
+	shown "$2 is shown" "$2"
+	do_input key alt+F11
+	check "$2 is fullscreen" "[ \"\$(get $2 full)\" = 1 ] && [ \"\$(get $2 w)\" = 1280 ]"
+}
+place_is() { # description app x y w h
+	check "$1" "[ \"\$(get $2 x)\" = $3 ] && [ \"\$(get $2 y)\" = $4 ] && \
+		[ \"\$(get $2 w)\" = $5 ] && [ \"\$(get $2 h)\" = $6 ]"
+}
+
+fullgroup f1 f2
+stop f1
+alone "the hidden tab left, the group is over" f2
+check "the last one stays fullscreen, at the size of the output" \
+	"[ \"\$(get f2 full)\" = 1 ] && [ \"\$(get f2 w)\" = 1280 ] && [ \"\$(get f2 h)\" = 720 ]"
+do_input key alt+F11
+check "and goes back to its own size" \
+	"[ \"\$(get f2 full)\" = 0 ] && [ \"\$(get f2 w)\" = 300 ] && [ \"\$(get f2 h)\" = 200 ]"
+stop f2
+
+fullgroup f3 f4
+stop f4
+alone "the fullscreen tab left, the group is over" f3
+check "the other doesn't inherit fullscreen" "[ \"\$(get f3 full)\" = 0 ] && [ \"\$(get f3 frame)\" = 1 ]"
+place_is "and is at the group's place and size" f3 "$AX" "$AY" 400 300
+stop f3
+
+wayland f5 size=400x300
+wayland f6 size=300x200
+do_input key super+g
+shown "f6 is shown" f6
+wayland f7 size=300x200
+do_input key super+g
+shown "f7 is shown" f7
+do_input key alt+F11
+check "f7 is fullscreen" "[ \"\$(get f7 full)\" = 1 ]"
+stop f7
+check "the group goes on, without fullscreen" \
+	"[ \"\$(get f6 tab)\" != -1 ] && [ \"\$(get f6 full)\" = 0 ] && [ \"\$(get f6 w)\" = 400 ]"
+stop f5
+stop f6
+
+fullgroup f8 f9
+do_input key super+shift+g
+check "taken out, it leaves fullscreen" "[ \"\$(get f9 full)\" = 0 ] && [ \"\$(get f9 frame)\" = 1 ]"
+alone "and is alone" f9
+alone "as is the other" f8
+place_is "at its own size" f9 "$(get f9 x)" "$(get f9 y)" 300 200
+place_is "the other at the group's place and size" f8 "$AX" "$AY" 400 300
+check "and it can be seen" "[ \"\$(get f8 visible)\" = 1 ]"
+stop f8
+stop f9
+
+do_input key super+t
+check "tiling is on" "[ \"\$(global tiling on)\" = 1 ]"
+fullgroup f10 f11
+stop f11
+alone "from the layout: the group is over" f10
+check "and the other is back in the layout, not fullscreen" \
+	"[ \"\$(get f10 full)\" = 0 ] && [ \"\$(get f10 tiled)\" = 1 ]"
+stop f10
+do_input key super+t
+check "tiling is off" "[ \"\$(global tiling on)\" = 0 ]"
 finish
 
 echo "PASS: tabs"
