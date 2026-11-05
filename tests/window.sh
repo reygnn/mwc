@@ -421,6 +421,83 @@ check "nor when clicked, but it comes to the front" \
 stop noinput
 stop normal
 
+# ---- a place from mwmrc --------------------------------------------------------
+RC=$XDG_CONFIG_HOME/mwc/mwmrc
+mkdir -p "$(dirname "$RC")"
+cat >"$RC" <<'EOF'
+Mwm*gcorner*geometry:   -0-0
+Mwm*gusers*geometry:    -10-20
+Mwm*gleft*geometry:     +20+30
+Mwm*gbig*geometry:      -0-0
+Mwm*gdialog*geometry:   +0+0
+Mwm*gpanel*geometry:    +0+0
+Mwm*gsized*geometry:    100x100-0-0
+Mwm*ghalf*geometry:     -0
+EOF
+kill -HUP "$pid"
+settle
+
+right() { echo $(($(get "$1" x) + $(outer_w "$1"))); }
+bottom() { echo $(($(get "$1" y) + $(outer_h "$1"))); }
+
+wayland gcorner
+mapped gcorner
+check "-0-0 puts a Wayland window into the corner" \
+	"[ \"\$(right gcorner)\" = 1280 ] && [ \"\$(bottom gcorner)\" = 720 ]"
+drag $(($(get gcorner x) + 100)) $(($(get gcorner y) + 12)) 500 300
+check "it can be moved away" "[ \"\$(right gcorner)\" != 1280 ]"
+moved_x=$(get gcorner x)
+kill -HUP "$pid"
+settle
+check "a reload leaves it there" "[ \"\$(get gcorner x)\" = $moved_x ]"
+stop gcorner
+
+x11 gusers pos=100,100
+mapped gusers
+check "distances from the edges, before the place an X11 program asks for" \
+	"[ \"\$(right gusers)\" = 1270 ] && [ \"\$(bottom gusers)\" = 700 ]"
+stop gusers
+
+wayland gleft
+mapped gleft
+check "+20+30 counts from the left and top" \
+	"[ \"\$(get gleft x)\" = 20 ] && [ \"\$(get gleft y)\" = 30 ]"
+stop gleft
+
+x11 gbig size=2000x1000
+mapped gbig
+check "a window too large for the screen stays reachable" \
+	"[ \"\$(get gbig x)\" = 0 ] && [ \"\$(get gbig y)\" = 0 ]"
+stop gbig
+
+wayland gmain dialog=gdialog
+mapped gmain
+mapped gdialog
+check "a dialog goes with its window, whatever its entry says" \
+	"[ \"\$(get gdialog x)\" != 0 ] && [ \"\$(get gdialog y)\" != 0 ]"
+stop gmain
+
+x11 gpanel type=dock pos=0,500 size=1280x40 strut=0,0,0,40
+mapped gpanel
+check "a panel stays where it wants to be" "[ \"\$(get gpanel y)\" = 500 ]"
+wayland gcorner
+mapped gcorner
+check "the corner is the usable area's" \
+	"[ \"\$(right gcorner)\" = 1280 ] && [ \"\$(bottom gcorner)\" = 680 ]"
+stop gcorner
+stop gpanel
+
+wayland gsized
+wayland ghalf
+mapped gsized
+mapped ghalf
+check "a size in the value is reported" "grep -q 'mwmrc:7: expected a position' \"$LOG\""
+check "half a position too" "grep -q 'mwmrc:8: expected a position' \"$LOG\""
+check "and such a window cascades as usual" "[ \"\$(right gsized)\" != 1280 ]"
+stop gsized
+stop ghalf
+rm "$RC"
+
 stop_vinput
 stop_mwc
 echo "PASS: window"

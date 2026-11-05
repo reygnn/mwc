@@ -1076,8 +1076,9 @@ void view_init_common(struct view *view)
 	view->funcs = FUNC_ALL;
 }
 
-/* New windows cascade from the top-left of the output under the pointer. A
- * dialog goes over the window it belongs to, or to the centre. */
+/* New windows go where their mwmrc entry says, or cascade from the top-left, on the
+ * output under the pointer. A dialog goes over the window it belongs to, or to the
+ * centre. */
 void view_place(struct view *view)
 {
 	struct server *server = view->server;
@@ -1087,7 +1088,11 @@ void view_place(struct view *view)
 	int h = view->height + frame_extra_h(view);
 	int x, y;
 	struct view *parent = view_parent(view);
-	if (parent && parent->mapped && !parent->minimized) {
+	struct config_position pos;
+	if (config_view_position(view, &pos)) {
+		x = pos.from_right ? a.x + a.width - w - pos.x : a.x + pos.x;
+		y = pos.from_bottom ? a.y + a.height - h - pos.y : a.y + pos.y;
+	} else if (parent && parent->mapped && !parent->minimized) {
 		x = parent->x + (parent->width + frame_extra_w(parent) - w) / 2;
 		y = parent->y + (parent->height + frame_extra_h(parent) - h) / 2;
 	} else if (view->wtype == WT_DIALOG || view->wtype == WT_SPLASH) {

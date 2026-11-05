@@ -116,6 +116,7 @@ Mwm*wallpaper:                 ~/pictures/desk.png
 | `activeBackground` | frame colour while focused |
 | `background` | frame colour while unfocused (globally: also menus and icons) |
 | `activeForeground`, `foreground` | title text; default is black or white, whichever contrasts |
+| `geometry` | where a program's windows appear, see below (per program only) |
 | `fontList` | Pango font name for titles and menus, title bars grow with it (global only) |
 | `rootBackground` | desktop colour, or `none` to leave the desktop to a wallpaper tool such as `swaybg` (global only) |
 | `wallpaper` | PNG on the desktop, see below (global only) |
@@ -137,6 +138,23 @@ with `!` are comments; a `!` after a value is part of the value, so comments go
 on their own line. Later lines win.
 
 A program's `app_id` may contain dots: `Mwm*org.gnome.Terminal*activeBackground`.
+
+`geometry` puts a program's windows in a fixed place when they appear, also for
+Wayland clients, which have no say in that themselves. The value is a position as in
+X11's `-geometry`, without a size: `+` counts from the left or top edge of the usable
+area, `-` from the right or bottom one, and the distance is to the frame. The monitor
+is the one under the pointer.
+
+```
+! bottom right corner
+Mwm*pulseControl*geometry:  -0-0
+! 20 pixels from the left, 40 from the bottom
+Mwm*XTerm*geometry:         +20-40
+```
+
+The entry goes before a position the program asks for itself, but not for dialogs and
+other secondary windows. Afterwards the window moves freely, and a reload moves
+nothing. In tiling mode the layout decides, unless the program is in `DoNotTile`.
 
 The file is read at startup, on `SIGHUP` and on "Reload" in the root menu. A
 Wayland compositor can't restart and keep its windows, so "Reload" only

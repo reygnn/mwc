@@ -156,13 +156,15 @@ static void xw_map(struct wl_listener *listener, void *data)
 	view_update_properties(view);
 
 	/* As in mwm-x11: only a position the program or user insisted on counts,
-	 * and panels know where they belong. */
+	 * and panels know where they belong. An entry in mwmrc goes first. */
 	const xcb_size_hints_t *sh = xs->size_hints;
 	uint32_t flags = sh ? sh->flags : 0;
+	struct config_position pos;
 	xwayland_publish_frame_extents(view);
 	view->placed = view->wtype == WT_DOCK || view->wtype == WT_DESKTOP ||
-		(flags & XCB_ICCCM_SIZE_HINT_US_POSITION) ||
-		((flags & XCB_ICCCM_SIZE_HINT_P_POSITION) && (xs->x || xs->y));
+		(!config_view_position(view, &pos) &&
+		((flags & XCB_ICCCM_SIZE_HINT_US_POSITION) ||
+		((flags & XCB_ICCCM_SIZE_HINT_P_POSITION) && (xs->x || xs->y))));
 	/* Shown again, xs->x and y are still where the client sits inside its frame,
 	 * unless it asked for another place in the meantime. */
 	if (view->placed && (!view->been_mapped || xs->x != view->unmap_x ||

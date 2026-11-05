@@ -737,6 +737,13 @@ int config_bool(const char *name, const char *value);
 void config_view_shades(struct view *view);
 /* Whether the tiling layout may take it, from DoNotTile or TileOnly. */
 void config_view_tiling(struct view *view);
+/* Where a program's mwmrc entry wants a new window. The distances are from the
+ * left and top edges, or from the right and bottom ones. */
+struct config_position {
+	int x, y;
+	bool from_right, from_bottom;
+};
+bool config_view_position(struct view *view, struct config_position *out);
 /* "Reload" and SIGHUP: a Wayland compositor can't re-exec and keep its
  * clients, so this reads mwmrc again and applies it to what is running. */
 void config_reload(struct server *server);
