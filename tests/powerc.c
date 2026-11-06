@@ -1,8 +1,10 @@
 /*
- * Switches all outputs off or on, as tools like wlopm or displayOff do.
+ * Switches all outputs off or on, as tools like wlopm or displayOff do. Only one client
+ * at a time may control an output, so this fails while such a tool is running.
  *
  *   powerc off|on
  */
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <wayland-client.h>
@@ -31,6 +33,19 @@ static void global_remove(void *data, struct wl_registry *registry, uint32_t nam
 
 static const struct wl_registry_listener registry_listener = { global, global_remove };
 
+static bool failed;
+
+static void power_mode(void *data, struct zwlr_output_power_v1 *power, uint32_t mode)
+{
+}
+
+static void power_failed(void *data, struct zwlr_output_power_v1 *power)
+{
+	failed = true;
+}
+
+static const struct zwlr_output_power_v1_listener power_listener = { power_mode, power_failed };
+
 int main(int argc, char **argv)
 {
 	if (argc != 2 || (strcmp(argv[1], "off") && strcmp(argv[1], "on"))) {
@@ -54,9 +69,14 @@ int main(int argc, char **argv)
 	for (int i = 0; i < n_outputs; i++) {
 		struct zwlr_output_power_v1 *power =
 			zwlr_output_power_manager_v1_get_output_power(manager, outputs[i]);
+		zwlr_output_power_v1_add_listener(power, &power_listener, NULL);
 		zwlr_output_power_v1_set_mode(power, mode);
 	}
 	wl_display_roundtrip(display);
 	wl_display_disconnect(display);
+	if (failed) {
+		fprintf(stderr, "powerc: refused, another client controls an output\n");
+		return 1;
+	}
 	return 0;
 }
