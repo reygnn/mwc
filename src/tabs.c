@@ -84,6 +84,17 @@ static void asked_size(struct view *view, int *w, int *h)
 	*h = view->type == VIEW_XDG ? view->requested_h : view->xsurface->height;
 }
 
+/* The icon stands for the group, so the one taking over goes on being it, in its place. */
+static void pass_icon(struct view *from, struct view *to)
+{
+	from->minimized = false;
+	wlr_scene_node_set_enabled(&from->icon_node->node, false);
+	to->icon_x = from->icon_x;
+	to->icon_y = from->icon_y;
+	to->icon_placed = from->icon_placed;
+	view_minimize(to);
+}
+
 /*
  * A view that is on its way out, gone, can't be told anything any more, but its place
  * still counts.
@@ -98,6 +109,10 @@ static void switch_to(struct tab_group *g, struct view *to, struct view *from, b
 		if (d->activated && view_is_transient_of(d, from))
 			focus = true;
 	}
+	/* Focusing it would bring the icon back. */
+	bool iconified = from->minimized;
+	if (iconified)
+		focus = false;
 	g->busy = true;
 	if (!gone) {
 		grab_give_way(from);
@@ -161,6 +176,8 @@ static void switch_to(struct tab_group *g, struct view *to, struct view *from, b
 		views_update_layers(server);
 	tile_arrange(server);
 	input_pointer_changed(server);
+	if (iconified)
+		pass_icon(from, to);
 }
 
 /* The neighbour taking over from it: the one to the right, or else to the left. */

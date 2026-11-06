@@ -6,7 +6,7 @@ LOG=build/session.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools Xwayland
-for tool in build/vinput build/pngtool build/xclient; do
+for tool in build/vinput build/pngtool build/xclient build/powerc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -141,6 +141,28 @@ echo 'Mwm*HEADLESS-1*outputPosition: 2147483647,2147483647' >"$RC"
 begin
 output_is "a position nothing can add to changes nothing" HEADLESS-1 0 0 1280 720
 log_has "and is reported" 'ignoring outputPosition "2147483647,2147483647"'
+finish
+
+# A monitor someone switched off stays off, and gets what it missed when it comes back.
+power() { WAYLAND_DISPLAY=wayland-0 build/powerc "$1" || fail "powerc $1"; }
+: >"$RC"
+begin
+power off
+check "a tool switches the monitor off" "[ \"\$(global output on)\" = 0 ]"
+reloads=$(grep -c 'reloading the configuration' "$LOG")
+reloaded() { [ "$(grep -c 'reloading the configuration' "$LOG")" -gt "$reloads" ]; }
+echo 'Mwm*HEADLESS-1*outputMode: 1024x600' >"$RC"
+kill -HUP "$pid"
+wait_for "the reload" reloaded
+sleep 0.5
+check "a reload leaves it off" "[ \"\$(global output on)\" = 0 ]"
+power on
+check "switched on again" "[ \"\$(global output on)\" = 1 ]"
+output_is "with the mode the reload brought" HEADLESS-1 0 0 1024 600
+echo 'Mwm*HEADLESS-1*outputMode: 800x500' >"$RC"
+kill -HUP "$pid"
+output_is "a reload still applies to a monitor that is on" HEADLESS-1 0 0 800 500
+check "and leaves it on" "[ \"\$(global output on)\" = 1 ]"
 finish
 
 # Two outputs, the other way round.

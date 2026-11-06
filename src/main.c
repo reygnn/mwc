@@ -58,8 +58,11 @@ static void output_request_state(struct wl_listener *listener, void *data)
 	wlr_output_commit_state(output->wlr_output, event->state);
 }
 
+static bool output_commit_config(struct wlr_output *o);
+
 /* A client asks to switch a monitor off or on. The output stays in the layout, so
- * windows keep their places, and any client can ask: that is what the protocol is. */
+ * windows keep their places, and any client can ask: that is what the protocol is.
+ * Coming back it takes what mwmrc says now: a reload leaves a monitor that is off alone. */
 static void output_power_set_mode(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server,
@@ -68,11 +71,16 @@ static void output_power_set_mode(struct wl_listener *listener, void *data)
 	bool on = event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON;
 	if (event->output->enabled == on)
 		return;
-	struct wlr_output_state state;
-	wlr_output_state_init(&state);
-	wlr_output_state_set_enabled(&state, on);
-	bool ok = wlr_output_commit_state(event->output, &state);
-	wlr_output_state_finish(&state);
+	bool ok;
+	if (on) {
+		ok = output_commit_config(event->output);
+	} else {
+		struct wlr_output_state state;
+		wlr_output_state_init(&state);
+		wlr_output_state_set_enabled(&state, false);
+		ok = wlr_output_commit_state(event->output, &state);
+		wlr_output_state_finish(&state);
+	}
 	if (!ok) {
 		wlr_log(WLR_ERROR, "can't switch output %s %s", event->output->name,
 			on ? "on" : "off");
@@ -268,7 +276,9 @@ void outputs_config_changed(struct server *server)
 {
 	struct output *output;
 	wl_list_for_each(output, &server->outputs, link) {
-		output_commit_config(output->wlr_output);
+		/* Whoever switched it off wants it off, see output_power_set_mode(). */
+		if (output->wlr_output->enabled)
+			output_commit_config(output->wlr_output);
 		output_place(server, output->wlr_output);
 	}
 }

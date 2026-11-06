@@ -832,6 +832,108 @@ check "and the other is back in the layout, not fullscreen" \
 stop f10
 do_input key super+t
 check "tiling is off" "[ \"\$(global tiling on)\" = 0 ]"
+
+# ---- an iconified group ----------------------------------------------------------------
+
+icon_is() { # description app x y: it is the icon, and not on the screen
+	check "$1" "[ \"\$(get $2 min)\" = 1 ] && [ \"\$(get $2 visible)\" = 0 ] && \
+		[ \"\$(get $2 tab_hidden)\" = 0 ] && [ \"\$(get $2 icon_x)\" = $3 ] && \
+		[ \"\$(get $2 icon_y)\" = $4 ]"
+}
+iconify() { # member member [options of the second]
+	local first=$1 second=$2
+	shift 2
+	x11 "$first" size=300x200
+	x11 "$second" size=300x200 "$@"
+	do_input key super+g
+	shown "$second is shown" "$second"
+	do_input key alt+F9
+	check "$second is the icon" "[ \"\$(get $second min)\" = 1 ]"
+	refresh
+	IX=$(get "$second" icon_x) IY=$(get "$second" icon_y)
+}
+
+iconify i1 i2
+stop i2
+icon_is "the shown one closes: the other takes over the icon, in its place" i1 "$IX" "$IY"
+check "and is on its own" "[ \"\$(get i1 tab)\" = -1 ]"
+sleep 0.5
+do_input move $((IX + 30)) $((IY + 30))
+do_input click left
+do_input click left
+check "it comes back from there" "[ \"\$(get i1 min)\" = 0 ] && [ \"\$(get i1 visible)\" = 1 ] && \
+	[ \"\$(get i1 active)\" = 1 ]"
+stop i1
+
+# Fixed at a size it can't be a tab any more, and comes out; the rest stays what it was.
+iconify i3 i4 hints_later=300x200 hints_ms=2000
+wait_for "i4 is fixed at a size" said i4 'hints set'
+icon_is "a client leaves the group: the other takes over the icon" i3 "$IX" "$IY"
+check "and is on its own" "[ \"\$(get i3 tab)\" = -1 ]"
+check "the one that left is on the screen" "[ \"\$(get i4 min)\" = 0 ] && [ \"\$(get i4 visible)\" = 1 ] && \
+	[ \"\$(get i4 tab)\" = -1 ]"
+stop i3
+stop i4
+
+# ---- taking along a window without a group ---------------------------------------------
+
+x11 lone pos=100,100 size=300x200
+do_input key alt+F10
+check "lone is maximized" "[ \"\$(get lone max)\" = 1 ]"
+sleep 0.5
+do_input move 640 $((B + T / 2))
+do_input down middle
+do_input up middle
+check "a middle click leaves it maximized" "[ \"\$(get lone max)\" = 1 ]"
+sleep 0.5
+do_input down middle
+do_input move 640 300
+check "dragged, its outline has its own size" \
+	"[ \"\$(global outline w)\" = $((300 + 2 * B)) ] && [ \"\$(global outline h)\" = $((200 + 2 * B + T)) ]"
+do_input key Escape
+do_input up middle
+check "Escape: maximized again" "[ \"\$(get lone max)\" = 1 ] && [ \"\$(get lone x)\" = 0 ]"
+sleep 0.5
+do_input move 640 $((B + T / 2))
+do_input down middle
+do_input move 640 300
+do_input up middle
+check "dropped on the desktop: no longer maximized, at its own size, under the pointer" \
+	"[ \"\$(get lone max)\" = 0 ] && [ \"\$(get lone w)\" = 300 ] && [ \"\$(get lone h)\" = 200 ] && \
+	[ \"\$(get lone y)\" = $((300 - B - T / 2)) ] && [ \"\$(get lone x)\" -gt 0 ]"
+sleep 0.5
+do_input move $(($(get lone x) + 100)) 300
+do_input down left
+do_input move 0 300
+do_input up left
+check "snapped" "[ \"\$(get lone snap)\" != 0 ]"
+sleep 0.5
+do_input move $(($(get lone x) + 100)) $(($(get lone y) + B + T / 2))
+do_input hold ctrl
+do_input down left
+do_input release ctrl
+do_input move 700 400
+do_input up left
+check "Ctrl+left out of a snap: free, at its own size" \
+	"[ \"\$(get lone snap)\" = 0 ] && [ \"\$(get lone w)\" = 300 ] && \
+	[ \"\$(get lone y)\" = $((400 - B - T / 2)) ]"
+x11 other pos=900,400 size=300x200
+do_input key alt+Tab
+check "lone has the focus" "[ \"\$(get lone active)\" = 1 ]"
+do_input key alt+F10
+check "maximized once more" "[ \"\$(get lone max)\" = 1 ]"
+sleep 0.5
+do_input move 640 $((B + T / 2))
+do_input down middle
+do_input move 640 300
+check "free as soon as it is dragged" "[ \"\$(get lone max)\" = 0 ] && [ \"\$(get lone w)\" = 300 ]"
+do_input move 1000 500
+do_input up middle
+check "dropped on another window, it joins that one" \
+	"[ \"\$(get lone tab)\" != -1 ] && [ \"\$(get other tab)\" != -1 ] && [ \"\$(get lone max)\" = 0 ] && \
+	[ \"\$(get lone x)\" = 900 ]"
+stop lone
+stop other
 finish
 
 echo "PASS: tabs"

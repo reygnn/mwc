@@ -359,8 +359,10 @@ static void process_move(struct server *server)
 				fabs(server->cursor->y - server->grab_py) < t)
 			return;
 		server->grab_detached = true;
-		/* Taking one window along leaves the rest where it is. */
-		if (!server->grab_take && (view->maximized || view->snap != SNAP_NONE))
+		/* Taking one window along leaves the rest where it is. Without a group
+		 * there is no rest: the window itself goes. */
+		bool rest_stays = server->grab_take && server->grab_take->group;
+		if (!rest_stays && (view->maximized || view->snap != SNAP_NONE))
 			view_drag_free(view);
 	}
 	/* The pointer has sub-pixel positions: round, don't truncate, or the

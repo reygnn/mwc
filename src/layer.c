@@ -48,6 +48,9 @@ static void arrange_pass(struct output *output, const struct wlr_box *full,
 	}
 }
 
+/* What a strut has to leave of a monitor, in either direction, to count there. */
+#define MIN_ROOM 100
+
 static bool ranges_overlap(long a0, long a1, long b0, long b1)
 {
 	return a0 <= b1 && b0 <= a1;
@@ -71,24 +74,29 @@ static void apply_struts(struct output *output, struct wlr_box *usable)
 				!v->xsurface->strut_partial)
 			continue;
 		const xcb_ewmh_wm_strut_partial_t *s = v->xsurface->strut_partial;
+		/* A strut counts from the edge of the whole screen, so that of a panel on
+		 * an inner edge reaches over the monitors before it. There it leaves too
+		 * little room and means nothing, and neither does a nonsensical one. The
+		 * other struts still count. */
+		int edge = sw - (int)s->right;
 		if ((int)s->left > m.x && ranges_overlap(s->left_start_y,
 				s->left_end_y, m.y, m.y + m.height - 1) &&
-				(int)s->left > left)
+				(int)s->left > left && right - (int)s->left >= MIN_ROOM)
 			left = s->left;
-		if (s->right && sw - (int)s->right < m.x + m.width &&
+		if (s->right && edge < m.x + m.width &&
 				ranges_overlap(s->right_start_y, s->right_end_y, m.y,
-				m.y + m.height - 1) && sw - (int)s->right < right)
-			right = sw - s->right;
+				m.y + m.height - 1) && edge < right && edge - left >= MIN_ROOM)
+			right = edge;
+		edge = sh - (int)s->bottom;
 		if ((int)s->top > m.y && ranges_overlap(s->top_start_x, s->top_end_x,
-				m.x, m.x + m.width - 1) && (int)s->top > top)
+				m.x, m.x + m.width - 1) && (int)s->top > top &&
+				bottom - (int)s->top >= MIN_ROOM)
 			top = s->top;
-		if (s->bottom && sh - (int)s->bottom < m.y + m.height &&
+		if (s->bottom && edge < m.y + m.height &&
 				ranges_overlap(s->bottom_start_x, s->bottom_end_x, m.x,
-				m.x + m.width - 1) && sh - (int)s->bottom < bottom)
-			bottom = sh - s->bottom;
+				m.x + m.width - 1) && edge < bottom && edge - top >= MIN_ROOM)
+			bottom = edge;
 	}
-	if (right - left < 100 || bottom - top < 100)
-		return; /* nonsensical struts */
 	*usable = (struct wlr_box){ left, top, right - left, bottom - top };
 }
 

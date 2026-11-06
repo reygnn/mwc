@@ -42,6 +42,7 @@
  *     focus_main=1        once mapped, give the focus from the dialog to the main window
  *     motif_later=FUNCS   once mapped, _MOTIF_WM_HINTS with only the functions set
  *     hints_later=WxH     once mapped, the minimum and maximum size become this
+ *     hints_ms=MS         wait that long before that, default 800
  *     title_later=TEXT    2 s after mapping, a new WM_NAME
  *     latin1_title=1      a WM_NAME with bytes that are not UTF-8
  *     dialog_ms=MS        wait that long before opening the dialog
@@ -89,7 +90,7 @@ struct options {
 	long motif_funcs, motif_decor;
 	bool has_motif;
 	bool no_input, workarea, clipboard, move_press, pulldown;
-	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h;
+	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	const char *script, *title_later;
 	int moveresize;
@@ -418,6 +419,8 @@ int main(int argc, char *argv[])
 			sscanf(v, "%dx%d", &o.later_w, &o.later_h);
 		else if (!strcmp(k, "latin1_title"))
 			o.latin1_title = atoi(v);
+		else if (!strcmp(k, "hints_ms"))
+			o.hints_ms = atoi(v);
 		else if (!strcmp(k, "dialog_ms"))
 			o.dialog_ms = atoi(v);
 		else if (!strcmp(k, "ask_before"))
@@ -623,7 +626,7 @@ int main(int argc, char *argv[])
 	}
 	if (o.later_w) {
 		XSync(dpy, False);
-		usleep(800000);
+		usleep((o.hints_ms ? o.hints_ms : 800) * 1000);
 		XSizeHints sh = { .flags = PMinSize | PMaxSize, .min_width = o.later_w,
 			.min_height = o.later_h, .max_width = o.later_w, .max_height = o.later_h };
 		XSetWMNormalHints(dpy, main_win, &sh);

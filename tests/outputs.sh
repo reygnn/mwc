@@ -164,6 +164,29 @@ for edge in 2560 1280; do
 	check "the window is gone" "[ -z \"\$(get corner x)\" ]"
 done
 rm "$RC"
+kill -HUP "$pid"
+settle
+
+# A panel on the inner edge of the right output: a strut counts from the edge of the whole
+# screen, so it reaches over all of the left output, where it means nothing.
+DISPLAY=$X_DISPLAY build/xclient class=topdock type=dock pos=0,0 size=1280x40 strut=0,0,40,0 >/dev/null 2>&1 &
+PID_topdock=$!
+check "a panel at the top" "[ \"\$(global output uy)\" = 40 ]"
+DISPLAY=$X_DISPLAY build/xclient class=innerdock type=dock pos=1280,0 size=30x720 strut=1310,0,0,0 >/dev/null 2>&1 &
+PID_innerdock=$!
+check "a panel on the inner edge" "[ -n \"\$(get innerdock x)\" ]"
+sleep 0.3
+check "the left output keeps its own strut and ignores the other" \
+	"[ \"\$(global output ux)\" = 0 ] && [ \"\$(global output uy)\" = 40 ] && \
+	[ \"\$(global output uw)\" = 1280 ] && [ \"\$(global output uh)\" = 680 ]"
+do_input move 1900 400
+DISPLAY=$X_DISPLAY build/xclient class=rightwin pos=1500,100 size=300x200 >/dev/null 2>&1 &
+PID_rightwin=$!
+check "a window on the right" "[ \"\$(get rightwin active)\" = 1 ]"
+do_input key alt+F10
+frame_is "maximized on the right, it stays out of both panels" rightwin 1310 40 1250 680
+kill "$PID_rightwin" "$PID_innerdock" "$PID_topdock"
+wait "$PID_rightwin" "$PID_innerdock" "$PID_topdock" 2>/dev/null
 stop_vinput
 stop_mwc
 echo "PASS: outputs"

@@ -142,10 +142,20 @@ build/badclient: tests/badclient.c build/xdg-shell-client.h build/xdg-shell-code
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/badclient.c \
 		build/xdg-shell-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
 
+# Switches outputs off and on.
+POWERC_GEN = build/wlr-output-power-management-unstable-v1-client.h \
+	build/wlr-output-power-management-unstable-v1-code.c
+
+build/powerc: tests/powerc.c $(POWERC_GEN)
+	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
+		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/powerc.c \
+		build/wlr-output-power-management-unstable-v1-code.c \
+		$(shell $(PKG_CONFIG) --libs wayland-client)
+
 tabs-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 	tests/tabs.sh
 
-session-test: mwc build/vinput build/pngtool build/xclient
+session-test: mwc build/vinput build/pngtool build/xclient build/powerc
 	tests/session.sh
 
 misc-test: mwc build/vinput build/pngtool build/xclient build/xdgc
@@ -187,5 +197,5 @@ test: smoke input-test wallpaper-test config-test layer-test window-test \
 clean:
 	rm -rf build mwc
 
-.SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN)
+.SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN)
 .PHONY: tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
