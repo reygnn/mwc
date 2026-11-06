@@ -183,9 +183,14 @@ static void xw_map(struct wl_listener *listener, void *data)
 	 * may delete, without telling. */
 	if (view->fullscreen != xs->fullscreen)
 		view_set_fullscreen(view, xs->fullscreen);
-	bool maximized = xs->maximized_horz || xs->maximized_vert;
+	/* Vertically alone is what a half says of itself, see view_publish_snap(). */
+	bool half = view->snap == SNAP_LEFT || view->snap == SNAP_RIGHT;
+	bool maximized = xs->maximized_horz || (xs->maximized_vert && !half);
 	if (!view->fullscreen && view->maximized != maximized)
 		view_set_maximized(view, maximized);
+	/* Snapped stays, as maximized does. */
+	if (!view->fullscreen && !view->tiled && view->snap != SNAP_NONE)
+		view_refit(view);
 	/* Not an icon any longer, whatever the properties still say... */
 	wlr_xwayland_surface_set_minimized(xs, view->hidden_with_parent);
 	/* ... unless it asks for that: xterm -iconic and friends. */

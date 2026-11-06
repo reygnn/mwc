@@ -687,6 +687,8 @@ enum snap snap_zone_at(struct view *view, double px, double py);
 void snap_preview(struct view *view, enum snap s, double px, double py);
 /* The same look around any box. */
 void snap_preview_box(struct view *view, struct wlr_box box);
+/* For a scene buffer that only shows something: the pointer goes through it. */
+bool scene_buffer_no_input(struct wlr_scene_buffer *buffer, double *sx, double *sy);
 void snap_preview_hide(void);
 bool snap_preview_get(struct wlr_box *box); /* false while hidden */
 void snap_step(struct view *view, enum snap_dir dir);

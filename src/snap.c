@@ -101,6 +101,11 @@ void snap_preview(struct view *view, enum snap s, double px, double py)
 	snap_preview_box(view, snap_rect(s, output_usable_area(view->server, px, py)));
 }
 
+bool scene_buffer_no_input(struct wlr_scene_buffer *buffer, double *sx, double *sy)
+{
+	return false;
+}
+
 void snap_preview_box(struct view *view, struct wlr_box r)
 {
 	struct server *server = view->server;
@@ -122,8 +127,10 @@ void snap_preview_box(struct view *view, struct wlr_box r)
 	cairo_fill(cr);
 	cairo_restore(cr);
 
-	if (!preview)
+	if (!preview) {
 		preview = wlr_scene_buffer_create(server->layer_feedback, NULL);
+		preview->point_accepts_input = scene_buffer_no_input;
+	}
 	/* Where the window goes stays visible over the target. */
 	wlr_scene_node_lower_to_bottom(&preview->node);
 	wlr_scene_buffer_set_buffer(preview, &buf->base);

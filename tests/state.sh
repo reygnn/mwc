@@ -432,6 +432,37 @@ do_input key alt+F10
 check "and it can leave, for its own size" "[ \"\$(get mxkeep max)\" = 0 ] && [ \"\$(get mxkeep w)\" = 300 ]"
 stop mxkeep
 
+# Snapped likewise, and for that it doesn't count as asking for anything.
+x11 halfre rehide=1 rehide_ms=1500 size=300x200
+do_input key super+Left
+check "a half" "[ \"\$(get halfre snap)\" != 0 ]"
+HALF=$(get halfre snap)
+wait_for "shown again" said halfre 'reshown 1'
+check "still that half, not maximized" "[ \"\$(get halfre snap)\" = $HALF ] && [ \"\$(get halfre max)\" = 0 ] && \
+	[ \"\$(get halfre x)\" = 0 ] && [ \$((\$(get halfre w) + 2 * B)) = 640 ]"
+do_input key alt+F5
+check "and it can leave, for its own size" "[ \"\$(get halfre snap)\" = 0 ] && [ \"\$(get halfre w)\" = 300 ]"
+stop halfre
+
+x11 halfdrop rehide=1 rehide_ms=1500 rehide_drop=1 size=300x200
+do_input key super+Left
+check "a half" "[ \"\$(get halfdrop snap)\" != 0 ]"
+wait_for "shown again, without its properties" said halfdrop 'reshown 1'
+check "still that half" "[ \"\$(get halfdrop snap)\" != 0 ] && [ \"\$(get halfdrop max)\" = 0 ] && \
+	[ \"\$(get halfdrop x)\" = 0 ]"
+stop halfdrop
+
+x11 quarterre rehide=1 rehide_ms=1500 size=300x200
+do_input key super+Left
+do_input key super+Up
+check "a quarter" "[ \"\$(get quarterre snap)\" != 0 ] && [ \$((\$(get quarterre h) + 2 * B + T)) = 360 ]"
+QUARTER=$(get quarterre snap)
+wait_for "shown again" said quarterre 'reshown 1'
+check "in that quarter, not somewhere else" "[ \"\$(get quarterre snap)\" = $QUARTER ] && \
+	[ \"\$(get quarterre x)\" = 0 ] && [ \"\$(get quarterre y)\" = 0 ] && \
+	[ \$((\$(get quarterre h) + 2 * B + T)) = 360 ]"
+stop quarterre
+
 x11 minre rehide=1 rehide_ms=1500
 do_input key alt+F9
 check "minimized" "[ \"\$(get minre min)\" = 1 ]"

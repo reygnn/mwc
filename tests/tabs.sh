@@ -629,6 +629,10 @@ do_input move 300 200
 check "a drag with the middle button" "[ \"\$(global cursor mode)\" != 0 ]"
 preview_is "the window it would join is marked" 100 100
 check "the window stays where it is meanwhile" "[ \"\$(get t2 x)\" = 600 ] && [ \"\$(get t2 tab)\" = -1 ]"
+check "the box shows where it would go" "[ \"\$(global feedback text)\" = +150_+$((200 - B - T / 2)) ]"
+do_input move 310 210
+preview_is "the mark stays while the pointer moves over it" 100 100
+check "and the box follows" "[ \"\$(global feedback text)\" = +160_+$((210 - B - T / 2)) ]"
 do_input up middle
 shown "dropped on it, anywhere: joined, and shown" t2
 check "in its place" "[ \"\$(get t2 x)\" = 100 ] && [ \"\$(get t2 y)\" = 100 ] && [ \"\$(get t1 tab_hidden)\" = 1 ]"

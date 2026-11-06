@@ -294,6 +294,21 @@ do_input move 1000 600
 do_input up left
 saw "dropped on the desktop, it is cancelled" S '^drag-cancelled'
 check "without a root menu" "[ \"\$(global menu open)\" = 0 ]"
+
+clear_log S
+do_input move 200 200
+do_input down left
+saw "a drag" S '^drag-start'
+sleep 0.2
+do_input move 1000 600
+do_input down right
+sleep 0.2
+check "another button on the desktop opens no menu" "[ \"\$(global menu open)\" = 0 ]"
+do_input up right
+lacks "and doesn't end the drag" S '^drag-cancelled'
+do_input up left
+saw "the drag ends with its own button" S '^drag-cancelled'
+check "still no menu" "[ \"\$(global menu open)\" = 0 ]"
 stop S
 stop D
 

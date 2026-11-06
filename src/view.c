@@ -1160,7 +1160,7 @@ void view_handle_map(struct view *view)
 	bool hide = parent && view_hidden(parent);
 	if (view->placed)
 		view_set_position(view, view->x, view->y);
-	else if (!view->maximized && !view->fullscreen)
+	else if (!view->maximized && !view->fullscreen && view->snap == SNAP_NONE)
 		view_place_mapped(view);
 	frame_render(view);
 	views_update_layers(view->server);

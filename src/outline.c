@@ -86,8 +86,10 @@ void outline_show(struct view *view, struct wlr_box b)
 	};
 	for (int i = 0; i < N_STRIPS; i++) {
 		struct wlr_box s = rel[i];
-		if (!strip[i])
+		if (!strip[i]) {
 			strip[i] = wlr_scene_buffer_create(server->layer_feedback, NULL);
+			strip[i]->point_accepts_input = scene_buffer_no_input;
+		}
 		if (!s.width) {
 			wlr_scene_node_set_enabled(&strip[i]->node, false);
 			shown[i].width = 0;
@@ -146,8 +148,10 @@ void feedback_show(struct server *server, const char *text, double lx, double ly
 	text_size(text, &tw, &th);
 	int w = tw + 24 > 80 ? tw + 24 : 80, h = th + 14;
 
-	if (!feedback_node)
+	if (!feedback_node) {
 		feedback_node = wlr_scene_buffer_create(server->layer_feedback, NULL);
+		feedback_node->point_accepts_input = scene_buffer_no_input;
+	}
 	feedback_box = (struct wlr_box){ m.x + (m.width - w) / 2,
 		m.y + (m.height - h) / 2, w, h };
 	wlr_scene_node_set_position(&feedback_node->node, feedback_box.x,

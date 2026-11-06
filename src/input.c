@@ -385,6 +385,7 @@ static void process_move(struct server *server)
 			else
 				snap_preview_hide();
 		}
+		update_feedback(server);
 		return;
 	}
 
@@ -856,7 +857,8 @@ static void cursor_button(struct wl_listener *listener, void *data)
 
 	/* A click outside a client's open menu closes it, also if the click then does
 	 * something of its own. That only happens through the seat. */
-	if (wlr_seat_pointer_has_grab(seat) && !seat->pointer_state.focused_surface) {
+	if (wlr_seat_pointer_has_grab(seat) && !seat->drag &&
+			!seat->pointer_state.focused_surface) {
 		wlr_seat_pointer_notify_button(seat, event->time_msec, event->button,
 			WL_POINTER_BUTTON_STATE_PRESSED);
 		wlr_seat_pointer_notify_button(seat, event->time_msec, event->button,
@@ -865,9 +867,9 @@ static void cursor_button(struct wl_listener *listener, void *data)
 	}
 
 	/* A further button while a client has the pointer is the client's as well, not
-	 * a click on whatever the pointer has been dragged over. */
-	bool implicit_grab = server->n_forwarded > 0 &&
-		seat->pointer_state.focused_surface && !wlr_seat_pointer_has_grab(seat);
+	 * a click on whatever the pointer has been dragged over. So during its drag. */
+	bool implicit_grab = seat->drag || (server->n_forwarded > 0 &&
+		seat->pointer_state.focused_surface && !wlr_seat_pointer_has_grab(seat));
 	server->grab_button = event->button;
 	if (!implicit_grab && handle_press(server, event->button, event->time_msec))
 		return;
