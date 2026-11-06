@@ -178,7 +178,7 @@ The environment overrides the global entries:
 | `MWC_MOVE_OPAQUE` | `0`            | `1`: opaque move/resize          |
 | `MWC_TILING`      | `0`            | `1`: start in tiling mode        |
 | `MWC_TILE_MAIN_WIDTH` | `55`       | main tiled window's share in %   |
-| `MWC_TERMINAL`    | first of xterm, foot, alacritty, … | "New Window"  |
+| `MWC_TERMINAL`    | first of xterm, foot, alacritty, … | "New Window" and Super+Return, also `Mwm*terminal` |
 
 The cursor theme and size come from `XCURSOR_THEME` and `XCURSOR_SIZE`, the keyboard
 layout from `XKB_DEFAULT_LAYOUT` and the like. `-d` logs debug output.

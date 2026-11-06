@@ -730,6 +730,7 @@ void wallpaper_place(struct output *output, bool force);
 
 void config_load(void);
 const char *config_get(const char *resource);
+const char *terminal_command(struct server *server);
 /* The value of Mwm*client*resource, NULL when unset. */
 const char *config_get_for(const char *client, const char *resource);
 /* The programs of the root menu, Mwm*rootMenuItem, in the order of the file. */

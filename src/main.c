@@ -368,12 +368,10 @@ static bool in_path(const char *prog)
 	return found;
 }
 
-/* Terminals without client-side decorations first, so they get a frame. */
+/* The first one installed, if nobody says which. Terminals without client-side
+ * decorations first, so they get a frame. */
 static const char *pick_terminal(void)
 {
-	const char *env = getenv("MWC_TERMINAL");
-	if (env && *env)
-		return env;
 	static const char *candidates[] = {
 		"xterm", "foot", "alacritty", "konsole", "kitty",
 		"x-terminal-emulator", "ptyxis", "gnome-terminal",
@@ -383,6 +381,15 @@ static const char *pick_terminal(void)
 			return candidates[i];
 	}
 	return "xterm";
+}
+
+/* Asked each time: a reload may have brought another one. */
+const char *terminal_command(struct server *server)
+{
+	const char *value = getenv("MWC_TERMINAL");
+	if (!value || !*value)
+		value = config_get("terminal");
+	return value && *value ? value : server->terminal;
 }
 
 /* D-Bus-activated services, such as gnome-terminal's server and the desktop portals,
@@ -577,7 +584,7 @@ int main(int argc, char *argv[])
 	setenv("_JAVA_AWT_WM_NONREPARENTING", "1", false);
 	export_activation_environment(&server);
 	wlr_log(WLR_INFO, "mwc running on WAYLAND_DISPLAY=%s, terminal: %s",
-		socket, server.terminal);
+		socket, terminal_command(&server));
 
 	run_autostart(startup_cmd);
 	wl_display_run(server.display);

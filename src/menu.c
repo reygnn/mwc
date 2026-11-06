@@ -578,7 +578,7 @@ void run_action(struct server *server, enum menu_action action,
 			view_close(view);
 		break;
 	case ACT_NEW_WINDOW:
-		spawn(server->terminal);
+		spawn(terminal_command(server));
 		break;
 	case ACT_SHUFFLE_UP:
 		view_cycle(server, false);

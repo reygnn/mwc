@@ -999,7 +999,7 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 
 	if ((ctrl && alt && sym == XKB_KEY_Return) ||
 			(logo && sym == XKB_KEY_Return)) {
-		spawn(server->terminal);
+		spawn(terminal_command(server));
 		return true;
 	}
 	if (logo && !alt && !ctrl && !shift && sym == XKB_KEY_Escape) {

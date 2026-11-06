@@ -55,6 +55,26 @@ begin
 do_input key super+Return
 wait_for "Super+Return too" started 2
 finish
+# From the file, also after a reload, and the environment goes first.
+unset MWC_TERMINAL
+echo "Mwm*terminal: touch $SMOKE_DIR/from-file-1" >"$XDG_CONFIG_HOME/mwc/mwmrc"
+begin
+do_input key super+Return
+wait_for "Mwm*terminal" test -e "$SMOKE_DIR/from-file-1"
+echo "Mwm*terminal: touch $SMOKE_DIR/from-file-2" >"$XDG_CONFIG_HOME/mwc/mwmrc"
+kill -HUP "$pid"
+sleep 0.5
+do_input key super+Return
+wait_for "a reload takes up a new one" test -e "$SMOKE_DIR/from-file-2"
+finish
+export MWC_TERMINAL="touch $SMOKE_DIR/from-env"
+begin
+do_input key super+Return
+wait_for "MWC_TERMINAL beats Mwm*terminal" test -e "$SMOKE_DIR/from-env"
+finish
+unset MWC_TERMINAL
+rm "$XDG_CONFIG_HOME/mwc/mwmrc"
+
 export MWC_TERMINAL="touch $SMOKE_DIR/started-3"
 begin
 do_input move 1000 600

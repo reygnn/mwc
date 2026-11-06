@@ -8,6 +8,7 @@
  *   Mwm*fontList:                  Sans Bold 10
  *   Mwm*rootBackground:            #5b7792
  *   Mwm*wallpaper:                 ~/pictures/desk.png
+ *   Mwm*terminal:                  mwt        for New Window and Super+Return
  *   Mwm*rootMenuItem:              Files: mfm   a program in the root menu, repeatable
  *   Mwm*moveOpaque:                true       drag windows, not an outline
  *   Mwm*keyboardLayout:            de         also keyboardVariant, keyboardOptions,
