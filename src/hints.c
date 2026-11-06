@@ -238,6 +238,37 @@ void view_update_properties(struct view *view)
 	tabs_view_changed(view);
 }
 
+bool view_has_aspect(const struct view *view)
+{
+	return view->min_aspect > 0 && view->max_aspect > 0;
+}
+
+void view_aspect_follow(struct view *view, int *pw, int *ph, bool width_given)
+{
+	/* The same size counts as in view_apply_size_hints(). */
+	bool base_is_min = view->base_w == view->min_w &&
+		view->base_h == view->min_h;
+	int base_w = base_is_min ? 0 : view->base_w;
+	int base_h = base_is_min ? 0 : view->base_h;
+	int w = *pw - base_w, h = *ph - base_h;
+	if (w <= 0 || h <= 0)
+		return;
+	float wide = (float)w / h, tall = (float)h / w;
+	if (width_given) {
+		if (view->max_aspect < wide)
+			h = w / view->max_aspect + 0.5f;
+		else if (view->min_aspect < tall)
+			h = w * view->min_aspect + 0.5f;
+	} else {
+		if (view->min_aspect < tall)
+			w = h / view->min_aspect + 0.5f;
+		else if (view->max_aspect < wide)
+			w = h * view->max_aspect + 0.5f;
+	}
+	*pw = w + base_w;
+	*ph = h + base_h;
+}
+
 void view_apply_size_hints(struct view *view, int *pw, int *ph, bool incr)
 {
 	int w = *pw, h = *ph;

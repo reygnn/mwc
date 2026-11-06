@@ -424,12 +424,18 @@ static void process_resize(struct server *server)
 		cw = min_cw;
 	if (ch < 8)
 		ch = 8;
+	bool dragged_w = edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
+	bool dragged_h = edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
+	/* With an aspect ratio, the axis not being dragged has to follow. */
+	bool aspect = view_has_aspect(view);
+	if (aspect && dragged_w != dragged_h)
+		view_aspect_follow(view, &cw, &ch, dragged_w);
 	view_apply_size_hints(view, &cw, &ch, true);
-	/* The axis not being dragged keeps its size: rounding it to the client's
-	 * steps would change it for no reason. */
-	if (!(edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)))
+	/* Otherwise it keeps its size: rounding it to the client's steps would change
+	 * it for no reason. */
+	if (!aspect && !dragged_w)
 		cw = server->grab_orig.width;
-	if (!(edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)))
+	if (!aspect && !dragged_h)
 		ch = server->grab_orig.height;
 	if (edges & WLR_EDGE_LEFT)
 		left = right - cw - frame_extra_w(view);

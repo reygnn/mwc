@@ -46,6 +46,7 @@
  *     title_later=TEXT    2 s after mapping, a new WM_NAME
  *     latin1_title=1      a WM_NAME with bytes that are not UTF-8
  *     dialog_ms=MS        wait that long before opening the dialog
+ *     dialog_type=TYPE    the dialog's explicit window type, as for type=, also normal
  *     pulldown=1          a press posts an override-redirect menu and grabs the pointer,
  *                         as Motif does for press-drag-release; logs what follows
  */
@@ -81,7 +82,7 @@ static void ask_state(Window win, const char *state)
 }
 
 struct options {
-	const char *class, *type, *state, *dialog, *gravity, *ask_before, *ask_after, *ask_later;
+	const char *class, *type, *state, *dialog, *dialog_type, *gravity, *ask_before, *ask_after, *ask_later;
 	int w, h, x, y;
 	bool has_pos;
 	int min_w, min_h, max_w, max_h, inc_w, inc_h, base_w, base_h;
@@ -421,6 +422,8 @@ int main(int argc, char *argv[])
 			o.latin1_title = atoi(v);
 		else if (!strcmp(k, "hints_ms"))
 			o.hints_ms = atoi(v);
+		else if (!strcmp(k, "dialog_type"))
+			o.dialog_type = v;
 		else if (!strcmp(k, "dialog_ms"))
 			o.dialog_ms = atoi(v);
 		else if (!strcmp(k, "ask_before"))
@@ -557,7 +560,7 @@ int main(int argc, char *argv[])
 		}
 		struct options d = o;
 		d.has_pos = d.has_min = d.has_max = d.has_motif = false;
-		d.type = NULL;
+		d.type = o.dialog_type;
 		d.w = 120;
 		d.h = 80;
 		d.x = d.y = 0;

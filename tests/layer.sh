@@ -188,6 +188,23 @@ do_input click left
 do_input click left
 check "foot is back with the keyboard" "[ \"\$(get foot kbfocus)\" = 1 ]"
 
+# A popup is opened to be seen, also if its panel is below the windows.
+do_input key alt+F10
+check "a window fills the screen" "grep -q ' max=1 ' \"\$MWC_TEST_STATE\""
+sleep 0.2
+for layer in bottom background; do
+	layerc_start under layer=$layer anchor=bottom,left size=120x40 color=aa0000 popup=00aa00
+	wait_for "the popup of a panel in the $layer layer" has_event under popup-configured
+	pixel_is "it is drawn above the windows, in the right place" 50 650 00aa00
+	WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/under.png"
+	[ "$(build/pngtool pixel "$SMOKE_DIR/under.png" 50 700)" != aa0000 ] ||
+		fail "the panel itself should stay below the windows"
+	echo "ok: and the panel itself stays below them"
+	layerc_stop under
+done
+do_input key alt+F10
+check "and back" "! grep -q ' max=1 ' \"\$MWC_TEST_STATE\""
+
 layerc_start nokbd layer=top anchor=right size=50x50 keyboard=none color=444444
 pixel_is "the surface is mapped" 1270 360 444444
 check "keyboard=none leaves the keyboard alone" "[ \"\$(get foot kbfocus)\" = 1 ]"

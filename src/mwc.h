@@ -536,6 +536,9 @@ void views_layout_changed(struct server *server);
 void view_update_properties(struct view *view);
 void view_update_decorations(struct view *view);
 bool view_fixed(struct view *view);
+bool view_has_aspect(const struct view *view);
+/* The other side, as the client's aspect ratio wants it for the side given. */
+void view_aspect_follow(struct view *view, int *pw, int *ph, bool width_given);
 void view_apply_size_hints(struct view *view, int *w, int *h, bool incr);
 /* The frame's position when the client asks for x, y at the size w, h. */
 void view_gravity_to_frame(struct view *view, int x, int y, int w, int h, int *fx,

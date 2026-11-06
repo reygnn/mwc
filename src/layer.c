@@ -23,6 +23,7 @@ struct layer_surface {
 	struct output *output;
 	struct wlr_layer_surface_v1 *wlr;
 	struct wlr_scene_layer_surface_v1 *scene;
+	struct wlr_scene_tree *popups; /* where the surface is, see popups_parent() */
 	enum zwlr_layer_shell_v1_layer layer;
 	struct wl_listener map;
 	struct wl_listener unmap;
@@ -34,6 +35,14 @@ struct layer_surface {
 	enum zwlr_layer_surface_v1_keyboard_interactivity keyboard_interactive;
 };
 
+/* A popup is there to be seen, also if its surface is below the windows. */
+static struct wlr_scene_tree *popups_parent(struct server *server,
+	enum zwlr_layer_shell_v1_layer layer)
+{
+	return server->layer_shell[layer < ZWLR_LAYER_SHELL_V1_LAYER_TOP ?
+		ZWLR_LAYER_SHELL_V1_LAYER_TOP : layer];
+}
+
 static void arrange_pass(struct output *output, const struct wlr_box *full,
 	struct wlr_box *usable, bool exclusive)
 {
@@ -44,6 +53,8 @@ static void arrange_pass(struct output *output, const struct wlr_box *full,
 					(ls->wlr->current.exclusive_zone > 0) != exclusive)
 				continue;
 			wlr_scene_layer_surface_v1_configure(ls->scene, full, usable);
+			wlr_scene_node_set_position(&ls->popups->node,
+				ls->scene->tree->node.x, ls->scene->tree->node.y);
 		}
 	}
 }
@@ -291,6 +302,7 @@ static void place_in_layer(struct layer_surface *ls,
 	wl_list_insert(&ls->output->layers[layer], &ls->link);
 	wlr_scene_node_reparent(&ls->scene->tree->node,
 		ls->server->layer_shell[layer]);
+	wlr_scene_node_reparent(&ls->popups->node, popups_parent(ls->server, layer));
 }
 
 static void layer_commit(struct wl_listener *listener, void *data)
@@ -331,6 +343,7 @@ static void layer_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&ls->destroy.link);
 	wl_list_remove(&ls->new_popup.link);
 	wl_list_remove(&ls->link);
+	wlr_scene_node_destroy(&ls->popups->node);
 	ls->wlr->data = NULL;
 	free(ls);
 }
@@ -340,7 +353,8 @@ static void layer_new_popup(struct wl_listener *listener, void *data)
 	struct layer_surface *ls = wl_container_of(listener, ls, new_popup);
 	struct wlr_xdg_popup *popup = data;
 	xdg_surface_set_tree(popup->base, wlr_scene_xdg_surface_create(
-		ls->scene->tree, popup->base));
+		ls->popups, popup->base));
+	wlr_scene_node_raise_to_top(&ls->popups->node);
 }
 
 static void new_layer_surface(struct wl_listener *listener, void *data)
@@ -366,6 +380,7 @@ static void new_layer_surface(struct wl_listener *listener, void *data)
 	wlr->data = ls;
 	ls->scene = wlr_scene_layer_surface_v1_create(
 		server->layer_shell[ls->layer], wlr);
+	ls->popups = wlr_scene_tree_create(popups_parent(server, ls->layer));
 	wl_list_insert(&output->layers[ls->layer], &ls->link);
 
 	ls->map.notify = layer_map;

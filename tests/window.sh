@@ -109,6 +109,42 @@ check "X11: the aspect ratio holds" \
 	"[ \"\$(get square w)\" = \"\$(get square h)\" ]"
 stop square
 
+# One edge at a time: the other side follows, and what is opposite stays.
+right_edge() { # app dx
+	refresh
+	local x=$(($(get "$1" x) + $(outer_w "$1") - 2)) y=$(($(get "$1" y) + $(outer_h "$1") / 2))
+	drag "$x" "$y" $((x + $2)) "$y"
+}
+bottom_edge() { # app dy
+	refresh
+	local x=$(($(get "$1" x) + $(outer_w "$1") / 2)) y=$(($(get "$1" y) + $(outer_h "$1") - 2))
+	drag "$x" "$y" "$x" $((y + $2))
+}
+left_edge() { # app dx
+	refresh
+	local x=$(($(get "$1" x) + 1)) y=$(($(get "$1" y) + $(outer_h "$1") / 2))
+	drag "$x" "$y" $((x + $2)) "$y"
+}
+size_is() { check "$1" "[ \"\$(get $2 w)\" = $3 ] && [ \"\$(get $2 h)\" = $4 ]"; }
+x11 wide pos=100,100 size=400x200 aspect=2/1
+mapped wide
+refresh
+WX=$(get wide x) WY=$(get wide y)
+right_edge wide 200
+size_is "X11: the right edge makes it wider, and the height follows" wide 600 300
+check "the top left stays" "[ \"\$(get wide x)\" = $WX ] && [ \"\$(get wide y)\" = $WY ]"
+right_edge wide -300
+size_is "and narrower" wide 300 150
+bottom_edge wide 80
+size_is "the bottom edge: the width follows" wide 460 230
+check "the top left stays" "[ \"\$(get wide x)\" = $WX ] && [ \"\$(get wide y)\" = $WY ]"
+refresh
+RIGHT=$(($(get wide x) + $(outer_w wide)))
+left_edge wide 60
+size_is "the left edge" wide 400 200
+check "the right side stays" "[ \$((\$(get wide x) + \$(outer_w wide))) = $RIGHT ]"
+stop wide
+
 # ---- size hints: Wayland ------------------------------------------------------
 
 wayland wlimit size=300x200 min=200x150 max=400x300

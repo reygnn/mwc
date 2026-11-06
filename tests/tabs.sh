@@ -875,6 +875,19 @@ check "the one that left is on the screen" "[ \"\$(get i4 min)\" = 0 ] && [ \"\$
 stop i3
 stop i4
 
+# ---- a window with a parent --------------------------------------------------------------
+
+# A dialog by its parent, even if it says that it is a normal window.
+DISPLAY=$X_DISPLAY build/xclient class=tparent size=300x200 dialog=tkid dialog_type=normal \
+	>"$SMOKE_DIR/tparent.log" 2>&1 &
+PID_tparent=$!
+check "it has the focus" "[ \"\$(get tkid active)\" = 1 ]"
+do_input key super+g
+sleep 0.3
+check "Super+G doesn't put it in a group with its parent" \
+	"[ \"\$(get tkid tab)\" = -1 ] && [ \"\$(get tparent tab)\" = -1 ] && [ \"\$(get tkid active)\" = 1 ]"
+stop tparent
+
 # ---- taking along a window without a group ---------------------------------------------
 
 x11 lone pos=100,100 size=300x200
