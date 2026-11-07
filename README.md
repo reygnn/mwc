@@ -48,7 +48,7 @@ screen, and `wlr-layer-shell` lets any of them cover it.
 `make wallpaper-test` renders generated images and checks pixels in screenshots,
 and `make config-test` does the same for `mwmrc`, including reloading it.
 `make layer-test` checks panels with a small layer-shell client
-(`tests/layerc.c`), and `make window-test` window behaviour with clients that can
+(`tests/layerc.c`), and `make window-test` window behavior with clients that can
 ask for any hint (`tests/xclient.c`, `tests/xdgc.c`). `make move-test` checks the
 outline, the box and the keys during a move or resize, and `make snap-test` the
 snap zones and every way back out of them. `make outputs-test` runs on two outputs,
@@ -96,7 +96,7 @@ Super+Esc screen saver (see below) · Super+G and more for tabs (see below).
 ## Configuration
 
 `~/.config/mwc/mwmrc` uses the same Motif resource syntax as mwm-x11. Each
-program can get its own frame colour, matched by an X11 window's `WM_CLASS`
+program can get its own frame color, matched by an X11 window's `WM_CLASS`
 (instance or class name) or a Wayland client's `app_id`, ignoring case:
 
 ```
@@ -113,12 +113,12 @@ Mwm*wallpaper:                 ~/pictures/desk.png
 
 | Resource | Meaning |
 |---|---|
-| `activeBackground` | frame colour while focused |
-| `background` | frame colour while unfocused (globally: also menus and icons) |
+| `activeBackground` | frame color while focused |
+| `background` | frame color while unfocused (globally: also menus and icons) |
 | `activeForeground`, `foreground` | title text; default is black or white, whichever contrasts |
 | `geometry` | where a program's windows appear, see below (per program only) |
 | `fontList` | Pango font name for titles and menus, title bars grow with it (global only) |
-| `rootBackground` | desktop colour, or `none` to leave the desktop to a wallpaper tool such as `swaybg` (global only) |
+| `rootBackground` | desktop color, or `none` to leave the desktop to a wallpaper tool such as `swaybg` (global only) |
 | `wallpaper` | PNG on the desktop, see below (global only) |
 | `moveOpaque` | `true`: drag windows themselves instead of an outline (global only) |
 | `tiling` | `true`: start in tiling mode (global only) |
@@ -130,9 +130,9 @@ Copying a file from mwm-x11 works, except that `fontList` takes Pango names
 like `Sans Bold 10`: anything else, like `Sans:bold:size=10` or `Sans-12`, is logged
 and ignored. Resources mwc doesn't know are ignored too.
 
-A program with its own `activeBackground` keeps its colour when unfocused, in a
+A program with its own `activeBackground` keeps its color when unfocused, in a
 paler shade (mixed with the global `background`), and so does its desktop icon.
-Set `Mwm*Name*background` to choose the unfocused colour yourself. Colours are
+Set `Mwm*Name*background` to choose the unfocused color yourself. Colors are
 `#rrggbb`, names like `gold` or `firebrick`, or `rgb:rr/gg/bb`. Lines starting
 with `!` are comments; a `!` after a value is part of the value, so comments go
 on their own line. Later lines win.
@@ -170,9 +170,9 @@ The environment overrides the global entries:
 
 | Variable          | Default        |                                  |
 |-------------------|----------------|----------------------------------|
-| `MWC_ACTIVE`      | `#7387ad`      | focused frame colour             |
+| `MWC_ACTIVE`      | `#7387ad`      | focused frame color              |
 | `MWC_INACTIVE`    | `#aeb2c3`      | other frames, menus, icons       |
-| `MWC_ROOT`        | `#5b7792`      | desktop colour, `none`: not drawn |
+| `MWC_ROOT`        | `#5b7792`      | desktop color, `none`: not drawn |
 | `MWC_WALLPAPER`   | none           | PNG on the desktop, see below    |
 | `MWC_FONT`        | `Sans Bold 10` | Pango font for titles and menus  |
 | `MWC_MOVE_OPAQUE` | `0`            | `1`: opaque move/resize          |
@@ -185,7 +185,7 @@ layout from `XKB_DEFAULT_LAYOUT` and the like. `-d` logs debug output.
 
 The wallpaper is the path of a PNG file; a leading `~/` is expanded. The image is
 scaled to cover each monitor: the aspect ratio stays and what sticks out is cut
-off evenly. If it can't be read, mwc logs why and shows the desktop colour.
+off evenly. If it can't be read, mwc logs why and shows the desktop color.
 
 ## Panels and wallpaper tools
 
@@ -218,7 +218,7 @@ keyboard.
 ## Snapping (as in Windows 11)
 
 Drag a window by its title (or with Alt+btn1) until the pointer touches an edge of
-the monitor. An outline in the window's colour shows where it will go, and it snaps
+the monitor. An outline in the window's color shows where it will go, and it snaps
 there when you let go:
 
 | Pointer at …            | Window fills …                     |
@@ -268,7 +268,7 @@ value switches the filter off.
 ! Firefox floats (app_id "firefox")
 Mwm*DoNotTile:   firefox
 
-! or the other way round: only these tile
+! or the other way around: only these tile
 Mwm*TileOnly:    XTerm, foot
 ```
 
@@ -283,7 +283,7 @@ and reloading the configuration keeps the current choice.
 
 Several windows can share one frame and one place on the screen, with their titles as
 tabs in the title bar. The shown tab is sunken, and each of the others keeps its own
-unfocused colour, so it stays recognisable.
+unfocused color, so it stays recognizable.
 
 | Key or gesture | Action |
 |---|---|
@@ -320,7 +320,7 @@ Mwm*rootMenuItem:   Notes: xterm -e sh -c "vi ~/notes.txt"
 
 The label ends at the first colon, and the rest is a shell command. Up to 20 are used;
 others are reported in the log, as are lines without a label or command. Each gets the
-first letter of its label that is still free as its key. A reload takes up changes.
+first letter of its label that is still free as its key. A reload picks up changes.
 
 ## Run dialog
 
@@ -372,15 +372,15 @@ mwc logs each monitor's name and modes when it appears. All of this also applies
 "Reload" and `SIGHUP`. Tools like `wlr-randr` and `kanshi` don't work: mwc doesn't
 offer their protocol.
 
-## Window behaviour
+## Window behavior
 
 - **Dialogs** stay above the window they belong to and minimize with it, without
-  an icon of their own. They open centred over it, without Minimize and Maximize.
+  an icon of their own. They open centered over it, without Minimize and Maximize.
 - **Size limits** hold while resizing: minimum and maximum size for all windows,
   resize steps, base size and aspect ratio from `WM_NORMAL_HINTS` for X11 ones. A
   window with a fixed size gets a thin border and no Size or Maximize.
 - **`_MOTIF_WM_HINTS`** decide which decorations and functions an X11 window gets.
-  Functions it doesn't have are grey in its menu and their keys do nothing.
+  Functions it doesn't have are gray in its menu and their keys do nothing.
 - **`_NET_WM_WINDOW_TYPE`**: dialog, utility/toolbar/menu, splash, dock, desktop,
   notification. Docks and notifications stay above normal windows, desktop windows
   below them, none of the three takes the focus. `_NET_WM_STATE_ABOVE` and `BELOW`
