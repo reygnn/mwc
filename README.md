@@ -181,7 +181,8 @@ The environment overrides the global entries:
 | `MWC_TERMINAL`    | first of xterm, foot, alacritty, … | "New Window" and Super+Return, also `Mwm*terminal` |
 
 The cursor theme and size come from `XCURSOR_THEME` and `XCURSOR_SIZE`, the keyboard
-layout from `XKB_DEFAULT_LAYOUT` and the like. `-d` logs debug output.
+layout from `XKB_DEFAULT_LAYOUT` and the like. `-d` logs debug output, and `-v` prints
+the version, which is set in `src/version.h` and also opens the log.
 
 The wallpaper is the path of a PNG file; a leading `~/` is expanded. The image is
 scaled to cover each monitor: the aspect ratio stays and what sticks out is cut

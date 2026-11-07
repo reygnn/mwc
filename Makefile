@@ -47,6 +47,8 @@ build/wlr-output-power-management-unstable-v1-protocol.h: protocols/wlr-output-p
 build/%.o: src/%.c src/mwc.h $(PROTO) | build
 	$(CC) $(MWC_CFLAGS) $(CFLAGS) -c -o $@ $<
 
+build/main.o: src/version.h
+
 mwc: $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(MWC_LIBS) $(LDLIBS)
 

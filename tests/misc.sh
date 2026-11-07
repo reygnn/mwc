@@ -240,6 +240,13 @@ rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 finish
 export PATH=$PLAIN_PATH
 
+# ---- the version -------------------------------------------------------------------------------
+
+version=$(sed -n 's/^#define MWC_VERSION "\(.*\)"$/\1/p' src/version.h)
+[ -n "$version" ] || fail "no MWC_VERSION in src/version.h"
+[ "$("$MWC" -v)" = "mwc $version" ] || fail "mwc -v should print: mwc $version"
+echo "ok: mwc -v prints mwc $version"
+
 # ---- the hooks are off unless asked for --------------------------------------------------------
 
 unset MWC_TEST_STATE

@@ -35,6 +35,7 @@
 #include <wlr/util/log.h>
 #include <wlr/xwayland.h>
 #include "mwc.h"
+#include "version.h"
 
 /* ---- outputs ------------------------------------------------------------ */
 
@@ -439,10 +440,11 @@ static int handle_terminate(int signal, void *data)
 
 static void usage(const char *argv0)
 {
-	printf("Usage: %s [-s startup-command] [-d]\n"
+	printf("Usage: %s [-s startup-command] [-d] [-v]\n"
 		"\n"
 		"  -s CMD   run CMD once the compositor is up\n"
 		"  -d       debug logging\n"
+		"  -v       print the version\n"
 		"\n"
 		"Environment: MWC_TERMINAL, MWC_ACTIVE, MWC_INACTIVE, MWC_ROOT,\n"
 		"MWC_WALLPAPER, MWC_FONT, MWC_MOVE_OPAQUE, MWC_TILING,\n"
@@ -457,7 +459,7 @@ int main(int argc, char *argv[])
 	const char *startup_cmd = NULL;
 	enum wlr_log_importance log_level = WLR_INFO;
 	int c;
-	while ((c = getopt(argc, argv, "s:dh")) != -1) {
+	while ((c = getopt(argc, argv, "s:dvh")) != -1) {
 		switch (c) {
 		case 's':
 			startup_cmd = optarg;
@@ -465,6 +467,9 @@ int main(int argc, char *argv[])
 		case 'd':
 			log_level = WLR_DEBUG;
 			break;
+		case 'v':
+			puts("mwc " MWC_VERSION);
+			return 0;
 		default:
 			usage(argv[0]);
 			return c == 'h' ? 0 : 1;
@@ -583,7 +588,7 @@ int main(int argc, char *argv[])
 	 * manager that doesn't reparent, unless told. Not forced on anyone who set it. */
 	setenv("_JAVA_AWT_WM_NONREPARENTING", "1", false);
 	export_activation_environment(&server);
-	wlr_log(WLR_INFO, "mwc running on WAYLAND_DISPLAY=%s, terminal: %s",
+	wlr_log(WLR_INFO, "mwc " MWC_VERSION " running on WAYLAND_DISPLAY=%s, terminal: %s",
 		socket, terminal_command(&server));
 
 	run_autostart(startup_cmd);
