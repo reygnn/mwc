@@ -1,0 +1,16 @@
+TODO
+
+* Sloppy Focus als Alternative zu Click-to-Focus. Der Fokus folgt dem Zeiger
+  in ein Fenster und bleibt dort, wenn der Zeiger auf den Desktop, eine Lücke
+  im Tiling oder ein Panel geht. Einstellbar wie in mwm über
+  Mwm*keyboardFocusPolicy: explicit (Vorgabe, wie bisher) oder pointer, dazu
+  Mwm*focusAutoRaise (bei pointer standardmäßig aus, damit Fenster beim
+  Überfahren nicht nach vorn springen).
+  Zu klären: kein Fokuswechsel während Move/Resize, Drag and Drop, offenem
+  Menü oder Zeigergriff; Popups und Override-Redirect-Fenster von X11 nehmen
+  den Fokus nicht; nach Alt+Tab erst bei echter Zeigerbewegung wechseln, nicht
+  wenn ein Fenster unter einem stehenden Zeiger auftaucht oder verschwindet;
+  exklusive Tastatur von Layer-Shell-Flächen hat Vorrang; Fenster ohne
+  Eingabefokus (WM_HINTS) bleiben außen vor.
+  Abnahme: ein Test in tests/pointer.sh, der diese Fälle mit vinput abfährt,
+  und README unter Mouse und Configuration.
