@@ -475,6 +475,8 @@ Mwm*gutil*geometry:     +0+0
 Mwm*gxdialog*geometry:  +0+0
 Mwm*gtab*geometry:      -0-0
 Mwm*gmaxed*geometry:    -0-0
+Mwm*gpointer*geometry:  pointer
+Mwm*gpedge*geometry:    Pointer
 EOF
 kill -HUP "$pid"
 settle
@@ -535,6 +537,23 @@ wait_for "gplain was hidden and shown" grep -q "reshown 1" "$SMOKE_DIR/gplain.ev
 check "shown again, one without returns to its entry's place" \
 	"[ \"\$(right gplain)\" = 1280 ] && [ \"\$(bottom gplain)\" = 720 ]"
 stop gplain
+
+do_input move 400 300
+settle
+wayland gpointer
+mapped gpointer
+check "pointer puts the frame's top-left corner at the pointer" \
+	"[ \"\$(get gpointer x)\" = \"\$(global cursor x)\" ] && [ \"\$(get gpointer y)\" = \"\$(global cursor y)\" ] && \
+	 [ \"\$(global cursor x)\" -ge 399 ] && [ \"\$(global cursor x)\" -le 401 ]"
+stop gpointer
+
+do_input move 1270 710
+settle
+x11 gpedge pos=100,100
+mapped gpedge
+check "at the bottom right it stays on the screen, before the X11 program's place" \
+	"[ \"\$(right gpedge)\" = 1280 ] && [ \"\$(bottom gpedge)\" = 720 ]"
+stop gpedge
 
 wayland gmain dialog=gdialog
 mapped gmain

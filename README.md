@@ -154,6 +154,14 @@ Mwm*pulseControl*geometry:  -0-0
 Mwm*XTerm*geometry:         +20-40
 ```
 
+`pointer` instead of a position puts the frame's top-left corner at the pointer, moved
+back as far as needed to stay on the monitor. That suits a run dialog opened by a
+click on the desktop:
+
+```
+Mwm*mrun*geometry:  pointer
+```
+
 The entry goes before a position the program asks for itself, but not for dialogs and
 other secondary windows. Afterwards the window moves freely, and a reload moves
 nothing. In tiling mode the layout decides, unless the program is in `DoNotTile`.

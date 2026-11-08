@@ -744,10 +744,12 @@ void config_view_shades(struct view *view);
 /* Whether the tiling layout may take it, from DoNotTile or TileOnly. */
 void config_view_tiling(struct view *view);
 /* Where a program's mwmrc entry wants a new window. The distances are from the
- * left and top edges, or from the right and bottom ones. */
+ * left and top edges, or from the right and bottom ones. With at_pointer, the
+ * frame's top-left corner goes to the pointer instead. */
 struct config_position {
 	int x, y;
 	bool from_right, from_bottom;
+	bool at_pointer;
 };
 bool config_view_position(struct view *view, struct config_position *out);
 /* "Reload" and SIGHUP: a Wayland compositor can't re-exec and keep its

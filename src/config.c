@@ -191,6 +191,12 @@ void config_root_item(int i, const char **label, const char **command)
  * No size: a program knows its own, and a Wayland client may overrule one anyway. */
 static bool parse_position(const char *s, struct config_position *out)
 {
+	*out = (struct config_position){ 0 };
+	/* Not X11's, but what a run dialog wants: to open where the click was. */
+	if (!strcasecmp(s, "pointer")) {
+		out->at_pointer = true;
+		return true;
+	}
 	int *value[2] = { &out->x, &out->y };
 	bool *from_end[2] = { &out->from_right, &out->from_bottom };
 	for (int i = 0; i < 2; i++) {
@@ -214,8 +220,8 @@ static void check_positions(void)
 	for (int i = 0; i < n_rules; i++) {
 		if (rules[i].client && !strcasecmp(rules[i].resource, "geometry") &&
 				!parse_position(rules[i].value, &pos))
-			wlr_log(WLR_ERROR, "%s:%d: expected a position like -0-0 or +10+10, "
-				"not \"%s\"", path, rules[i].line, rules[i].value);
+			wlr_log(WLR_ERROR, "%s:%d: expected a position like -0-0, +10+10 or "
+				"pointer, not \"%s\"", path, rules[i].line, rules[i].value);
 	}
 }
 

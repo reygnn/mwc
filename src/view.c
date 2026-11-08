@@ -3,6 +3,7 @@
  * shared with XWayland windows (focus, stacking, maximize, iconify).
  */
 #define _POSIX_C_SOURCE 200809L
+#include <math.h>
 #include <stdlib.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_output_layout.h>
@@ -1137,6 +1138,12 @@ static void view_place_mapped(struct view *view)
 		view->server->cursor->y);
 	int w = view->width + frame_extra_w(view);
 	int h = view->height + frame_extra_h(view);
+	if (pos.at_pointer) {
+		/* The pixel the hotspot is on, as the state file reports it. */
+		view_place_within(view, a, (int)floor(view->server->cursor->x),
+			(int)floor(view->server->cursor->y));
+		return;
+	}
 	view_place_within(view, a,
 		pos.from_right ? a.x + a.width - w - pos.x : a.x + pos.x,
 		pos.from_bottom ? a.y + a.height - h - pos.y : a.y + pos.y);
