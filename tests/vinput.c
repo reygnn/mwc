@@ -13,6 +13,7 @@
  */
 #define _GNU_SOURCE
 #include <linux/input-event-codes.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
