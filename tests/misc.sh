@@ -43,6 +43,20 @@ stop() {
 settle() { sleep 0.45; }
 started() { test -e "$SMOKE_DIR/started-$1"; }
 
+# ---- screenshots ---------------------------------------------------------------------
+
+cat >"$XDG_CONFIG_HOME/mwc/mwmrc" <<MWMRC
+Mwm*screenshot:          touch $SMOKE_DIR/shot-file
+Mwm*clipboardScreenshot: touch $SMOKE_DIR/shot-clip
+MWMRC
+begin
+do_input key Print
+wait_for "Print runs Mwm*screenshot" test -e "$SMOKE_DIR/shot-file"
+do_input key shift+Print
+wait_for "Shift+Print runs Mwm*clipboardScreenshot" test -e "$SMOKE_DIR/shot-clip"
+finish
+rm "$XDG_CONFIG_HOME/mwc/mwmrc"
+
 # ---- the terminal -----------------------------------------------------------------
 
 export MWC_TERMINAL="touch $SMOKE_DIR/started-1"

@@ -47,7 +47,7 @@ static const struct {
 	{ "Tab", KEY_TAB }, { "Escape", KEY_ESC }, { "space", KEY_SPACE },
 	{ "Return", KEY_ENTER }, { "BackSpace", KEY_BACKSPACE },
 	{ "Left", KEY_LEFT }, { "Right", KEY_RIGHT }, { "Up", KEY_UP },
-	{ "Down", KEY_DOWN },
+	{ "Down", KEY_DOWN }, { "Print", KEY_SYSRQ },
 	{ "F1", KEY_F1 }, { "F2", KEY_F2 }, { "F3", KEY_F3 }, { "F4", KEY_F4 },
 	{ "F5", KEY_F5 }, { "F6", KEY_F6 }, { "F7", KEY_F7 }, { "F8", KEY_F8 },
 	{ "F9", KEY_F9 }, { "F10", KEY_F10 }, { "F11", KEY_F11 },

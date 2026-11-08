@@ -1007,6 +1007,12 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		spawn(saver ? saver : "displayOff --stars");
 		return true;
 	}
+	/* Shift+Print still gives Print in the usual layouts, Alt+Print gives Sys_Req. */
+	if (!alt && !ctrl && !logo && sym == XKB_KEY_Print) {
+		const char *shot = config_get(shift ? "clipboardScreenshot" : "screenshot");
+		spawn(shot ? shot : shift ? "msc -c" : "msc");
+		return true;
+	}
 	if (logo && !alt && !ctrl) {
 		enum snap_dir dir;
 		/* Tabs, while there are any: otherwise these are the client's. */

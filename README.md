@@ -43,7 +43,8 @@ resize, maximize, minimize, menu and key binding. The simulated devices and the
 state file only exist when `MWC_TEST_STATE` is set, because those protocols let
 any client type on the user's behalf. Other protocols are always on and open to every
 client, as in most wlroots compositors: `wlr-screencopy` lets any of them read the
-screen, and `wlr-layer-shell` lets any of them cover it.
+screen, `ext-data-control-v1` and `wlr-data-control` let any of them read and set the
+clipboard, and `wlr-layer-shell` lets any of them cover it.
 
 `make wallpaper-test` renders generated images and checks pixels in screenshots,
 and `make config-test` does the same for `mwmrc`, including reloading it.
@@ -91,7 +92,8 @@ Alt+F9 minimize · Alt+F10 maximize · Alt+F11 fullscreen ·
 Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit ·
 Super+arrows snap (see below) · Super+Shift+arrows push a floating window against
 that edge of the usable area (two in a row: a corner) · Super+T tiling on/off ·
-Super+Esc screen saver (see below) · Super+G and more for tabs (see below).
+Super+Esc screen saver (see below) · Print / Shift+Print screenshot to a file / the
+clipboard (see below) · Super+G and more for tabs (see below).
 
 ## Configuration
 
@@ -345,6 +347,20 @@ mwc offers `ext-idle-notify-v1`, `idle-inhibit-unstable-v1` and
 is there, such as [displayOff](https://github.com/reygnn/displayOff). A monitor that is
 off stays in the layout, so windows keep their places. Any window asking not to be idle,
 such as a video player, counts, also when it is minimized.
+
+## Screenshots
+
+Print runs `Mwm*screenshot`, Shift+Print `Mwm*clipboardScreenshot`, by default
+[msc](https://github.com/reygnn/msc) to a file in `Screenshots` under the pictures
+folder and `msc -c` to the clipboard:
+
+```
+Mwm*screenshot:            msc
+Mwm*clipboardScreenshot:   msc -c
+```
+
+Programs without a window, such as `msc -c`, `wl-copy` and `wl-paste`, reach the
+clipboard through `ext-data-control-v1` or `wlr-data-control`, which mwc both offers.
 
 ## Keyboard and monitors
 

@@ -18,7 +18,9 @@
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_ext_data_control_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -522,6 +524,11 @@ int main(int argc, char *argv[])
 	wlr_subcompositor_create(server.display);
 	wlr_data_device_manager_create(server.display);
 	wlr_primary_selection_v1_device_manager_create(server.display);
+	/* The clipboard for programs without a window, such as msc -c or wl-copy: they
+	 * cannot get the keyboard focus that wl_data_device asks for. Both versions,
+	 * the older one is what most clipboard tools still speak. */
+	wlr_ext_data_control_manager_v1_create(server.display, 1);
+	wlr_data_control_manager_v1_create(server.display);
 	wlr_viewporter_create(server.display);
 	wlr_single_pixel_buffer_manager_v1_create(server.display);
 	wlr_presentation_create(server.display, server.backend, 2);
