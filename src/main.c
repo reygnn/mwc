@@ -524,8 +524,8 @@ int main(int argc, char *argv[])
 	wlr_subcompositor_create(server.display);
 	wlr_data_device_manager_create(server.display);
 	wlr_primary_selection_v1_device_manager_create(server.display);
-	/* The clipboard for programs without a window, such as msc -c or wl-copy: they
-	 * cannot get the keyboard focus that wl_data_device asks for. Both versions,
+	/* The clipboard for programs without a window, such as screenShot -c or wl-copy:
+	 * they cannot get the keyboard focus that wl_data_device asks for. Both versions,
 	 * the older one is what most clipboard tools still speak. */
 	wlr_ext_data_control_manager_v1_create(server.display, 1);
 	wlr_data_control_manager_v1_create(server.display);

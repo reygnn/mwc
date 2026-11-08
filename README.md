@@ -365,16 +365,17 @@ such as a video player, counts, also when it is minimized.
 ## Screenshots
 
 Print runs `Mwm*screenshot`, Shift+Print `Mwm*clipboardScreenshot`, by default
-[msc](https://github.com/reygnn/msc) to a file in `Screenshots` under the pictures
-folder and `msc -c` to the clipboard:
+[screenShot](https://github.com/reygnn/screenShot) to a file in `Screenshots` under
+the pictures folder and `screenShot -c` to the clipboard:
 
 ```
-Mwm*screenshot:            msc
-Mwm*clipboardScreenshot:   msc -c
+Mwm*screenshot:            screenShot
+Mwm*clipboardScreenshot:   screenShot -c
 ```
 
-Programs without a window, such as `msc -c`, `wl-copy` and `wl-paste`, reach the
-clipboard through `ext-data-control-v1` or `wlr-data-control`, which mwc both offers.
+Programs without a window, such as `screenShot -c`, `wl-copy` and `wl-paste`, reach
+the clipboard through `ext-data-control-v1` or `wlr-data-control`, which mwc both
+offers.
 
 ## Keyboard and monitors
 

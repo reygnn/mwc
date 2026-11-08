@@ -1013,7 +1013,7 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	/* Shift+Print still gives Print in the usual layouts, Alt+Print gives Sys_Req. */
 	if (!alt && !ctrl && !logo && sym == XKB_KEY_Print) {
 		const char *shot = config_get(shift ? "clipboardScreenshot" : "screenshot");
-		spawn(shot ? shot : shift ? "msc -c" : "msc");
+		spawn(shot ? shot : shift ? "screenShot -c" : "screenShot");
 		return true;
 	}
 	if (logo && !alt && !ctrl) {
