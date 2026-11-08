@@ -15,7 +15,7 @@
  *     early_frame=1  ask with KDE's protocol before the surface has a role
  *     pre_late=max|full  ask for a state after the first configure, before the first buffer
  *     unparent=1     once running, the dialog stops belonging to the main window
- *     states=1     log the states each configure carries
+ *     states=1     log the states and the size each configure carries
  *     late_app=NAME set this app_id a moment after mapping
  *     grow=WxH     after mapping, take that size of its own accord; says "grown"
  *     grow_ms=MS   wait that long before, default 1000
@@ -26,7 +26,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <poll.h>
 #include <sys/mman.h>
+#include <time.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include "server-decoration-client.h"
@@ -57,6 +59,38 @@ struct window {
 };
 
 static struct wl_display *the_display;
+
+/* Wait that long while still answering the compositor. */
+static void wait_dispatching(struct wl_display *display, int ms)
+{
+	struct timespec now, end;
+	clock_gettime(CLOCK_MONOTONIC, &end);
+	end.tv_sec += ms / 1000;
+	end.tv_nsec += (ms % 1000) * 1000000L;
+	if (end.tv_nsec >= 1000000000L) {
+		end.tv_sec++;
+		end.tv_nsec -= 1000000000L;
+	}
+	for (;;) {
+		while (wl_display_prepare_read(display) != 0)
+			wl_display_dispatch_pending(display);
+		wl_display_flush(display);
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		long left = (end.tv_sec - now.tv_sec) * 1000 +
+			(end.tv_nsec - now.tv_nsec) / 1000000;
+		if (left <= 0) {
+			wl_display_cancel_read(display);
+			return;
+		}
+		struct pollfd p = { .fd = wl_display_get_fd(display), .events = POLLIN };
+		if (poll(&p, 1, left) > 0) {
+			wl_display_read_events(display);
+			wl_display_dispatch_pending(display);
+		} else {
+			wl_display_cancel_read(display);
+		}
+	}
+}
 #define wl_proxy_get_display_of(p) the_display
 
 static void draw(struct window *win)
@@ -118,7 +152,7 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t, int32_t w,
 		uint32_t *state;
 		wl_array_for_each(state, states)
 			maximized |= *state == XDG_TOPLEVEL_STATE_MAXIMIZED;
-		printf("configure %s\n", maximized ? "maximized" : "free");
+		printf("configure %s %dx%d\n", maximized ? "maximized" : "free", w, h);
 		fflush(stdout);
 	}
 }
@@ -323,7 +357,7 @@ int main(int argc, char *argv[])
 	if (grow_w > 0) {
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
-		usleep(grow_ms * 1000);
+		wait_dispatching(display, grow_ms);
 		main_win->natural_w = main_win->w = grow_w;
 		main_win->natural_h = main_win->h = grow_h;
 		draw(main_win);

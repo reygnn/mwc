@@ -1380,6 +1380,16 @@ static void xdg_commit(struct wl_listener *listener, void *data)
 	bool own = base->current.configure_serial >= view->anchor_serial &&
 		(w != view->requested_w || h != view->requested_h);
 	view_apply_size(view, w, h, own);
+	/* wlroots repeats the size mwc asked for last with every configure, a change of
+	 * focus too, and an obedient client would shrink back to it. A size it chose
+	 * itself is the one to repeat; 0 already leaves the choice to it. */
+	struct wlr_xdg_toplevel *t = view->xdg_toplevel;
+	if (own && view_left_alone(view) && (t->scheduled.width || t->scheduled.height) &&
+			(t->scheduled.width != w || t->scheduled.height != h)) {
+		wlr_xdg_toplevel_set_size(t, w, h);
+		view->requested_w = w;
+		view->requested_h = h;
+	}
 	/* Caught up: from now on what it committed is what counts, even if that
 	 * isn't quite what it was asked for. */
 	if (base->current.configure_serial >= view->anchor_serial) {

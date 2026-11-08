@@ -481,6 +481,7 @@ Mwm*gwgrow*geometry:    -0-0
 Mwm*gxgrow*geometry:    -0-0
 Mwm*gwleft*geometry:    +20+30
 Mwm*gwmoved*geometry:   -0-0
+Mwm*gwsized*geometry:   -0-0
 EOF
 kill -HUP "$pid"
 settle
@@ -563,11 +564,20 @@ check "at the bottom right it stays on the screen, before the X11 program's plac
 stop gpedge
 
 # Growing by itself, a window keeps the edges its entry counts from.
-wayland gwgrow grow=400x300
+wayland gwgrow grow=400x300 states=1
 mapped gwgrow
 wait_for "gwgrow has grown" grep -q grown "$SMOKE_DIR/gwgrow.events"
 check "a Wayland window placed at -0-0 keeps the corner when it grows" \
 	"[ \"\$(outer_w gwgrow)\" -gt 400 ] && [ \"\$(right gwgrow)\" = 1280 ] && [ \"\$(bottom gwgrow)\" = 720 ]"
+grown_w=$(outer_w gwgrow)
+wayland gfocus pos=0,0
+mapped gfocus
+check "another window takes the focus" "[ \"\$(get gwgrow active)\" = 0 ]"
+stop gfocus
+check "gwgrow has the focus again" "[ \"\$(get gwgrow active)\" = 1 ]"
+settle
+check "and keeps the size it chose through the configures that come with that" \
+	"[ \"\$(outer_w gwgrow)\" = $grown_w ] && [ \"\$(right gwgrow)\" = 1280 ]"
 do_input key alt+F10
 check "gwgrow is maximized" "[ \"\$(get gwgrow max)\" = 1 ]"
 do_input key alt+F10
@@ -581,6 +591,27 @@ wait_for "gxgrow has grown" grep -q grown "$SMOKE_DIR/gxgrow.events"
 check "an X11 window as well, whatever its own gravity" \
 	"[ \"\$(outer_w gxgrow)\" -gt 400 ] && [ \"\$(right gxgrow)\" = 1280 ] && [ \"\$(bottom gxgrow)\" = 720 ]"
 stop gxgrow
+
+# Once mwc has asked for a size, its later configures carry one: the size it chose
+# itself must be what they say, or an obedient client shrinks back.
+wayland gwsized grow=400x300 grow_ms=3000 states=1
+mapped gwsized
+do_input key alt+F10
+check "gwsized is maximized" "[ \"\$(get gwsized max)\" = 1 ]"
+do_input key alt+F10
+check "and restored" "[ \"\$(get gwsized max)\" = 0 ]"
+wait_for "gwsized has grown" grep -q grown "$SMOKE_DIR/gwsized.events"
+settle
+check "it keeps the size it chose" "[ \"\$(outer_w gwsized)\" -gt 400 ] && [ \"\$(right gwsized)\" = 1280 ]"
+grown_w=$(outer_w gwsized)
+wayland gfocus
+mapped gfocus
+stop gfocus
+check "gwsized has the focus again" "[ \"\$(get gwsized active)\" = 1 ]"
+settle
+check "it keeps the size it chose after one mwc asked for" \
+	"[ \"\$(outer_w gwsized)\" = $grown_w ] && [ \"\$(right gwsized)\" = 1280 ]"
+stop gwsized
 
 wayland gwleft grow=400x300
 mapped gwleft
