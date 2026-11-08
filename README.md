@@ -154,8 +154,8 @@ Mwm*pulseControl*geometry:  -0-0
 Mwm*XTerm*geometry:         +20-40
 ```
 
-`pointer` instead of a position puts the frame's top-left corner at the pointer, moved
-back as far as needed to stay on the monitor. That suits a run dialog opened by a
+`pointer` instead of a position puts the middle of the title bar under the pointer,
+moved back as far as needed to stay on the monitor. That suits a run dialog opened by a
 click on the desktop:
 
 ```

@@ -1139,9 +1139,12 @@ static void view_place_mapped(struct view *view)
 	int w = view->width + frame_extra_w(view);
 	int h = view->height + frame_extra_h(view);
 	if (pos.at_pointer) {
-		/* The pixel the hotspot is on, as the state file reports it. */
-		view_place_within(view, a, (int)floor(view->server->cursor->x),
-			(int)floor(view->server->cursor->y));
+		/* The middle of the title under the pixel the hotspot is on, as the state
+		 * file reports it: a click there doesn't resize. */
+		int cx, cy;
+		frame_title_center(view, &cx, &cy);
+		view_place_within(view, a, (int)floor(view->server->cursor->x) - cx,
+			(int)floor(view->server->cursor->y) - cy);
 		return;
 	}
 	view_place_within(view, a,

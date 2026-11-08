@@ -542,9 +542,12 @@ do_input move 400 300
 settle
 wayland gpointer
 mapped gpointer
-check "pointer puts the frame's top-left corner at the pointer" \
-	"[ \"\$(get gpointer x)\" = \"\$(global cursor x)\" ] && [ \"\$(get gpointer y)\" = \"\$(global cursor y)\" ] && \
-	 [ \"\$(global cursor x)\" -ge 399 ] && [ \"\$(global cursor x)\" -le 401 ]"
+cx=$(global cursor x) cy=$(global cursor y)
+check "pointer puts the middle of the title bar under the pointer" \
+	"[ \$cx -ge 399 ] && [ \$cx -le 401 ] && \
+	 [ \$((\$(get gpointer x) + \$(outer_w gpointer) / 2 - cx)) -ge -\$(get gpointer th) ] && \
+	 [ \$((\$(get gpointer x) + \$(outer_w gpointer) / 2 - cx)) -le \$(get gpointer th) ] && \
+	 [ \$((\$(get gpointer y) + \$(get gpointer bw) + \$(get gpointer th) / 2)) = \$cy ]"
 stop gpointer
 
 do_input move 1270 710

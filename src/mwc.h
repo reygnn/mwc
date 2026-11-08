@@ -578,6 +578,8 @@ int frame_left(struct view *view);
 int frame_top(struct view *view);
 int frame_extra_w(struct view *view);
 int frame_extra_h(struct view *view);
+/* Where the pointer goes on a window opened at it, from the frame's top-left. */
+void frame_title_center(struct view *view, int *x, int *y);
 /* Outer frame height; a shaded window keeps only its title bar. */
 int frame_height(struct view *view);
 void frame_render(struct view *view);
@@ -745,7 +747,7 @@ void config_view_shades(struct view *view);
 void config_view_tiling(struct view *view);
 /* Where a program's mwmrc entry wants a new window. The distances are from the
  * left and top edges, or from the right and bottom ones. With at_pointer, the
- * frame's top-left corner goes to the pointer instead. */
+ * middle of the title bar goes to the pointer instead. */
 struct config_position {
 	int x, y;
 	bool from_right, from_bottom;

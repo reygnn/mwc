@@ -102,6 +102,21 @@ static void title_layout(struct view *view, struct title_layout *tl)
 	tl->title_w = right - left;
 }
 
+/* The middle of the title bar between the buttons, from the frame's top-left corner.
+ * Without a title bar, the middle of the frame. */
+void frame_title_center(struct view *view, int *x, int *y)
+{
+	if (!frame_title(view)) {
+		*x = (view->width + frame_extra_w(view)) / 2;
+		*y = (view->height + frame_extra_h(view)) / 2;
+		return;
+	}
+	struct title_layout tl;
+	title_layout(view, &tl);
+	*x = tl.title_x + tl.title_w / 2;
+	*y = frame_border(view) + theme.title_height / 2;
+}
+
 /* How far the resize corners reach along each side of a W x H frame: B+T, at
  * most half the frame. Hit testing and the grooves agree. */
 static void corner_reach(int W, int H, int *kx, int *ky)
