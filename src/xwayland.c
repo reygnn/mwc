@@ -295,6 +295,19 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 		view_send_size(view, view->xsurface->width, view->xsurface->height);
 		return;
 	}
+	/* Only a new size: the edge from its mwmrc entry goes before its own gravity.
+	 * A new place it asks for ends that. */
+	if (vx != view->x - fx0 || vy != view->y - fy0) {
+		view->gravity_edges = 0;
+	} else if (view->gravity_edges) {
+		int gx, gy;
+		view_gravity_place(view, view->xsurface->width, view->xsurface->height,
+			w, h, &gx, &gy);
+		if (view->gravity_edges & WLR_EDGE_RIGHT)
+			fx = gx;
+		if (view->gravity_edges & WLR_EDGE_BOTTOM)
+			fy = gy;
+	}
 	view_set_geometry(view, fx, fy, w, h);
 }
 

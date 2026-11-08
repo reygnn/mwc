@@ -303,6 +303,7 @@ bool tabs_join(struct view *view, struct view *target)
 	view->auto_shaded = false;
 	view->tab_hidden = true;
 	view->group = g;
+	view->gravity_edges = target->gravity_edges = 0;
 	wl_list_insert(g->members.prev, &view->tab_link);
 	switch_to(g, view, g->shown, false);
 	return true;

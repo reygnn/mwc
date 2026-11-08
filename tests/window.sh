@@ -477,6 +477,10 @@ Mwm*gtab*geometry:      -0-0
 Mwm*gmaxed*geometry:    -0-0
 Mwm*gpointer*geometry:  pointer
 Mwm*gpedge*geometry:    Pointer
+Mwm*gwgrow*geometry:    -0-0
+Mwm*gxgrow*geometry:    -0-0
+Mwm*gwleft*geometry:    +20+30
+Mwm*gwmoved*geometry:   -0-0
 EOF
 kill -HUP "$pid"
 settle
@@ -557,6 +561,45 @@ mapped gpedge
 check "at the bottom right it stays on the screen, before the X11 program's place" \
 	"[ \"\$(right gpedge)\" = 1280 ] && [ \"\$(bottom gpedge)\" = 720 ]"
 stop gpedge
+
+# Growing by itself, a window keeps the edges its entry counts from.
+wayland gwgrow grow=400x300
+mapped gwgrow
+wait_for "gwgrow has grown" grep -q grown "$SMOKE_DIR/gwgrow.events"
+check "a Wayland window placed at -0-0 keeps the corner when it grows" \
+	"[ \"\$(outer_w gwgrow)\" -gt 400 ] && [ \"\$(right gwgrow)\" = 1280 ] && [ \"\$(bottom gwgrow)\" = 720 ]"
+do_input key alt+F10
+check "gwgrow is maximized" "[ \"\$(get gwgrow max)\" = 1 ]"
+do_input key alt+F10
+check "restored, mwc's own size change moves nothing: still in the corner" \
+	"[ \"\$(get gwgrow max)\" = 0 ] && [ \"\$(right gwgrow)\" = 1280 ] && [ \"\$(bottom gwgrow)\" = 720 ]"
+stop gwgrow
+
+x11 gxgrow grow=400x300
+mapped gxgrow
+wait_for "gxgrow has grown" grep -q grown "$SMOKE_DIR/gxgrow.events"
+check "an X11 window as well, whatever its own gravity" \
+	"[ \"\$(outer_w gxgrow)\" -gt 400 ] && [ \"\$(right gxgrow)\" = 1280 ] && [ \"\$(bottom gxgrow)\" = 720 ]"
+stop gxgrow
+
+wayland gwleft grow=400x300
+mapped gwleft
+wait_for "gwleft has grown" grep -q grown "$SMOKE_DIR/gwleft.events"
+check "one placed at +20+30 keeps its top-left corner" \
+	"[ \"\$(outer_w gwleft)\" -gt 400 ] && [ \"\$(get gwleft x)\" = 20 ] && [ \"\$(get gwleft y)\" = 30 ]"
+stop gwleft
+
+wayland gwmoved grow=400x300 grow_ms=3000
+mapped gwmoved
+drag $(($(get gwmoved x) + 100)) $(($(get gwmoved y) + 12)) 500 300
+check "it can be moved away" "[ \"\$(right gwmoved)\" != 1280 ]"
+settle
+moved_x=$(get gwmoved x)
+moved_y=$(get gwmoved y)
+wait_for "gwmoved has grown" grep -q grown "$SMOKE_DIR/gwmoved.events"
+check "moved by hand, it grows from where it is now" \
+	"[ \"\$(outer_w gwmoved)\" -gt 400 ] && [ \"\$(get gwmoved x)\" = $moved_x ] && [ \"\$(get gwmoved y)\" = $moved_y ]"
+stop gwmoved
 
 wayland gmain dialog=gdialog
 mapped gmain

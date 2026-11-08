@@ -252,5 +252,6 @@ void view_move_to_edge(struct view *view, enum snap_dir dir)
 		y = a.y + a.height - h > a.y ? a.y + a.height - h : a.y;
 		break;
 	}
+	view->gravity_edges = 0;
 	view_set_position(view, x, y);
 }

@@ -221,6 +221,10 @@ struct view {
 	uint32_t anchor_edges;
 	int anchor_right, anchor_bottom;
 	uint32_t anchor_serial; /* last configure sent with a new size */
+	/* WLR_EDGE_RIGHT and/or _BOTTOM: placed from that edge by its mwmrc entry, it
+	 * keeps the edge when it changes size by itself. Over once the user moves or
+	 * resizes it, or it joins a group. */
+	uint32_t gravity_edges;
 	int requested_w, requested_h; /* xdg: the client's size once it has caught up */
 	int icon_x, icon_y;
 	bool icon_placed;
@@ -480,6 +484,10 @@ void xdg_surface_set_tree(struct wlr_xdg_surface *base, struct wlr_scene_tree *t
 void view_focus(struct view *view);
 void view_set_position(struct view *view, int x, int y);
 void view_set_geometry(struct view *view, int x, int y, int w, int h);
+/* Where the frame goes when the client changes from ow x oh to w x h by itself:
+ * with view->gravity_edges, the right or bottom edge stays put. */
+void view_gravity_place(struct view *view, int ow, int oh, int w, int h,
+	int *x, int *y);
 void view_close(struct view *view);
 void view_lower(struct view *view);
 void view_set_maximized(struct view *view, bool maximized);

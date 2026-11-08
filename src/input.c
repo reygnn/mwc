@@ -234,6 +234,9 @@ static void end_grab(struct server *server)
 	double px = server->cursor->x, py = server->cursor->y;
 	stop_resizing_state(server);
 	clear_grab(server);
+	/* Put somewhere else by hand: from now on it grows from there. */
+	if (changed)
+		view->gravity_edges = 0;
 	if (take) {
 		finish_take(server, view, take, moved, target, server->grab_button);
 		return;

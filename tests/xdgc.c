@@ -17,6 +17,8 @@
  *     unparent=1     once running, the dialog stops belonging to the main window
  *     states=1     log the states each configure carries
  *     late_app=NAME set this app_id a moment after mapping
+ *     grow=WxH     after mapping, take that size of its own accord; says "grown"
+ *     grow_ms=MS   wait that long before, default 1000
  *     dialog=NAME  also open a child toplevel with this app_id
  */
 #define _GNU_SOURCE
@@ -39,6 +41,7 @@ static int default_w = 300, default_h = 200, min_w, min_h, max_w, max_h;
 static int open_windows;
 static const char *pre_state;
 static const char *late_app;
+static int grow_w, grow_h, grow_ms = 1000;
 static bool log_states, client_side;
 static const char *late_frame, *pre_late;
 static bool early_frame, unparent;
@@ -263,6 +266,10 @@ int main(int argc, char *argv[])
 			log_states = atoi(v);
 		else if (!strcmp(argv[i], "late_app"))
 			late_app = v;
+		else if (!strcmp(argv[i], "grow"))
+			sscanf(v, "%dx%d", &grow_w, &grow_h);
+		else if (!strcmp(argv[i], "grow_ms"))
+			grow_ms = atoi(v);
 	}
 	if (!app) {
 		fprintf(stderr, "xdgc: app= is required\n");
@@ -312,6 +319,17 @@ int main(int argc, char *argv[])
 		xdg_toplevel_set_app_id(main_win->toplevel, late_app);
 		wl_surface_commit(main_win->surface);
 		wl_display_flush(display);
+	}
+	if (grow_w > 0) {
+		wl_display_roundtrip(display);
+		wl_display_roundtrip(display);
+		usleep(grow_ms * 1000);
+		main_win->natural_w = main_win->w = grow_w;
+		main_win->natural_h = main_win->h = grow_h;
+		draw(main_win);
+		wl_display_flush(display);
+		printf("grown\n");
+		fflush(stdout);
 	}
 	while (open_windows > 0 && wl_display_dispatch(display) != -1) {
 	}

@@ -118,12 +118,52 @@ void view_set_geometry(struct view *view, int x, int y, int w, int h)
 	view_send_size(view, w, h);
 }
 
-/* Called from the commit handlers once the client has a (new) size. */
-static void view_apply_size(struct view *view, int w, int h)
+/* Neither mwc nor the user is deciding its size and place right now. Otherwise mwc
+ * does, and a group's frame belongs to all of it. */
+static bool view_left_alone(struct view *view)
+{
+	return !view->maximized && !view->fullscreen && view->snap == SNAP_NONE &&
+		!view->tiled && !view->group && view->server->grabbed_view != view;
+}
+
+void view_gravity_place(struct view *view, int ow, int oh, int w, int h,
+	int *x, int *y)
+{
+	*x = view->x;
+	*y = view->y;
+	struct server *server = view->server;
+	if (!view->gravity_edges || !view_left_alone(view))
+		return;
+	int ew = frame_extra_w(view), eh = frame_extra_h(view);
+	struct wlr_box a = output_usable_area(server, view->x + (ow + ew) / 2.0,
+		view->y + (oh + eh) / 2.0);
+	if (view->gravity_edges & WLR_EDGE_RIGHT)
+		*x = view->x + ow - w;
+	if (view->gravity_edges & WLR_EDGE_BOTTOM)
+		*y = view->y + oh - h;
+	/* Grown past the left or top edge: the title bar stays reachable. */
+	if (*x < a.x)
+		*x = a.x;
+	if (*y < a.y)
+		*y = a.y;
+}
+
+/* Called from the commit handlers once the client has a (new) size; own when the
+ * client chose it, not mwc. */
+static void view_apply_size(struct view *view, int w, int h, bool own)
 {
 	if (w == view->width && h == view->height) {
 		view_update_content_pos(view);
 		return;
+	}
+	if (own && !view->anchor_edges) {
+		int x, y;
+		view_gravity_place(view, view->width, view->height, w, h, &x, &y);
+		if (x != view->x || y != view->y) {
+			view->x = x;
+			view->y = y;
+			wlr_scene_node_set_position(&view->tree->node, x, y);
+		}
 	}
 	/* Keep the opposite edge anchored while resizing from left/top. */
 	if (view->anchor_edges) {
@@ -1134,6 +1174,9 @@ static void view_place_mapped(struct view *view)
 		view_place(view);
 		return;
 	}
+	if (!pos.at_pointer)
+		view->gravity_edges = (pos.from_right ? WLR_EDGE_RIGHT : 0) |
+			(pos.from_bottom ? WLR_EDGE_BOTTOM : 0);
 	struct wlr_box a = output_usable_area(view->server, view->server->cursor->x,
 		view->server->cursor->y);
 	int w = view->width + frame_extra_w(view);
@@ -1168,6 +1211,7 @@ void view_handle_map(struct view *view)
 		tabs_bring(root);
 	struct view *parent = view_parent(view);
 	bool hide = parent && view_hidden(parent);
+	view->gravity_edges = 0; /* view_place_mapped() sets it from the entry */
 	if (view->placed)
 		view_set_position(view, view->x, view->y);
 	else if (!view->maximized && !view->fullscreen && view->snap == SNAP_NONE)
@@ -1331,7 +1375,11 @@ static void xdg_commit(struct wl_listener *listener, void *data)
 	}
 	if (!view->mapped)
 		return;
-	view_apply_size(view, base->geometry.width, base->geometry.height);
+	/* Caught up, and still not the size asked for: its own choice. */
+	int w = base->geometry.width, h = base->geometry.height;
+	bool own = base->current.configure_serial >= view->anchor_serial &&
+		(w != view->requested_w || h != view->requested_h);
+	view_apply_size(view, w, h, own);
 	/* Caught up: from now on what it committed is what counts, even if that
 	 * isn't quite what it was asked for. */
 	if (base->current.configure_serial >= view->anchor_serial) {

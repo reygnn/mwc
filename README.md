@@ -166,6 +166,11 @@ The entry goes before a position the program asks for itself, but not for dialog
 other secondary windows. Afterwards the window moves freely, and a reload moves
 nothing. In tiling mode the layout decides, unless the program is in `DoNotTile`.
 
+A window placed from the right or bottom edge keeps that edge when it changes its size
+by itself, as with X11's `win_gravity`: at `-0-0` it grows to the top left and stays in
+the corner. Once it is moved or resized by hand, put into a tab group, or asks for a
+place of its own, it grows from wherever it is.
+
 Hidden and shown again, a window returns to its entry's place, unless it is an X11
 program with a position of its own: that one stays where it was. A tab taken out of
 its group cascades as usual. The entry doesn't count for a window that starts

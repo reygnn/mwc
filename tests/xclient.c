@@ -31,6 +31,7 @@
  *     report=1            print _NET_FRAME_EXTENTS as it changes, and whether a Motif
  *                         window manager can be found, as XmIsMotifWMRunning looks
  *     moveto=X,Y          once mapped, XMoveWindow there
+ *     grow=WxH            1 s after mapping, XResizeWindow to that size; says "grown"
  *     iconic=1            WM_HINTS with the initial state iconic
  *     normalize=1         once mapped, WM_CHANGE_STATE to NormalState
  *     rehide=N            withdraw and map it again, N times; says "reshown N" each time,
@@ -97,6 +98,7 @@ struct options {
 	int moveresize;
 	bool has_moveto, iconic, normalize, report;
 	int moveto_x, moveto_y;
+	int grow_w, grow_h;
 	const char *override;
 	long strut[4];
 	bool has_strut;
@@ -456,6 +458,8 @@ int main(int argc, char *argv[])
 			o.report = atoi(v);
 		else if (!strcmp(k, "moveto"))
 			o.has_moveto = sscanf(v, "%d,%d", &o.moveto_x, &o.moveto_y) == 2;
+		else if (!strcmp(k, "grow"))
+			sscanf(v, "%dx%d", &o.grow_w, &o.grow_h);
 		else if (!strcmp(k, "iconic"))
 			o.iconic = atoi(v);
 		else if (!strcmp(k, "normalize"))
@@ -523,6 +527,14 @@ int main(int argc, char *argv[])
 		XMoveWindow(dpy, main_win, o.moveto_x, o.moveto_y);
 		XSync(dpy, False);
 		printf("moved\n");
+	}
+	if (o.grow_w > 0) {
+		XSync(dpy, False);
+		usleep(1000000);
+		XResizeWindow(dpy, main_win, o.grow_w, o.grow_h);
+		XSync(dpy, False);
+		printf("grown\n");
+		fflush(stdout);
 	}
 	if (o.normalize) {
 		XSync(dpy, False);
