@@ -171,6 +171,8 @@ static void output_manager_send(void *data)
 			head->state.enabled = true;
 		struct wlr_box box;
 		wlr_output_layout_get_box(server->output_layout, output->wlr_output, &box);
+		if (output->client_off)
+			box = output->off_box;
 		head->state.x = box.x;
 		head->state.y = box.y;
 	}
@@ -440,8 +442,9 @@ void outputs_config_changed(struct server *server)
 {
 	struct output *output;
 	wl_list_for_each(output, &server->outputs, link) {
-		/* What a client set stays, until mwmrc says something new about the output. */
-		if (output_keeps_managed(output))
+		/* What a client set stays, until mwmrc says something new about the output.
+		 * One a client switched off stays out of the layout. */
+		if (output->client_off || output_keeps_managed(output))
 			continue;
 		/* Whoever switched it off wants it off, see output_power_set_mode(). */
 		if (output->wlr_output->enabled)
@@ -550,9 +553,9 @@ static bool head_state_usable(const struct wlr_output_head_v1_state *s)
 }
 
 /* Tests or applies what a client asks for, all outputs at once. An output it switches
- * off stays in the layout, as with output-power, so windows keep their places. One
- * that is dark (output-power) stays dark: what the client set for it is kept, and
- * comes with the power. */
+ * off leaves the layout and comes back where it was; one that is dark (output-power)
+ * stays in it and stays dark: what the client set for it is kept, and comes with the
+ * power. */
 static bool output_manager_configure(struct server *server,
 	struct wlr_output_configuration_v1 *config, bool apply)
 {
@@ -615,8 +618,12 @@ static bool output_manager_configure(struct server *server,
 		/* wlroots sends a head switched off with everything else zeroed: it keeps
 		 * its place, and what a client set before comes back with it. */
 		if (!head->state.enabled) {
+			/* Out of the layout, unlike a dark one: nobody is to work there. */
+			if (!output->client_off)
+				output->off_box = output->box_before;
 			output->client_off = true;
 			output->dark = false;
+			wlr_output_layout_remove(server->output_layout, head->state.output);
 			i++;
 			continue;
 		}

@@ -490,6 +490,9 @@ struct output {
 	 * come back with. client_off: a wlr-output-management client doesn't want it;
 	 * a power on leaves it off, only such a client brings it back. */
 	bool dark, client_off;
+	/* Where a client_off output was: it leaves the layout, so the pointer and new
+	 * windows stay on the monitors that are there, and comes back here. */
+	struct wlr_box off_box;
 	/* Scratch for output_manager_configure(): where it was, and whether the
 	 * configuration names it. */
 	struct wlr_box box_before;

@@ -24,8 +24,11 @@ TODO
   dauert das, bis der Zeiger eine Fläche wechselt. Ausweg: in output_frame
   merken, wann software_cursor_locks auf 0 fällt, und das Bild neu setzen
   wie output_back_on() — dafür müsste request_cursor die Fläche und den
-  Hotspot des Clients merken; output_back_on() fehlt dasselbe heute schon
-  (über einem Client ist der Zeiger nach Aus und An unsichtbar).
+  Hotspot des Clients merken (wlr_cursor_set_surface übergeht dieselbe Fläche
+  ein zweites Mal), oder den Zeigerfokus kurz lösen, damit der Client sein Bild
+  neu schickt. Nach Aus und An über output-power bleibt das Bild eines Clients
+  dagegen erhalten: headless geprüft (foot, Zeiger-Sitzung), wlroots baut es
+  beim Einschalten selbst neu; auf DRM ungeprüft.
   Abnahme: session.sh fängt den Zeiger nach einer Aufnahme mit "cursors"
   und bekommt ein Bild; ein Upstream-Bericht an wlroots.
 
@@ -35,7 +38,16 @@ TODO
   0x0 ohne Formate und erneuert sich nur bei einem Commit mit neuem Modus oder
   Renderformat; mwc schaltet ihn aber mit dem alten Modus wieder ein. Ein wayvnc,
   der während DPMS-aus startet, bekommt so nie ein Bild, bis jemand den Modus
-  ändert. Gehört nach wlroots (die Quelle soll auch auf ENABLED hören); in mwc
-  ginge nur ein erzwungener Moduswechsel beim Einschalten.
+  ändert. wlroots 0.20.2 behebt das (die Quelle hört dort auch auf ENABLED);
+  in mwc ginge vorher nur ein erzwungener Moduswechsel beim Einschalten.
   Abnahme: session.sh schaltet mit powerc aus, startet capturec, schaltet ein
-  und bekommt ein Bild; ein Upstream-Bericht an wlroots.
+  und bekommt ein Bild.
+
+* wlroots 0.20. Ubuntu-Paket libwlroots-0.20-dev prüfen. 0.20.2 behebt beides,
+  was mwc heute umgeht oder offen lässt: den shm-Allocator ohne
+  wlr_buffer_finish (src/shmalloc.c fällt dann weg) und die Aufnahmequelle, die
+  beim Einschalten nicht neu wird (siehe oben, hört dort auch auf
+  WLR_OUTPUT_STATE_ENABLED). Nicht behoben ist der Absturz in
+  wlr-output-management (head_send_state, 40640950 nur auf master):
+  Mwm*outputManagement bleibt nötig. Ein eigener Branch, mit allen API-Änderungen
+  von 0.19 auf 0.20.

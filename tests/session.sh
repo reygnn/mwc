@@ -349,7 +349,12 @@ reload
 output_is "a reload leaves it where the client put it" HEADLESS-2 0 720 1280 720
 outputc apply HEADLESS-2 off || fail "a client switching one of two off"
 check "it is off" "outputc list | grep -q '^HEADLESS-2 on=0'"
-output_is "and keeps its place" HEADLESS-2 0 720 1280 720
+# Unlike a dark one it leaves the layout: the pointer can't go where it was.
+output_is "and leaves the layout" HEADLESS-2 0 0 0 0
+do_input move 100 700
+check "the pointer stays on the other" "[ \"\$(global cursor y)\" -lt 720 ]"
+reload
+output_is "a reload leaves it out" HEADLESS-2 0 0 0 0
 outputc apply HEADLESS-2 on || fail "and on again"
 check "on again in its place" "outputc list | grep -q '^HEADLESS-2 on=1 w=1280 h=720 x=0 y=720 '"
 finish

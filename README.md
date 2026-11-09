@@ -449,8 +449,10 @@ RDP server uses, are the ones that run into it. The fix is on wlroots' master (c
 - What a client set stays over a reload until mwmrc says something new about that
   monitor. A monitor that goes away, also for a VT switch, comes back with what mwmrc
   says.
-- A monitor a client switched off stays off when a tool such as `wlopm` switches the
-  monitors on after an idle spell; only such a client switches it back on.
+- A monitor a client switched off leaves the layout, so the pointer and new windows
+  stay on the others, and comes back where it was. It stays off when a tool such as
+  `wlopm` switches the monitors on after an idle spell; only such a client switches it
+  back on.
 - A monitor that is off for the time being, through `wlr-output-power`, still counts as
   on for these clients, with what it will come back with. What a client sets for it
   then waits until it is on again.
