@@ -42,10 +42,21 @@ struct output *output_at(struct server *server, double lx, double ly)
 		lx, ly);
 	if (o)
 		return o->data;
+	/* Not one a client switched off: its area is empty, and windows put there
+	 * would be out of reach. */
 	struct output *out;
+	wl_list_for_each(out, &server->outputs, link) {
+		if (output_in_layout(out))
+			return out;
+	}
 	wl_list_for_each(out, &server->outputs, link)
 		return out;
 	return NULL;
+}
+
+bool output_in_layout(struct output *output)
+{
+	return wlr_output_layout_get(output->server->output_layout, output->wlr_output);
 }
 
 struct wlr_box output_full_area(struct server *server, double lx, double ly)

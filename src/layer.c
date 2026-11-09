@@ -119,7 +119,16 @@ static void publish_workarea(struct server *server)
 	if (!server->xwayland || !wlr_xwayland_get_xwm_connection(server->xwayland) ||
 			wl_list_empty(&server->outputs))
 		return;
-	struct output *first = wl_container_of(server->outputs.prev, first, link);
+	/* The oldest output in the layout: one a client switched off has none. */
+	struct output *first = NULL, *o;
+	wl_list_for_each_reverse(o, &server->outputs, link) {
+		if (output_in_layout(o)) {
+			first = o;
+			break;
+		}
+	}
+	if (!first)
+		return;
 	wlr_xwayland_set_workareas(server->xwayland, &first->usable, 1);
 	/* wlroots leaves it in the queue, and idle clients would never hear of it. */
 	xcb_flush(wlr_xwayland_get_xwm_connection(server->xwayland));
@@ -365,7 +374,8 @@ static void new_layer_surface(struct wl_listener *listener, void *data)
 
 	struct output *output = wlr->output ? wlr->output->data :
 		output_at(server, server->cursor->x, server->cursor->y);
-	if (!output) {
+	/* One a client switched off has no place for it. */
+	if (!output || !output_in_layout(output)) {
 		wlr_log(WLR_INFO, "no output for layer surface %s", wlr->namespace);
 		wlr_layer_surface_v1_destroy(wlr);
 		return;

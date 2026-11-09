@@ -624,14 +624,24 @@ static bool output_manager_configure(struct server *server,
 			output->client_off = true;
 			output->dark = false;
 			wlr_output_layout_remove(server->output_layout, head->state.output);
+			/* Its panels have nowhere to be: closed, as when it is unplugged. */
+			layer_output_gone(output);
 			i++;
 			continue;
 		}
+		bool was_out = !output_in_layout(output);
 		output->client_off = false;
 		/* Where the client says, also where it already is: placed, it stays
 		 * there when other outputs change. */
-		wlr_output_layout_add(server->output_layout, head->state.output,
-			head->state.x, head->state.y);
+		struct wlr_output_layout_output *lo = wlr_output_layout_add(
+			server->output_layout, head->state.output, head->state.x,
+			head->state.y);
+		/* Leaving the layout cut the scene's tie to it: without it the picture
+		 * would stay where it was and not follow the layout any more. */
+		struct wlr_scene_output *so = wlr_scene_get_scene_output(server->scene,
+			head->state.output);
+		if (was_out && lo && so)
+			wlr_scene_output_layout_add_output(server->scene_layout, lo, so);
 		output_forget_managed(output);
 		output->managed_rc = output_rc_text(head->state.output);
 		output->managed = head->state;

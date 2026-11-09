@@ -559,6 +559,8 @@ void view_raise_one(struct view *view);
 /* Puts every window into its scene layer, by type, state and focus. */
 void views_update_layers(struct server *server);
 struct output *output_at(struct server *server, double lx, double ly);
+/* False for one a wlr-output-management client switched off: it left the layout. */
+bool output_in_layout(struct output *output);
 struct wlr_box output_usable_area(struct server *server, double lx, double ly);
 struct wlr_box output_full_area(struct server *server, double lx, double ly);
 /* Maximized windows and icons follow when panels come and go. */

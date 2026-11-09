@@ -380,6 +380,32 @@ outputc apply "$right" at 0,720 || fail "a client moving the right one"
 check "it goes where the client says" "outputc list | grep -q '^$right on=1 w=1280 h=720 x=0 y=720 '"
 check "and the left one stays" "outputc list | grep -q '^$left_name on=1 w=640 h=480 x=0 y=0 '"
 finish
+# A client switching off the newest monitor while the other isn't at 0,0, as a docking
+# profile does: its windows go to the monitor that is left, not to where it was. Then it
+# comes back elsewhere, and its picture comes from there.
+printf 'Mwm*outputManagement: true\nMwm*rootBackground: #204060\nMwm*HEADLESS-1*outputPosition: 0,0\nMwm*HEADLESS-2*outputPosition: 1280,0\n' >"$RC"
+begin 2560 720
+DISPLAY=$X_DISPLAY build/xclient class=stranded pos=100,100 size=300x200 >/dev/null 2>&1 &
+PID_stranded=$!
+check "a window on HEADLESS-1" "[ -n \"\$(get stranded x)\" ] && [ \"\$(get stranded x)\" -lt 1280 ]"
+outputc apply HEADLESS-1 off || fail "a client switching off the newest monitor"
+check "the window goes to the monitor that is left" \
+	"[ \"\$(get stranded x)\" -ge 1280 ] && [ \"\$(get stranded x)\" -lt 2560 ]"
+outputc apply HEADLESS-1 on at 2560,0 || fail "on again, elsewhere"
+check "it comes back where the client says" \
+	"outputc list | grep -q '^HEADLESS-1 on=1 w=1280 h=720 x=2560 y=0 '"
+DISPLAY=$X_DISPLAY build/xclient class=there pos=2700,100 size=300x200 >/dev/null 2>&1 &
+PID_there=$!
+check "a window where it is now" "[ \"\$(get there x)\" -ge 2560 ]"
+sleep 0.3
+capturec frame HEADLESS-1 "$SMOKE_DIR/back.png" || fail "capturing it"
+[ "$(build/pngtool pixel "$SMOKE_DIR/back.png" 1000 600)" = 204060 ] ||
+	fail "its desktop isn't where it is: $(build/pngtool pixel "$SMOKE_DIR/back.png" 1000 600)"
+[ "$(build/pngtool pixel "$SMOKE_DIR/back.png" 290 200)" != 204060 ] ||
+	fail "its picture isn't from where it is now: no window at 290,200"
+echo "ok: and its picture comes from there"
+kill "$PID_stranded" "$PID_there" 2>/dev/null
+finish
 unset WLR_HEADLESS_OUTPUTS
 
 # ---- the keyboard -----------------------------------------------------------------------
