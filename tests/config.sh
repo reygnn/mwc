@@ -366,6 +366,40 @@ pixel_is "the wallpaper comes" 1270 700 ff0000
 build/pngtool stripes "$SMOKE_DIR/same.png" 1280 720 00ff00 00ff00
 kill -HUP "$pid"
 pixel_is "a reload reads the wallpaper again" 1270 700 00ff00
+
+# ---- iconPlacement ------------------------------------------------------------
+
+do_input key alt+F9
+check "xterm is an icon too" "[ \"\$(get XTerm min)\" = 1 ]"
+# icons_at <description> <x,y> <x,y>: foot and xterm in these two slots, either way
+icons_at() {
+	check "$1" "p=\"\$(get foot icon_x),\$(get foot icon_y) \$(get XTerm icon_x),\$(get XTerm icon_y)\"; \
+		[ \"\$p\" = \"$2 $3\" ] || [ \"\$p\" = \"$3 $2\" ]"
+}
+icons_at "by default along the bottom from the left" 8,640 88,640
+echo "Mwm*iconPlacement: top right" >>"$RC"
+kill -HUP "$pid"
+icons_at "top right: down the right edge" 1200,8 1200,88
+echo "Mwm*iconPlacement: right top tight" >>"$RC"
+kill -HUP "$pid"
+icons_at "right top tight: along the top from the right, no gap" 1200,8 1128,8
+echo "Mwm*iconPlacement: left right" >>"$RC"
+kill -HUP "$pid"
+wait_for "a wrong iconPlacement is reported" grep -q 'expected an iconPlacement' "$LOG"
+icons_at "and the default is used" 8,640 88,640
+echo "Mwm*iconPlacement: top right" >>"$RC"
+kill -HUP "$pid"
+icons_at "top right again" 1200,8 1200,88
+do_input key super+t
+do_input move $(($(get XTerm icon_x) + 30)) $(($(get XTerm icon_y) + 30))
+do_input click left
+do_input click left
+check "xterm is back and tiled" "[ \"\$(get XTerm min)\" = 0 ] && [ \"\$(get XTerm tiled)\" = 1 ]"
+check "the layout ends left of the icon column" \
+	"[ \$((\$(get XTerm x) + \$(get XTerm w) + 2 * $B)) -le \$(get foot icon_x) ]"
+check "and keeps the full height" "[ \$((\$(get XTerm y) + 300)) -lt 640 ] && \
+	[ \$((\$(get XTerm y) + \$(get XTerm h))) -gt 640 ]"
+do_input key super+t
 stop_vinput
 stop_mwc
 

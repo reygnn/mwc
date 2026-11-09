@@ -22,6 +22,7 @@
  *   Mwm*XTerm*activeBackground:    #8a0303    per client
  *   Mwm*foot*activeBackground:     gold
  *   Mwm*pulseControl*geometry:     -0-0       where its windows appear, per client
+ *   Mwm*iconPlacement:             top right  icons from the top right corner down
  *
  * The client part matches an X11 window's WM_CLASS instance or class name, or
  * a Wayland client's app_id, ignoring case. Colours are #rrggbb, colour names
@@ -65,6 +66,9 @@ static struct {
 	char *label, *command;
 } root_items[CONFIG_MAX_ROOT_ITEMS];
 static int n_root_items;
+
+static struct config_icon_placement icon_placement = { .horizontal = true,
+	.from_bottom = true };
 
 static char *trim(char *s)
 {
@@ -225,6 +229,58 @@ static void check_positions(void)
 	}
 }
 
+/* "left bottom", "top right tight" and so on: one horizontal and one vertical
+ * direction, the first is where a row or column of icons grows. */
+static bool parse_icon_placement(const char *value,
+	struct config_icon_placement *out)
+{
+	*out = (struct config_icon_placement){ 0 };
+	char *copy = strdup(value), *save = NULL;
+	int n = 0, have_h = 0, have_v = 0;
+	bool ok = true;
+	for (char *tok = strtok_r(copy, " \t", &save); tok && ok;
+			tok = strtok_r(NULL, " \t", &save), n++) {
+		if (n < 2 && (!strcasecmp(tok, "left") || !strcasecmp(tok, "right"))) {
+			out->from_right = !strcasecmp(tok, "right");
+			out->horizontal |= n == 0;
+			ok = !have_h++;
+		} else if (n < 2 && (!strcasecmp(tok, "top") || !strcasecmp(tok, "bottom"))) {
+			out->from_bottom = !strcasecmp(tok, "bottom");
+			ok = !have_v++;
+		} else if (n == 2 && !strcasecmp(tok, "tight")) {
+			out->tight = true;
+		} else {
+			ok = false;
+		}
+	}
+	free(copy);
+	return ok && have_h && have_v;
+}
+
+static void load_icon_placement(void)
+{
+	icon_placement = (struct config_icon_placement){ .horizontal = true,
+		.from_bottom = true };
+	const struct rule *r = NULL;
+	for (int i = 0; i < n_rules; i++) {
+		if (!rules[i].client && !strcasecmp(rules[i].resource, "iconPlacement"))
+			r = &rules[i];
+	}
+	struct config_icon_placement p;
+	if (!r)
+		return;
+	if (parse_icon_placement(r->value, &p))
+		icon_placement = p;
+	else
+		wlr_log(WLR_ERROR, "%s:%d: expected an iconPlacement like \"left bottom\" "
+			"or \"top right\", not \"%s\"", path, r->line, r->value);
+}
+
+const struct config_icon_placement *config_icon_placement(void)
+{
+	return &icon_placement;
+}
+
 void config_load(void)
 {
 	for (int i = 0; i < n_rules; i++) {
@@ -248,6 +304,7 @@ void config_load(void)
 	if (!f) {
 		load_tile_filter();
 		load_root_items();
+		load_icon_placement();
 		return;
 	}
 
@@ -272,6 +329,7 @@ void config_load(void)
 	wlr_log(WLR_DEBUG, "%s: %d rules", path, n_rules);
 	load_tile_filter();
 	load_root_items();
+	load_icon_placement();
 	check_positions();
 }
 
@@ -465,5 +523,9 @@ void config_reload(struct server *server)
 	struct view *view;
 	wl_list_for_each(view, &server->views, link)
 		view_theme_changed(view);
+	/* iconPlacement may have changed: every icon finds its slot anew. */
+	wl_list_for_each(view, &server->views, link)
+		view->icon_placed = false;
+	icons_arrange(server);
 	tile_config_changed(server);
 }

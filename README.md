@@ -127,6 +127,7 @@ Mwm*wallpaper:                 ~/pictures/desk.png
 | `tileMainWidth` | share of the width for the main tiled window, `10` to `90` (`%` optional), default `55` (global only) |
 | `DoNotTile` | programs that always float in tiling mode, comma-separated (global only) |
 | `TileOnly` | the only programs that tile, comma-separated; the later of the two wins (global only) |
+| `iconPlacement` | where icons go, see below (global only) |
 
 Copying a file from mwm-x11 works, except that `fontList` takes Pango names
 like `Sans Bold 10`: anything else, like `Sans:bold:size=10` or `Sans-12`, is logged
@@ -177,6 +178,21 @@ program with a position of its own: that one stays where it was. A tab taken out
 its group cascades as usual. The entry doesn't count for a window that starts
 maximized or fullscreen, which then goes back to the top left, nor if a client sets
 its `app_id` only after the window has appeared.
+
+`iconPlacement` works as in mwm: `primary secondary`, optionally followed by `tight`.
+The first direction is the one a row or column of icons fills in, the second is the one
+the next row or column comes in: `left` is left to right, `right` right to left, `top`
+top to bottom, `bottom` bottom to top. One of them must be horizontal and the other
+vertical. `tight` leaves no space between the icons. The default `left bottom` fills the
+bottom row from the left.
+
+```
+! a column down the right edge, the next one to its left
+Mwm*iconPlacement:  top right
+```
+
+In tiling mode the layout leaves out the strip the icons fill, up to their innermost
+row or column. A reload puts all icons in their places again.
 
 The file is read at startup, on `SIGHUP` and on "Reload" in the root menu. A
 Wayland compositor can't restart and keep its windows, so "Reload" only
@@ -270,10 +286,10 @@ buttons do this instead:
 
 A click on a shaded window, focusing it (Alt+Tab) or Restore (Alt+F5) unrolls it.
 When the stack runs out of room, its lower windows are shaded, and when even that is
-not enough the oldest become icons. The layout ends above the row of icons. Dialogs,
-windows that cannot be resized, windows too large for their place, fullscreen and
-minimized windows float as usual; a window that leaves fullscreen joins the layout.
-The layout covers the first monitor.
+not enough the oldest become icons. The layout leaves the icons' row free, or their
+column (see `iconPlacement`). Dialogs, windows that cannot be resized, windows too
+large for their place, fullscreen and minimized windows float as usual; a window that
+leaves fullscreen joins the layout. The layout covers the first monitor.
 
 `Mwm*DoNotTile` in mwmrc keeps the listed programs out of the layout: they float
 above or between the tiled windows. `Mwm*TileOnly` is the reverse: only the listed

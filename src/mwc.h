@@ -762,6 +762,15 @@ struct config_position {
 	bool at_pointer;
 };
 bool config_view_position(struct view *view, struct config_position *out);
+/* Mwm*iconPlacement, "primary secondary [tight]" as in mwm: icons fill a row
+ * (horizontal) or a column, starting from the given edges; tight leaves no
+ * space between them. Default "left bottom". */
+struct config_icon_placement {
+	bool horizontal;
+	bool from_right, from_bottom;
+	bool tight;
+};
+const struct config_icon_placement *config_icon_placement(void);
 /* "Reload" and SIGHUP: a Wayland compositor can't re-exec and keep its
  * clients, so this reads mwmrc again and applies it to what is running. */
 void config_reload(struct server *server);

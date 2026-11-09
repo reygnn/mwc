@@ -466,8 +466,27 @@ static bool icon_slot_taken(struct server *server, struct view *self,
 	return false;
 }
 
-/* Icons go along the bottom-left of the output, like mwm's default
- * iconPlacement "left bottom". A window keeps its slot when re-iconified. */
+/* Slot i of the usable area, as Mwm*iconPlacement lays them out: along a row or
+ * a column from one corner, the next row or column further in. mwm's default
+ * "left bottom" fills the bottom row from the left. */
+static void icon_slot(struct wlr_box area, int i, int *x, int *y)
+{
+	const struct config_icon_placement *p = config_icon_placement();
+	int gap = p->tight ? 0 : 8;
+	int along = p->horizontal ? area.width : area.height;
+	int size = p->horizontal ? ICON_W : ICON_H;
+	int per_line = (along - 16 + gap) / (size + gap);
+	if (per_line < 1)
+		per_line = 1;
+	int col = p->horizontal ? i % per_line : i / per_line;
+	int row = p->horizontal ? i / per_line : i % per_line;
+	*x = p->from_right ? area.x + area.width - 8 - ICON_W - col * (ICON_W + gap) :
+		area.x + 8 + col * (ICON_W + gap);
+	*y = p->from_bottom ? area.y + area.height - 8 - ICON_H - row * (ICON_H + gap) :
+		area.y + 8 + row * (ICON_H + gap);
+}
+
+/* A window keeps its slot when re-iconified. */
 void icons_arrange(struct server *server)
 {
 	struct view *v;
@@ -476,15 +495,11 @@ void icons_arrange(struct server *server)
 			continue;
 		struct wlr_box area = output_usable_area(server,
 			v->x + 1, v->y + 1);
-		int row_y = area.y + area.height - ICON_H - 8;
 		if (!v->icon_placed || icon_slot_taken(server, v,
 				v->icon_x, v->icon_y)) {
 			for (int i = 0;; i++) {
-				int per_row = (area.width - 8) / (ICON_W + 8);
-				if (per_row < 1)
-					per_row = 1;
-				int x = area.x + 8 + (i % per_row) * (ICON_W + 8);
-				int y = row_y - (i / per_row) * (ICON_H + 8);
+				int x, y;
+				icon_slot(area, i, &x, &y);
 				if (!icon_slot_taken(server, v, x, y)) {
 					v->icon_x = x;
 					v->icon_y = y;

@@ -201,17 +201,31 @@ static struct view *plan(struct server *server, struct view **list, int n,
 {
 	*overflow = false;
 	struct wlr_box a = layout_area(server);
-	/* Icons along the bottom stay in view: the layout ends above the highest row
-	 * of them (they keep their own 8 px margin). */
-	int bottom = a.y + a.height;
+	/* Icons stay in view: the layout leaves out the strip along the edge they
+	 * pile up from, up to the innermost row or column of them (they keep their
+	 * own 8 px margin). */
+	const struct config_icon_placement *p = config_icon_placement();
+	int left = a.x, right = a.x + a.width, top_edge = a.y, bottom = a.y + a.height;
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (v->minimized && v->icon_placed && v->icon_x >= a.x &&
-				v->icon_x < a.x + a.width && v->icon_y >= a.y &&
-				v->icon_y < bottom)
+		if (!v->minimized || !v->icon_placed || v->icon_x < a.x ||
+				v->icon_x >= a.x + a.width || v->icon_y < a.y ||
+				v->icon_y >= a.y + a.height)
+			continue;
+		if (p->horizontal && p->from_bottom && v->icon_y < bottom)
 			bottom = v->icon_y;
+		else if (p->horizontal && !p->from_bottom && v->icon_y + ICON_H > top_edge)
+			top_edge = v->icon_y + ICON_H;
+		else if (!p->horizontal && p->from_right && v->icon_x < right)
+			right = v->icon_x;
+		else if (!p->horizontal && !p->from_right && v->icon_x + ICON_W > left)
+			left = v->icon_x + ICON_W;
 	}
-	a.height = bottom - a.y > 2 * TILE_GAP + 1 ? bottom - a.y : 2 * TILE_GAP + 1;
+	int min = 2 * TILE_GAP + 1;
+	a.x = left;
+	a.width = right - left > min ? right - left : min;
+	a.y = top_edge;
+	a.height = bottom - top_edge > min ? bottom - top_edge : min;
 	int top = a.y + TILE_GAP, h = a.height - 2 * TILE_GAP;
 	/* What the layout rolled up for lack of room in an earlier round gets another
 	 * chance, the room may be there now. */
