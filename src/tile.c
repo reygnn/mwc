@@ -186,11 +186,11 @@ static bool layout_stack(struct view **list, int k, struct wlr_box a, int x, int
 	}
 }
 
-/* The output the layout covers: the first one that was added. */
+/* The output the layout covers: the first one that was added and is in the layout.
+ * tile_arrange() doesn't start without one. */
 static struct wlr_box layout_area(struct server *server)
 {
-	struct output *first = wl_container_of(server->outputs.prev, first, link);
-	return first->usable;
+	return output_first(server)->usable;
 }
 
 /* Cells for list[0..n), main window first. Returns a window that can't fit its
@@ -276,7 +276,9 @@ void tile_arrange(struct server *server)
 	/* Leaving or entering the layout reconfigures windows, which must not start
 	 * another round from inside this one. */
 	static bool busy;
-	if (busy || wl_list_empty(&server->outputs))
+	/* Without an output in the layout there is nowhere to put them: an empty area
+	 * would make every window a misfit, and minimize them one after another. */
+	if (busy || !output_first(server))
 		return;
 	busy = true;
 

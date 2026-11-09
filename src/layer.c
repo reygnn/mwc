@@ -119,14 +119,8 @@ static void publish_workarea(struct server *server)
 	if (!server->xwayland || !wlr_xwayland_get_xwm_connection(server->xwayland) ||
 			wl_list_empty(&server->outputs))
 		return;
-	/* The oldest output in the layout: one a client switched off has none. */
-	struct output *first = NULL, *o;
-	wl_list_for_each_reverse(o, &server->outputs, link) {
-		if (output_in_layout(o)) {
-			first = o;
-			break;
-		}
-	}
+	/* One a client switched off has no area: the oldest one in the layout. */
+	struct output *first = output_first(server);
 	if (!first)
 		return;
 	wlr_xwayland_set_workareas(server->xwayland, &first->usable, 1);

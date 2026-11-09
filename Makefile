@@ -208,7 +208,7 @@ crash-test: mwc build/vinput build/xclient build/xdgc build/badclient build/laye
 outputs-test: mwc build/vinput build/pngtool build/xclient build/layerc
 	tests/outputs.sh
 
-tile-test: mwc build/vinput build/pngtool build/xclient build/xdgc
+tile-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/outputc
 	tests/tile.sh
 
 snap-test: mwc build/vinput build/pngtool build/xclient build/xdgc

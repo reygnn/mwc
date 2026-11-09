@@ -6,7 +6,7 @@ LOG=build/tile.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xclient build/xdgc; do
+for tool in build/vinput build/pngtool build/xclient build/xdgc build/outputc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -395,5 +395,31 @@ stop a
 stop b
 finish
 unset MWC_TILING MWC_TILE_MAIN_WIDTH
+
+# Tiling covers the oldest monitor in the layout. One a wlr-output-management client
+# switched off, as a docking profile does, has no area: the windows go to the other
+# monitor instead of into nothing, where they'd become icons one by one.
+export WLR_HEADLESS_OUTPUTS=2
+printf 'Mwm*outputManagement: true\nMwm*tiling: true\nMwm*HEADLESS-1*outputPosition: 0,0\nMwm*HEADLESS-2*outputPosition: 1280,0\n' >"$RC"
+begin
+x11 a size=300x200
+x11 b size=300x200
+check "both tiled" "[ \"\$(get a tiled)\" = 1 ] && [ \"\$(get b tiled)\" = 1 ]"
+if [ "$(get a x)" -lt 1280 ]; then
+	tiled_on=HEADLESS-1 lo=1280 hi=2560
+else
+	tiled_on=HEADLESS-2 lo=0 hi=1280
+fi
+WAYLAND_DISPLAY=wayland-0 build/outputc apply "$tiled_on" off ||
+	fail "a client switching off the monitor tiling covers"
+for w in a b; do
+	check "$w is tiled on the monitor that is left" \
+		"[ \"\$(get $w tiled)\" = 1 ] && [ \"\$(get $w min)\" = 0 ] && \
+		[ \"\$(get $w x)\" -ge $lo ] && [ \"\$(get $w x)\" -lt $hi ]"
+done
+stop a
+stop b
+finish
+unset WLR_HEADLESS_OUTPUTS
 
 echo "PASS: tile"

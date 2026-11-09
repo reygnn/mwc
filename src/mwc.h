@@ -561,6 +561,8 @@ void views_update_layers(struct server *server);
 struct output *output_at(struct server *server, double lx, double ly);
 /* False for one a wlr-output-management client switched off: it left the layout. */
 bool output_in_layout(struct output *output);
+/* The oldest output in the layout, NULL if a client switched them all off. */
+struct output *output_first(struct server *server);
 struct wlr_box output_usable_area(struct server *server, double lx, double ly);
 struct wlr_box output_full_area(struct server *server, double lx, double ly);
 /* Maximized windows and icons follow when panels come and go. */

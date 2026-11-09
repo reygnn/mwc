@@ -59,6 +59,16 @@ bool output_in_layout(struct output *output)
 	return wlr_output_layout_get(output->server->output_layout, output->wlr_output);
 }
 
+struct output *output_first(struct server *server)
+{
+	struct output *o;
+	wl_list_for_each_reverse(o, &server->outputs, link) {
+		if (output_in_layout(o))
+			return o;
+	}
+	return NULL;
+}
+
 struct wlr_box output_full_area(struct server *server, double lx, double ly)
 {
 	struct wlr_box box = { 0, 0, 1024, 768 };
