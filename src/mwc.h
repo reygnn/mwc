@@ -782,4 +782,9 @@ void config_reload(struct server *server);
 
 void testhook_init(struct server *server);
 
+/* ---- shmalloc.c ----------------------------------------------------------- */
+
+/* wlroots' shm allocator, but one that tells who kept a buffer it is gone. */
+struct wlr_allocator *shm_allocator_create(void);
+
 #endif

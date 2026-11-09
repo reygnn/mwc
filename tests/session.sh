@@ -165,6 +165,42 @@ output_is "a reload still applies to a monitor that is on" HEADLESS-1 0 0 800 50
 check "and leaves it on" "[ \"\$(global output on)\" = 1 ]"
 finish
 
+# Every mode change throws away the output's buffers. wlroots 0.19.2's shm allocator
+# did it without telling the renderer, which wrote into them when mwc ended, and now
+# and then glibc aborted (see src/shmalloc.c). Whether that hits glibc's bookkeeping
+# depends on the heap's layout, so this runs mwc under valgrind, which sees every
+# such write (its report lands in the log): without valgrind it only checks that mwc
+# ends cleanly.
+: >"$RC"
+if command -v valgrind >/dev/null; then
+	cat >"$SMOKE_DIR/mwc-valgrind" <<VG
+#!/bin/sh
+exec valgrind -q --error-exitcode=99 "$(readlink -f "$MWC")" "\$@"
+VG
+	chmod +x "$SMOKE_DIR/mwc-valgrind"
+	mwc_plain=$MWC MWC=$SMOKE_DIR/mwc-valgrind
+fi
+begin
+for mode in 1024x600 1600x900 800x500 1280x720 640x480 1920x1080 1024x768 1280x720; do
+	echo "Mwm*HEADLESS-1*outputMode: $mode" >"$RC"
+	kill -HUP "$pid"
+	for ((i = 0; i < 200; i++)); do
+		refresh
+		[ "$(global output_HEADLESS-1 w)x$(global output_HEADLESS-1 h)" = "$mode" ] && break
+		sleep 0.05
+	done
+	[ "$i" -lt 200 ] || fail "the mode change to $mode never came"
+done
+echo "ok: eight mode changes"
+finish
+if [ -n "${mwc_plain-}" ]; then
+	MWC=$mwc_plain
+	unset mwc_plain
+	echo "ok: and valgrind finds nothing when mwc ends"
+else
+	echo "ok: and mwc ends cleanly (no valgrind: not checked for writes into freed memory)"
+fi
+
 # Two outputs, the other way round.
 export WLR_HEADLESS_OUTPUTS=2
 cat >"$RC" <<'RC'

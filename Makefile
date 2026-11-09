@@ -24,7 +24,8 @@ MWC_LIBS = $(shell $(PKG_CONFIG) --libs $(PKGS))
 
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
 	src/input.c src/draw.c src/wallpaper.c src/config.c src/layer.c \
-	src/hints.c src/outline.c src/snap.c src/tile.c src/tabs.c src/testhook.c
+	src/hints.c src/outline.c src/snap.c src/tile.c src/tabs.c src/testhook.c \
+	src/shmalloc.c
 OBJ = $(SRC:src/%.c=build/%.o)
 PROTO = build/xdg-shell-protocol.h build/wlr-layer-shell-unstable-v1-protocol.h \
 	build/wlr-output-power-management-unstable-v1-protocol.h
