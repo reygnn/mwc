@@ -49,7 +49,9 @@ state file only exist when `MWC_TEST_STATE` is set (the devices also with
 the user's behalf. Other protocols are always on and open to every
 client, as in most wlroots compositors: `wlr-screencopy` lets any of them read the
 screen, `ext-data-control-v1` and `wlr-data-control` let any of them read and set the
-clipboard, and `wlr-layer-shell` lets any of them cover it.
+clipboard, `wlr-layer-shell` lets any of them cover it, and
+`wlr-output-management` lets any of them change the monitors' modes and places. What a
+client set there stays over a reload until mwmrc says something new about that monitor.
 
 `make wallpaper-test` renders generated images and checks pixels in screenshots,
 and `make config-test` does the same for `mwmrc`, including reloading it.
@@ -69,7 +71,7 @@ end the session, which is worth running against a sanitizer build too:
 
 `make tabs-test` walks through tab groups, and `make state-test` tries orderings of window states, and `make misc-test` key bindings,
 autostart and settings the others don't reach. `make session-test` checks monitor and
-keyboard settings and the properties X11 programs look for.
+keyboard settings, monitors set by a client (`tests/outputc.c`) and the properties X11 programs look for.
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.

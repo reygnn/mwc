@@ -13,6 +13,7 @@
 #include <cairo.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_buffer.h>
+#include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/box.h>
 #include <wlr/util/edges.h>
@@ -458,6 +459,12 @@ struct server {
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wl_listener new_idle_inhibitor;
 	struct wl_listener output_power_set_mode;
+	/* wlr-output-management: tools such as wlr-randr, and VNC or RDP servers that
+	 * make the output as large as the viewer's window. */
+	struct wlr_output_manager_v1 *output_manager;
+	struct wl_listener output_manager_apply;
+	struct wl_listener output_manager_test;
+	struct wl_event_source *output_manager_idle; /* an update is due */
 	char *wallpaper; /* path of a readable PNG, NULL: plain desktop colour */
 };
 
@@ -470,8 +477,14 @@ struct output {
 	struct wlr_scene_rect *background;
 	struct wlr_scene_buffer *wallpaper; /* above background, may be NULL */
 	int wallpaper_w, wallpaper_h;       /* size it was rendered for */
+	/* What a client last set through wlr-output-management. It stays over a reload
+	 * and a switch off and on for as long as mwmrc says what it said then about this
+	 * output (managed_rc); a change there wins. NULL: mwmrc rules. */
+	char *managed_rc;
+	struct wlr_output_head_v1_state managed;
 	struct wl_listener frame;
 	struct wl_listener request_state;
+	struct wl_listener commit;
 	struct wl_listener destroy;
 };
 

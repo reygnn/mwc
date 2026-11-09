@@ -155,10 +155,20 @@ build/powerc: tests/powerc.c $(POWERC_GEN)
 		build/wlr-output-power-management-unstable-v1-code.c \
 		$(shell $(PKG_CONFIG) --libs wayland-client)
 
+# Sets outputs as wlr-randr does, or a VNC or RDP server.
+OUTPUTC_GEN = build/wlr-output-management-unstable-v1-client.h \
+	build/wlr-output-management-unstable-v1-code.c
+
+build/outputc: tests/outputc.c $(OUTPUTC_GEN)
+	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
+		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/outputc.c \
+		build/wlr-output-management-unstable-v1-code.c \
+		$(shell $(PKG_CONFIG) --libs wayland-client)
+
 tabs-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 	tests/tabs.sh
 
-session-test: mwc build/vinput build/pngtool build/xclient build/powerc
+session-test: mwc build/vinput build/pngtool build/xclient build/powerc build/outputc
 	tests/session.sh
 
 misc-test: mwc build/vinput build/pngtool build/xclient build/xdgc
@@ -200,5 +210,5 @@ test: smoke input-test wallpaper-test config-test layer-test window-test \
 clean:
 	rm -rf build mwc
 
-.SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN)
+.SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN)
 .PHONY: tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean

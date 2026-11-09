@@ -26,6 +26,7 @@
 #include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
@@ -59,14 +60,132 @@ static void output_request_state(struct wl_listener *listener, void *data)
 	struct output *output = wl_container_of(listener, output,
 		request_state);
 	const struct wlr_output_event_request_state *event = data;
-	wlr_output_commit_state(output->wlr_output, event->state);
+	/* Whoever resizes the window decides now, not what a client set before. */
+	if (wlr_output_commit_state(output->wlr_output, event->state) &&
+			(event->state->committed & WLR_OUTPUT_STATE_MODE)) {
+		free(output->managed_rc);
+		output->managed_rc = NULL;
+	}
 }
 
 static bool output_commit_config(struct wlr_output *o);
 
+/* What mwmrc says about this output, to see whether that changed. NULL without memory. */
+static char *output_rc_text(struct wlr_output *o)
+{
+	static const char *keys[] = {
+		"outputMode", "outputScale", "outputTransform", "outputPosition",
+	};
+	char *text = NULL;
+	size_t size;
+	FILE *f = open_memstream(&text, &size);
+	if (!f)
+		return NULL;
+	for (size_t i = 0; i < sizeof(keys) / sizeof(*keys); i++) {
+		const char *value = config_get_for(o->name, keys[i]);
+		/* Unset and empty differ: the newline after each value keeps them apart. */
+		fprintf(f, "%c%s\n", value ? '=' : '-', value ? value : "");
+	}
+	if (fclose(f) != 0) {
+		free(text);
+		return NULL;
+	}
+	return text;
+}
+
+static void output_forget_managed(struct output *output)
+{
+	free(output->managed_rc);
+	output->managed_rc = NULL;
+}
+
+/* Whether what a client set still holds: mwmrc says what it said then about the output. */
+static bool output_keeps_managed(struct output *output)
+{
+	if (!output->managed_rc)
+		return false;
+	char *now = output_rc_text(output->wlr_output);
+	bool same = now && !strcmp(now, output->managed_rc);
+	free(now);
+	if (!same) {
+		wlr_log(WLR_INFO, "mwmrc changed for %s: it replaces what a client set",
+			output->wlr_output->name);
+		output_forget_managed(output);
+	}
+	return same;
+}
+
+/* Switches the output on with what a client set. */
+static bool output_commit_managed(struct output *output)
+{
+	struct wlr_output_state state;
+	wlr_output_state_init(&state);
+	wlr_output_head_v1_state_apply(&output->managed, &state);
+	wlr_output_state_set_enabled(&state, true);
+	bool ok = wlr_output_commit_state(output->wlr_output, &state);
+	wlr_output_state_finish(&state);
+	return ok;
+}
+
+/* An output that was off is on again. */
+static void output_back_on(struct server *server, struct wlr_output *o)
+{
+	wlr_output_schedule_frame(o);
+	/* The output lost its cursor. Setting the same image again would do nothing. */
+	if (server->cursor_name) {
+		wlr_cursor_unset_image(server->cursor);
+		wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr,
+			server->cursor_name);
+	}
+	input_pointer_changed_soon(server);
+}
+
+/* Tells wlr-output-management clients how the outputs are now. Once the event loop
+ * is idle: changes come in groups, and a dying output must be gone from the list. */
+static void output_manager_send(void *data)
+{
+	struct server *server = data;
+	server->output_manager_idle = NULL;
+	struct wlr_output_configuration_v1 *config = wlr_output_configuration_v1_create();
+	if (!config)
+		return;
+	struct output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		struct wlr_output_configuration_head_v1 *head =
+			wlr_output_configuration_head_v1_create(config, output->wlr_output);
+		if (!head)
+			continue;
+		struct wlr_box box;
+		wlr_output_layout_get_box(server->output_layout, output->wlr_output, &box);
+		head->state.x = box.x;
+		head->state.y = box.y;
+	}
+	wlr_output_manager_v1_set_configuration(server->output_manager, config);
+}
+
+static void output_manager_update(struct server *server)
+{
+	if (!server->output_manager || server->output_manager_idle)
+		return;
+	server->output_manager_idle = wl_event_loop_add_idle(server->event_loop,
+		output_manager_send, server);
+}
+
+static void output_commit(struct wl_listener *listener, void *data)
+{
+	struct output *output = wl_container_of(listener, output, commit);
+	const struct wlr_output_event_commit *event = data;
+	if (event->state->committed & (WLR_OUTPUT_STATE_ENABLED | WLR_OUTPUT_STATE_MODE |
+			WLR_OUTPUT_STATE_SCALE | WLR_OUTPUT_STATE_TRANSFORM |
+			WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED))
+		output_manager_update(output->server);
+}
+
 /* A client asks to switch a monitor off or on. The output stays in the layout, so
  * windows keep their places, and any client can ask: that is what the protocol is.
- * Coming back it takes what mwmrc says now: a reload leaves a monitor that is off alone. */
+ * Coming back it takes what mwmrc says now: a reload leaves a monitor that is off alone.
+ * What a client set through wlr-output-management comes back with it, unless mwmrc
+ * changed for it in the meantime. */
 static void output_power_set_mode(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server,
@@ -75,9 +194,16 @@ static void output_power_set_mode(struct wl_listener *listener, void *data)
 	bool on = event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON;
 	if (event->output->enabled == on)
 		return;
-	bool ok;
+	struct output *output = event->output->data;
+	bool ok = false;
 	if (on) {
-		ok = output_commit_config(event->output);
+		if (output && output_keeps_managed(output)) {
+			ok = output_commit_managed(output);
+			if (!ok)
+				output_forget_managed(output);
+		}
+		if (!ok)
+			ok = output_commit_config(event->output);
 	} else {
 		struct wlr_output_state state;
 		wlr_output_state_init(&state);
@@ -90,16 +216,8 @@ static void output_power_set_mode(struct wl_listener *listener, void *data)
 			on ? "on" : "off");
 		return;
 	}
-	if (!on)
-		return;
-	wlr_output_schedule_frame(event->output);
-	/* The output lost its cursor. Setting the same image again would do nothing. */
-	if (server->cursor_name) {
-		wlr_cursor_unset_image(server->cursor);
-		wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr,
-			server->cursor_name);
-	}
-	input_pointer_changed_soon(server);
+	if (on)
+		output_back_on(server, event->output);
 }
 
 /* One per inhibitor; while any exists, nobody counts as idle. */
@@ -135,8 +253,11 @@ static void output_destroy(struct wl_listener *listener, void *data)
 	struct output *output = wl_container_of(listener, output, destroy);
 	wl_list_remove(&output->frame.link);
 	wl_list_remove(&output->request_state.link);
+	wl_list_remove(&output->commit.link);
 	wl_list_remove(&output->destroy.link);
 	wl_list_remove(&output->link);
+	output_forget_managed(output);
+	output_manager_update(output->server);
 	layer_output_gone(output);
 	wlr_scene_node_destroy(&output->background->node);
 	if (output->wallpaper)
@@ -280,6 +401,9 @@ void outputs_config_changed(struct server *server)
 {
 	struct output *output;
 	wl_list_for_each(output, &server->outputs, link) {
+		/* What a client set stays, until mwmrc says something new about the output. */
+		if (output_keeps_managed(output))
+			continue;
 		/* Whoever switched it off wants it off, see output_power_set_mode(). */
 		if (output->wlr_output->enabled)
 			output_commit_config(output->wlr_output);
@@ -316,6 +440,8 @@ static void new_output(struct wl_listener *listener, void *data)
 	wl_signal_add(&wlr_output->events.frame, &output->frame);
 	output->request_state.notify = output_request_state;
 	wl_signal_add(&wlr_output->events.request_state, &output->request_state);
+	output->commit.notify = output_commit;
+	wl_signal_add(&wlr_output->events.commit, &output->commit);
 	output->destroy.notify = output_destroy;
 	wl_signal_add(&wlr_output->events.destroy, &output->destroy);
 
@@ -351,6 +477,91 @@ static void layout_change(struct wl_listener *listener, void *data)
 	}
 	icons_arrange(server);
 	views_layout_changed(server);
+	output_manager_update(server);
+}
+
+/* What the protocol lets through but mwc doesn't take: sizes a software renderer can't
+ * allocate, and positions and scales the layout overflows with, as for mwmrc. */
+static bool head_state_usable(const struct wlr_output_head_v1_state *s)
+{
+	if (!s->enabled)
+		return true;
+	if (!s->mode && (s->custom_mode.width > 16384 || s->custom_mode.height > 16384 ||
+			s->custom_mode.refresh > 1000000))
+		return false;
+	return s->scale >= 0.1 && s->scale <= 10 && s->x >= -1000000 &&
+		s->x <= 1000000 && s->y >= -1000000 && s->y <= 1000000;
+}
+
+/* Tests or applies what a client asks for, all outputs at once. An output it switches
+ * off stays in the layout, as with output-power, so windows keep their places. */
+static bool output_manager_configure(struct server *server,
+	struct wlr_output_configuration_v1 *config, bool apply)
+{
+	struct wlr_output_configuration_head_v1 *head;
+	wl_list_for_each(head, &config->heads, link) {
+		if (!head->state.output->data || !head_state_usable(&head->state)) {
+			wlr_log(WLR_ERROR, "refusing an output configuration for %s",
+				head->state.output->name);
+			return false;
+		}
+	}
+	size_t n;
+	struct wlr_backend_output_state *states =
+		wlr_output_configuration_v1_build_state(config, &n);
+	if (!states)
+		return false;
+	bool *was_on = calloc(n ? n : 1, sizeof(*was_on));
+	for (size_t i = 0; was_on && i < n; i++)
+		was_on[i] = states[i].output->enabled;
+	bool ok = was_on && wlr_backend_test(server->backend, states, n);
+	if (ok && apply)
+		ok = wlr_backend_commit(server->backend, states, n);
+	for (size_t i = 0; i < n; i++)
+		wlr_output_state_finish(&states[i].base);
+	free(states);
+	if (!ok || !apply) {
+		free(was_on);
+		return ok;
+	}
+	size_t i = 0;
+	wl_list_for_each(head, &config->heads, link) {
+		struct output *output = head->state.output->data;
+		wlr_output_layout_add(server->output_layout, head->state.output,
+			head->state.x, head->state.y);
+		output_forget_managed(output);
+		output->managed_rc = output_rc_text(head->state.output);
+		output->managed = head->state;
+		if (head->state.enabled && !was_on[i])
+			output_back_on(server, head->state.output);
+		i++;
+	}
+	free(was_on);
+	return true;
+}
+
+static void output_manager_apply(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server, output_manager_apply);
+	struct wlr_output_configuration_v1 *config = data;
+	if (output_manager_configure(server, config, true))
+		wlr_output_configuration_v1_send_succeeded(config);
+	else
+		wlr_output_configuration_v1_send_failed(config);
+	wlr_output_configuration_v1_destroy(config);
+	/* Also after a failure: the client goes on from what it was told last. */
+	output_manager_update(server);
+}
+
+static void output_manager_test(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server, output_manager_test);
+	struct wlr_output_configuration_v1 *config = data;
+	if (output_manager_configure(server, config, false))
+		wlr_output_configuration_v1_send_succeeded(config);
+	else
+		wlr_output_configuration_v1_send_failed(config);
+	wlr_output_configuration_v1_destroy(config);
 }
 
 /* ---- startup ------------------------------------------------------------ */
@@ -561,6 +772,12 @@ int main(int argc, char *argv[])
 	server.output_power_set_mode.notify = output_power_set_mode;
 	wl_signal_add(&output_power->events.set_mode, &server.output_power_set_mode);
 
+	server.output_manager = wlr_output_manager_v1_create(server.display);
+	server.output_manager_apply.notify = output_manager_apply;
+	wl_signal_add(&server.output_manager->events.apply, &server.output_manager_apply);
+	server.output_manager_test.notify = output_manager_test;
+	wl_signal_add(&server.output_manager->events.test, &server.output_manager_test);
+
 	server.output_layout = wlr_output_layout_create(server.display);
 	wlr_xdg_output_manager_v1_create(server.display, server.output_layout);
 	wl_list_init(&server.outputs);
@@ -633,6 +850,13 @@ int main(int argc, char *argv[])
 	}
 	wl_list_remove(&server.new_idle_inhibitor.link);
 	wl_list_remove(&server.output_power_set_mode.link);
+	wl_list_remove(&server.output_manager_apply.link);
+	wl_list_remove(&server.output_manager_test.link);
+	/* The outputs go with the backend below, and nobody is left to tell. */
+	if (server.output_manager_idle)
+		wl_event_source_remove(server.output_manager_idle);
+	server.output_manager_idle = NULL;
+	server.output_manager = NULL;
 	wl_list_remove(&server.new_layer_surface.link);
 	wl_list_remove(&server.new_xdg_toplevel.link);
 	wl_list_remove(&server.new_xdg_popup.link);

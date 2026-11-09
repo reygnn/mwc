@@ -6,7 +6,7 @@ LOG=build/session.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools Xwayland
-for tool in build/vinput build/pngtool build/xclient build/powerc; do
+for tool in build/vinput build/pngtool build/xclient build/powerc build/outputc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -201,6 +201,57 @@ else
 	echo "ok: and mwc ends cleanly (no valgrind: not checked for writes into freed memory)"
 fi
 
+# ---- outputs set by a client, as a VNC or RDP server sets them ----------------------
+
+outputc() { WAYLAND_DISPLAY=wayland-0 build/outputc "$@"; }
+reload() {
+	local before
+	before=$(grep -c 'reloading the configuration' "$LOG")
+	kill -HUP "$pid"
+	wait_for "the reload" eval '[ "$(grep -c "reloading the configuration" "$LOG")" -gt '"$before"' ]'
+	sleep 0.3
+}
+echo 'Mwm*HEADLESS-1*outputMode: 1024x600' >"$RC"
+begin
+outputc list | grep -q '^HEADLESS-1 on=1 w=1024 h=600 x=0 y=0 scale=100$' ||
+	fail "a client isn't told the output's size: $(outputc list)"
+echo "ok: a client is told the output's size"
+outputc test HEADLESS-1 1600x900 || fail "testing a mode"
+output_is "a test changes nothing" HEADLESS-1 0 0 1024 600
+outputc apply HEADLESS-1 1600x900 || fail "applying a mode"
+output_is "a client sets a mode" HEADLESS-1 0 0 1600 900
+outputc list | grep -q '^HEADLESS-1 on=1 w=1600 h=900 ' || fail "clients aren't told: $(outputc list)"
+echo "ok: and clients are told"
+reload
+output_is "a reload leaves it as the client set it" HEADLESS-1 0 0 1600 900
+power off
+check "switched off" "[ \"\$(global output on)\" = 0 ]"
+power on
+output_is "and on again: as the client set it" HEADLESS-1 0 0 1600 900
+echo 'Mwm*HEADLESS-1*outputMode: 800x500' >"$RC"
+reload
+output_is "a change in mwmrc wins" HEADLESS-1 0 0 800 500
+reload
+output_is "and stays" HEADLESS-1 0 0 800 500
+outputc apply HEADLESS-1 1280x720 scale 2 || fail "applying a scale"
+output_is "a client sets a scale" HEADLESS-1 0 0 640 360 200
+outputc apply HEADLESS-1 1280x720 scale 1 || fail "the scale back"
+outputc apply HEADLESS-1 99999x720 2>/dev/null && fail "a size the renderer can't allocate is taken"
+outputc apply HEADLESS-1 1280x720 scale 0.01 2>/dev/null && fail "a scale the layout overflows with is taken"
+outputc apply HEADLESS-1 1280x720 at 2000000,0 2>/dev/null && fail "a position the layout overflows with is taken"
+output_is "what mwc refuses changes nothing" HEADLESS-1 0 0 1280 720
+outputc apply HEADLESS-1 off || fail "switching it off"
+check "a client switches it off" "[ \"\$(global output on)\" = 0 ]"
+reload
+check "a reload leaves it off" "[ \"\$(global output on)\" = 0 ]"
+outputc apply HEADLESS-1 on 1024x768 || fail "switching it on"
+check "and on" "[ \"\$(global output on)\" = 1 ]"
+output_is "with the mode it asked for" HEADLESS-1 0 0 1024 768
+kill -0 "$pid" || fail "mwc died"
+finish
+
+rm "$RC"
+
 # Two outputs, the other way round.
 export WLR_HEADLESS_OUTPUTS=2
 cat >"$RC" <<'RC'
@@ -217,6 +268,11 @@ RC
 kill -HUP "$pid"
 output_is "a reload swaps them" HEADLESS-1 0 0 1280 720
 output_is "with an offset" HEADLESS-2 1280 100 1280 720
+outputc apply HEADLESS-2 at 0,720 || fail "a client moving an output"
+output_is "a client moves one" HEADLESS-2 0 720 1280 720
+output_is "the other stays" HEADLESS-1 0 0 1280 720
+reload
+output_is "a reload leaves it where the client put it" HEADLESS-2 0 720 1280 720
 finish
 unset WLR_HEADLESS_OUTPUTS
 
