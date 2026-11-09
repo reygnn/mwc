@@ -15,6 +15,7 @@
  *                                             keyboardModel
  *   Mwm*DP-1*outputMode:           3440x1440@144
  *   Mwm*DP-1*outputScale:          1.5        also outputTransform, outputPosition
+ *   Mwm*outputManagement:          true       offer wlr-output-management (startup)
  *   Mwm*tiling:                    true       start in tiling mode
  *   Mwm*tileMainWidth:             60         the main window's share, in %
  *   Mwm*DoNotTile:                 Navigator  Firefox floats in tiling mode

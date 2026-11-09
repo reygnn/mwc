@@ -160,12 +160,32 @@ static void output_manager_send(void *data)
 			wlr_output_configuration_head_v1_create(config, output->wlr_output);
 		if (!head)
 			continue;
+		/* Off only for the time being: on for clients, as what it comes back with.
+		 * Else wlroots reads it from the output as disabled, and a client that
+		 * matches profiles against that may switch it back on. */
+		if (output->dark && output_keeps_managed(output)) {
+			head->state = output->managed;
+			head->state.output = output->wlr_output;
+		}
+		if (output->dark)
+			head->state.enabled = true;
 		struct wlr_box box;
 		wlr_output_layout_get_box(server->output_layout, output->wlr_output, &box);
 		head->state.x = box.x;
 		head->state.y = box.y;
 	}
 	wlr_output_manager_v1_set_configuration(server->output_manager, config);
+}
+
+/* Right away, not once idle: a configuration a client makes from the serial it
+ * had must be cancelled, not applied over what changed. */
+static void output_manager_send_now(struct server *server)
+{
+	if (!server->output_manager)
+		return;
+	if (server->output_manager_idle)
+		wl_event_source_remove(server->output_manager_idle);
+	output_manager_send(server);
 }
 
 static void output_manager_update(struct server *server)
@@ -200,6 +220,13 @@ static void output_power_set_mode(struct wl_listener *listener, void *data)
 	if (event->output->enabled == on)
 		return;
 	struct output *output = event->output->data;
+	/* A wlr-output-management client switched it off: wlopm --on '*' after an
+	 * idle spell must not bring back a monitor someone doesn't want. */
+	if (on && output && output->client_off) {
+		wlr_log(WLR_INFO, "%s stays off: a client switched it off",
+			event->output->name);
+		return;
+	}
 	bool ok = false;
 	if (on) {
 		if (output && output_keeps_managed(output)) {
@@ -221,8 +248,12 @@ static void output_power_set_mode(struct wl_listener *listener, void *data)
 			on ? "on" : "off");
 		return;
 	}
+	if (output)
+		output->dark = !on;
 	if (on)
 		output_back_on(server, event->output);
+	/* The commit tells clients too, but a dark output isn't what it looks like. */
+	output_manager_update(server);
 }
 
 /* One per inhibitor; while any exists, nobody counts as idle. */
@@ -363,6 +394,9 @@ static bool output_commit_config(struct wlr_output *o)
 	wlr_output_state_set_enabled(&state, true);
 	configure_scale(o, &state);
 	configure_transform(o, &state);
+	/* mwmrc has no say about it: what a client turned on goes with the client. */
+	if (o->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED)
+		wlr_output_state_set_adaptive_sync_enabled(&state, false);
 	bool configured = configure_mode(o, &state);
 	struct wlr_output_mode *preferred = wlr_output_preferred_mode(o);
 	if (!configured && preferred)
@@ -468,6 +502,10 @@ static void layout_change(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server,
 		layout_change);
+	if (server->layout_batch) {
+		server->layout_dirty = true;
+		return;
+	}
 	struct output *output;
 	wl_list_for_each(output, &server->outputs, link) {
 		struct wlr_box box;
@@ -512,63 +550,106 @@ static bool head_state_usable(const struct wlr_output_head_v1_state *s)
 }
 
 /* Tests or applies what a client asks for, all outputs at once. An output it switches
- * off stays in the layout, as with output-power, so windows keep their places. */
+ * off stays in the layout, as with output-power, so windows keep their places. One
+ * that is dark (output-power) stays dark: what the client set for it is kept, and
+ * comes with the power. */
 static bool output_manager_configure(struct server *server,
 	struct wlr_output_configuration_v1 *config, bool apply)
 {
 	struct wlr_output_configuration_head_v1 *head;
+	size_t n_heads = 0;
 	wl_list_for_each(head, &config->heads, link) {
 		if (!head->state.output->data || !head_state_usable(&head->state)) {
 			wlr_log(WLR_ERROR, "refusing an output configuration for %s",
 				head->state.output->name);
 			return false;
 		}
+		n_heads++;
 	}
 	size_t n;
 	struct wlr_backend_output_state *states =
 		wlr_output_configuration_v1_build_state(config, &n);
 	if (!states)
 		return false;
-	bool *was_on = calloc(n ? n : 1, sizeof(*was_on));
-	for (size_t i = 0; was_on && i < n; i++)
-		was_on[i] = states[i].output->enabled;
-	bool ok = was_on && wlr_backend_test(server->backend, states, n);
+	/* Dark outputs don't go to the backend: they aren't to light up. */
+	size_t kept = 0;
+	for (size_t i = 0; i < n; i++) {
+		struct output *output = states[i].output->data;
+		if (output && output->dark)
+			wlr_output_state_finish(&states[i].base);
+		else
+			states[kept++] = states[i];
+	}
+	/* In the order of config->heads, as walked below. */
+	bool *was_on = calloc(n_heads ? n_heads : 1, sizeof(*was_on));
+	size_t i = 0;
+	wl_list_for_each(head, &config->heads, link) {
+		if (was_on)
+			was_on[i] = head->state.output->enabled;
+		i++;
+	}
+	struct output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		wlr_output_layout_get_box(server->output_layout, output->wlr_output,
+			&output->box_before);
+		output->named = false;
+	}
+	bool ok = was_on && wlr_backend_test(server->backend, states, kept);
+	/* A commit that changes a mode moves the outputs wlroots placed itself:
+	 * the layout's change waits until everything is where it is going. */
+	server->layout_batch = apply;
+	server->layout_dirty = false;
 	if (ok && apply)
-		ok = wlr_backend_commit(server->backend, states, n);
-	for (size_t i = 0; i < n; i++)
-		wlr_output_state_finish(&states[i].base);
+		ok = wlr_backend_commit(server->backend, states, kept);
+	for (size_t k = 0; k < kept; k++)
+		wlr_output_state_finish(&states[k].base);
 	free(states);
 	if (!ok || !apply) {
 		free(was_on);
-		return ok;
+		goto done;
 	}
-	size_t i = 0;
+	i = 0;
 	wl_list_for_each(head, &config->heads, link) {
-		struct output *output = head->state.output->data;
+		output = head->state.output->data;
+		output->named = true;
 		/* wlroots sends a head switched off with everything else zeroed: it keeps
 		 * its place, and what a client set before comes back with it. */
 		if (!head->state.enabled) {
+			output->client_off = true;
+			output->dark = false;
 			i++;
 			continue;
 		}
-		/* Only where it moves: placing an output pins it, and wlroots then lines
-		 * up the others it placed itself behind it. A client must name every
-		 * output, also those it means to leave alone. */
-		struct wlr_box box;
-		wlr_output_layout_get_box(server->output_layout, head->state.output, &box);
-		if (!wlr_output_layout_get(server->output_layout, head->state.output) ||
-				box.x != head->state.x || box.y != head->state.y)
-			wlr_output_layout_add(server->output_layout, head->state.output,
-				head->state.x, head->state.y);
+		output->client_off = false;
+		/* Where the client says, also where it already is: placed, it stays
+		 * there when other outputs change. */
+		wlr_output_layout_add(server->output_layout, head->state.output,
+			head->state.x, head->state.y);
 		output_forget_managed(output);
 		output->managed_rc = output_rc_text(head->state.output);
 		output->managed = head->state;
-		if (!was_on[i])
+		if (!was_on[i] && !output->dark)
 			output_back_on(server, head->state.output);
 		i++;
 	}
+	/* wlroots lets through configurations that leave outputs out, which the
+	 * protocol forbids. Those it lined up anew stay where they were. */
+	wl_list_for_each(output, &server->outputs, link) {
+		struct wlr_box box;
+		wlr_output_layout_get_box(server->output_layout, output->wlr_output, &box);
+		if (!output->named && !wlr_box_empty(&output->box_before) &&
+				(box.x != output->box_before.x || box.y != output->box_before.y))
+			wlr_output_layout_add(server->output_layout, output->wlr_output,
+				output->box_before.x, output->box_before.y);
+	}
 	free(was_on);
-	return true;
+done:
+	server->layout_batch = false;
+	if (server->layout_dirty) {
+		server->layout_dirty = false;
+		layout_change(&server->layout_change, NULL);
+	}
+	return ok;
 }
 
 static void output_manager_apply(struct wl_listener *listener, void *data)
@@ -581,7 +662,7 @@ static void output_manager_apply(struct wl_listener *listener, void *data)
 		wlr_output_configuration_v1_send_failed(config);
 	wlr_output_configuration_v1_destroy(config);
 	/* Also after a failure: the client goes on from what it was told last. */
-	output_manager_update(server);
+	output_manager_send_now(server);
 }
 
 static void output_manager_test(struct wl_listener *listener, void *data)
@@ -807,11 +888,19 @@ int main(int argc, char *argv[])
 	server.output_power_set_mode.notify = output_power_set_mode;
 	wl_signal_add(&output_power->events.set_mode, &server.output_power_set_mode);
 
-	server.output_manager = wlr_output_manager_v1_create(server.display);
-	server.output_manager_apply.notify = output_manager_apply;
-	wl_signal_add(&server.output_manager->events.apply, &server.output_manager_apply);
-	server.output_manager_test.notify = output_manager_test;
-	wl_signal_add(&server.output_manager->events.test, &server.output_manager_test);
+	/* Only when asked for, read once at startup. wlroots up to 0.20 aborts in its
+	 * own code when one client holds a custom mode another doesn't (fixed on its
+	 * master in 40640950): with headless or nested outputs, which only have custom
+	 * modes, any client can bring mwc down. */
+	if (config_bool("outputManagement", config_get("outputManagement")) == 1) {
+		server.output_manager = wlr_output_manager_v1_create(server.display);
+		server.output_manager_apply.notify = output_manager_apply;
+		wl_signal_add(&server.output_manager->events.apply,
+			&server.output_manager_apply);
+		server.output_manager_test.notify = output_manager_test;
+		wl_signal_add(&server.output_manager->events.test,
+			&server.output_manager_test);
+	}
 
 	server.output_layout = wlr_output_layout_create(server.display);
 	wlr_xdg_output_manager_v1_create(server.display, server.output_layout);
@@ -885,8 +974,10 @@ int main(int argc, char *argv[])
 	}
 	wl_list_remove(&server.new_idle_inhibitor.link);
 	wl_list_remove(&server.output_power_set_mode.link);
-	wl_list_remove(&server.output_manager_apply.link);
-	wl_list_remove(&server.output_manager_test.link);
+	if (server.output_manager) {
+		wl_list_remove(&server.output_manager_apply.link);
+		wl_list_remove(&server.output_manager_test.link);
+	}
 	/* The outputs go with the backend below, and nobody is left to tell. */
 	if (server.output_manager_idle)
 		wl_event_source_remove(server.output_manager_idle);

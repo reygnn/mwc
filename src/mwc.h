@@ -465,6 +465,9 @@ struct server {
 	struct wl_listener output_manager_apply;
 	struct wl_listener output_manager_test;
 	struct wl_event_source *output_manager_idle; /* an update is due */
+	/* While output_manager_configure() places outputs one by one: the layout's
+	 * change is handled once, at the end, not for every half-placed step. */
+	bool layout_batch, layout_dirty;
 	char *wallpaper; /* path of a readable PNG, NULL: plain desktop colour */
 };
 
@@ -482,6 +485,15 @@ struct output {
 	 * output (managed_rc); a change there wins. NULL: mwmrc rules. */
 	char *managed_rc;
 	struct wlr_output_head_v1_state managed;
+	/* Two ways to be off. dark: through wlr-output-power (DPMS), for the time
+	 * being; wlr-output-management clients still see it on, with what it will
+	 * come back with. client_off: a wlr-output-management client doesn't want it;
+	 * a power on leaves it off, only such a client brings it back. */
+	bool dark, client_off;
+	/* Scratch for output_manager_configure(): where it was, and whether the
+	 * configuration names it. */
+	struct wlr_box box_before;
+	bool named;
 	struct wl_listener frame;
 	struct wl_listener request_state;
 	struct wl_listener commit;

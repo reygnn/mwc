@@ -52,10 +52,9 @@ state file only exist when `MWC_TEST_STATE` is set (the devices also with
 the user's behalf. Other protocols are always on and open to every
 client, as in most wlroots compositors: `wlr-screencopy` and `ext-image-copy-capture-v1`
 let any of them read the screen, `ext-data-control-v1` and `wlr-data-control` let any of
-them read and set the clipboard, `wlr-layer-shell` lets any of them cover it, and
-`wlr-output-management` lets any of them change the monitors' modes and places. What a
-client set there stays over a reload until mwmrc says something new about that monitor;
-a monitor that goes away, also for a VT switch, comes back with what mwmrc says. A
+them read and set the clipboard, and `wlr-layer-shell` lets any of them cover it.
+`wlr-output-management` is only there with `Mwm*outputManagement: true` (see Keyboard
+and monitors), and then lets any of them change the monitors' modes and places. A
 monitor that is off gives captures no frames until it is on again.
 
 `make wallpaper-test` renders generated images and checks pixels in screenshots,
@@ -431,8 +430,30 @@ Mwm*HDMI-A-1*outputTransform: 90
 | `Name*outputTransform` | `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180`, `flipped-270` |
 
 mwc logs each monitor's name and modes when it appears. All of this also applies on
-"Reload" and `SIGHUP`. Tools like `wlr-randr` and `kanshi` don't work: mwc doesn't
-offer their protocol.
+"Reload" and `SIGHUP`.
+
+Tools like `wlr-randr`, `kanshi` and `wdisplays`, and VNC or RDP servers that make a
+headless monitor as large as the viewer's window, need `wlr-output-management`. mwc
+offers it with
+
+```
+Mwm*outputManagement:       true
+```
+
+read at startup only. It is off by default: wlroots up to 0.20 aborts in its own code
+when one client of the protocol has an object for a monitor's mode that another lacks,
+which any client can bring about, and headless and nested monitors, the ones a VNC or
+RDP server uses, are the ones that run into it. The fix is on wlroots' master (commit
+40640950). With it on:
+
+- What a client set stays over a reload until mwmrc says something new about that
+  monitor. A monitor that goes away, also for a VT switch, comes back with what mwmrc
+  says.
+- A monitor a client switched off stays off when a tool such as `wlopm` switches the
+  monitors on after an idle spell; only such a client switches it back on.
+- A monitor that is off for the time being, through `wlr-output-power`, still counts as
+  on for these clients, with what it will come back with. What a client sets for it
+  then waits until it is on again.
 
 ## Window behavior
 

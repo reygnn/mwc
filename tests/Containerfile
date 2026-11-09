@@ -1,5 +1,6 @@
 # All of make test, headless, with nothing installed on the host but Podman.
-# The packages are the ones in distrobox.ini.
+# The packages are the ones in distrobox.ini, and what a bare image lacks for the
+# tests (keymaps, a font, ps).
 #
 #   podman build -t mwc-test -f tests/Containerfile tests
 #   podman run --rm --network=none --tmpfs /tmp/.X11-unix:mode=1777 \

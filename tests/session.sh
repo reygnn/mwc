@@ -171,7 +171,7 @@ finish
 # depends on the heap's layout, so this runs mwc under valgrind, which sees every
 # such write (its report lands in the log): without valgrind it only checks that mwc
 # ends cleanly.
-: >"$RC"
+echo 'Mwm*outputManagement: true' >"$RC"
 if command -v valgrind >/dev/null; then
 	cat >"$SMOKE_DIR/mwc-valgrind" <<VG
 #!/bin/sh
@@ -225,7 +225,7 @@ reload() {
 	wait_for "the reload" eval '[ "$(grep -c "reloading the configuration" "$LOG")" -gt '"$before"' ]'
 	sleep 0.3
 }
-echo 'Mwm*HEADLESS-1*outputMode: 1024x600' >"$RC"
+printf 'Mwm*outputManagement: true\nMwm*HEADLESS-1*outputMode: 1024x600\n' >"$RC"
 begin
 outputc list | grep -q '^HEADLESS-1 on=1 w=1024 h=600 x=0 y=0 scale=100$' ||
 	fail "a client isn't told the output's size: $(outputc list)"
@@ -240,18 +240,34 @@ reload
 output_is "a reload leaves it as the client set it" HEADLESS-1 0 0 1600 900
 power off
 check "switched off" "[ \"\$(global output on)\" = 0 ]"
+check "off for the time being: on for clients, with its mode" \
+	"outputc list | grep -q '^HEADLESS-1 on=1 w=1600 h=900 '"
 power on
 check "switched on again" "[ \"\$(global output on)\" = 1 ]"
 output_is "and on again: as the client set it" HEADLESS-1 0 0 1600 900
+power off
+outputc apply HEADLESS-1 1280x800 || fail "a client setting a mode while it is dark"
+sleep 0.3
+check "it stays dark" "[ \"\$(global output on)\" = 0 ]"
+check "clients are told what it comes back with" \
+	"outputc list | grep -q '^HEADLESS-1 on=1 w=1280 h=800 '"
+power on
+output_is "and it comes back with it" HEADLESS-1 0 0 1280 800
 echo 'Mwm*HEADLESS-1*outputMode: 800x500' >"$RC"
 reload
 output_is "a change in mwmrc wins" HEADLESS-1 0 0 800 500
+check "and clients are told" "outputc list | grep -q '^HEADLESS-1 on=1 w=800 h=500 '"
 reload
 output_is "and stays" HEADLESS-1 0 0 800 500
 outputc apply HEADLESS-1 1280x720 scale 2 || fail "applying a scale"
 output_is "a client sets a scale" HEADLESS-1 0 0 640 360 200
 outputc apply HEADLESS-1 1280x720 scale 1 || fail "the scale back"
 refused apply HEADLESS-1 99999x720 || fail "a size the renderer can't allocate is taken"
+refused apply HEADLESS-1 20000x100 || fail "a side over 16384 is taken"
+refused apply HEADLESS-1 1280x720@2000 || fail "a refresh over 1000 Hz is taken"
+refused apply HEADLESS-1 1280x720 scale 20 || fail "a scale over 10 is taken"
+refused apply HEADLESS-1 1280x720 at 0,2000000 || fail "a y the layout overflows with is taken"
+refused apply HEADLESS-1 1000x1 scale 2 || fail "an output less than a pixel high is taken"
 refused apply HEADLESS-1 16384x16384 || fail "a size of 1 GiB a buffer is taken"
 refused test HEADLESS-1 16384x16384 || fail "a test of 1 GiB a buffer passes"
 refused apply HEADLESS-1 1280x720@0.001 || fail "a refresh of a frame every quarter hour is taken"
@@ -264,6 +280,9 @@ outputc apply HEADLESS-1 off || fail "switching it off"
 check "a client switches it off" "[ \"\$(global output on)\" = 0 ]"
 reload
 check "a reload leaves it off" "[ \"\$(global output on)\" = 0 ]"
+power on
+sleep 0.3
+check "and a power on too: a client switched it off" "[ \"\$(global output on)\" = 0 ]"
 outputc apply HEADLESS-1 on 1024x768 || fail "switching it on"
 check "and on" "[ \"\$(global output on)\" = 1 ]"
 output_is "with the mode it asked for" HEADLESS-1 0 0 1024 768
@@ -281,6 +300,9 @@ captured_is() { # description file x y rrggbb
 }
 echo 'Mwm*rootBackground: #204060' >"$RC"
 begin
+WAYLAND_DISPLAY=wayland-0 build/outputc list 2>&1 | grep -q 'no output manager' ||
+	fail "wlr-output-management is offered without Mwm*outputManagement"
+echo "ok: wlr-output-management only with Mwm*outputManagement"
 do_input move 400 300
 pixel_is "the desktop under the pointer" 600 300 204060
 capturec frame HEADLESS-1 "$SMOKE_DIR/frame.png" || fail "capturing a frame"
@@ -306,6 +328,7 @@ rm "$RC"
 # Two outputs, the other way round.
 export WLR_HEADLESS_OUTPUTS=2
 cat >"$RC" <<'RC'
+Mwm*outputManagement: true
 Mwm*HEADLESS-1*outputPosition: 1280,0
 Mwm*HEADLESS-2*outputPosition: 0,0
 RC
@@ -330,17 +353,27 @@ output_is "and keeps its place" HEADLESS-2 0 720 1280 720
 outputc apply HEADLESS-2 on || fail "and on again"
 check "on again in its place" "outputc list | grep -q '^HEADLESS-2 on=1 w=1280 h=720 x=0 y=720 '"
 finish
-# Placed by wlroots, without outputPosition: a client naming only one of them, at its
-# place, must not push the other behind it.
-: >"$RC"
+# Placed by wlroots, without outputPosition. A client changing one of them, naming all
+# as wlr-randr does or only that one, must leave the other where it is.
+echo 'Mwm*outputManagement: true' >"$RC"
 begin 2560 720
 # The right one: naming the left one would leave the other where it is anyway.
 right=$(outputc list | awk '{ x = $5; sub("x=", "", x)
 	if (n == "" || x + 0 > max) { max = x + 0; n = $1 } } END { print n }')
 left=$(outputc list | grep -v "^$right ")
 [ -n "$right" ] && [ -n "$left" ] || fail "two outputs: $(outputc list)"
+right_line=$(outputc list | grep "^$right ")
+left_name=${left%% *}
+# wlroots' master turns leaving outputs out into a protocol error (f9d2520f): this
+# then has to expect outputc to fail.
 outputc apply "$right" alone || fail "a client naming one output alone"
 check "the other output stays where wlroots put it" "[ \"\$(outputc list | grep -v '^$right ')\" = \"$left\" ]"
+outputc apply "$left_name" 640x480 || fail "a client changing the left one's mode"
+check "the right one stays where it was" \
+	"[ \"\$(outputc list | grep '^$right ')\" = \"$right_line\" ]"
+outputc apply "$right" at 0,720 || fail "a client moving the right one"
+check "it goes where the client says" "outputc list | grep -q '^$right on=1 w=1280 h=720 x=0 y=720 '"
+check "and the left one stays" "outputc list | grep -q '^$left_name on=1 w=640 h=480 x=0 y=0 '"
 finish
 unset WLR_HEADLESS_OUTPUTS
 
@@ -392,7 +425,7 @@ wait_for "a reload for the layout" grep -q 'keymap settings changed' "$LOG"
 finish
 echo 'Mwm*keyboardLayout: no-such-layout' >"$RC"
 begin
-log_has "a layout that doesn't exist falls back" 'falling back to the us layout'
+wait_for "a layout that doesn't exist falls back" grep -q 'falling back to the us layout' "$LOG"
 do_input key a
 kill -0 "$pid" || fail "mwc died from a bad layout"
 finish
