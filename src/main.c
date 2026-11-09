@@ -484,9 +484,10 @@ static void layout_change(struct wl_listener *listener, void *data)
 
 /* What the protocol lets through but mwc doesn't take: sizes a software renderer can't
  * allocate, and positions and scales the layout overflows with, as for mwmrc. Any
- * client may ask, so the pixel count is capped too, at 8K (135 MiB a buffer). The
- * buffers live in /dev/shm: one larger than what is free there kills mwc with SIGBUS
- * when it is first touched, which the cap makes rarer but can't rule out. */
+ * client may ask, so the pixel count is capped too, at 8K (135 MiB a buffer). Where
+ * wlroots' own shm allocator is used (0.19.3 on), a buffer larger than what is free in
+ * /dev/shm kills mwc with SIGBUS when it is first touched, which the cap makes rarer
+ * but can't rule out; shmalloc.c reserves its memory and fails cleanly instead. */
 static bool head_state_usable(const struct wlr_output_head_v1_state *s)
 {
 	if (!s->enabled)
