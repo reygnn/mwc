@@ -28,7 +28,8 @@ SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
 	src/shmalloc.c
 OBJ = $(SRC:src/%.c=build/%.o)
 PROTO = build/xdg-shell-protocol.h build/wlr-layer-shell-unstable-v1-protocol.h \
-	build/wlr-output-power-management-unstable-v1-protocol.h
+	build/wlr-output-power-management-unstable-v1-protocol.h \
+	build/ext-image-copy-capture-v1-protocol.h
 
 all: mwc
 
@@ -38,6 +39,11 @@ build:
 build/xdg-shell-protocol.h: | build
 	$(WAYLAND_SCANNER) server-header \
 		$(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+
+# wlroots' own header for it includes this one. In wayland-protocols from 1.37 on.
+build/ext-image-copy-capture-v1-protocol.h: | build
+	$(WAYLAND_SCANNER) server-header \
+		$(WAYLAND_PROTOCOLS)/staging/ext-image-copy-capture/ext-image-copy-capture-v1.xml $@
 
 build/wlr-layer-shell-unstable-v1-protocol.h: protocols/wlr-layer-shell-unstable-v1.xml | build
 	$(WAYLAND_SCANNER) server-header $< $@
@@ -155,7 +161,7 @@ build/powerc: tests/powerc.c $(POWERC_GEN)
 		build/wlr-output-power-management-unstable-v1-code.c \
 		$(shell $(PKG_CONFIG) --libs wayland-client)
 
-# Sets outputs as wlr-randr does, or a VNC or RDP server.
+# Sets outputs as wlr-randr does, and captures them as a VNC or RDP server does.
 OUTPUTC_GEN = build/wlr-output-management-unstable-v1-client.h \
 	build/wlr-output-management-unstable-v1-code.c
 
@@ -165,10 +171,26 @@ build/outputc: tests/outputc.c $(OUTPUTC_GEN)
 		build/wlr-output-management-unstable-v1-code.c \
 		$(shell $(PKG_CONFIG) --libs wayland-client)
 
+CAPTURE_PROTOS = ext-image-copy-capture ext-image-capture-source ext-foreign-toplevel-list
+CAPTUREC_GEN = $(CAPTURE_PROTOS:%=build/%-v1-client.h) $(CAPTURE_PROTOS:%=build/%-v1-code.c)
+
+build/ext-%-v1-client.h: | build
+	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/staging/ext-$*/ext-$*-v1.xml $@
+
+build/ext-%-v1-code.c: | build
+	$(WAYLAND_SCANNER) private-code $(WAYLAND_PROTOCOLS)/staging/ext-$*/ext-$*-v1.xml $@
+
+build/capturec: tests/capturec.c $(CAPTUREC_GEN)
+	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
+		$(shell $(PKG_CONFIG) --cflags wayland-client cairo) -o $@ tests/capturec.c \
+		$(CAPTURE_PROTOS:%=build/%-v1-code.c) \
+		$(shell $(PKG_CONFIG) --libs wayland-client cairo)
+
 tabs-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 	tests/tabs.sh
 
-session-test: mwc build/vinput build/pngtool build/xclient build/powerc build/outputc
+session-test: mwc build/vinput build/pngtool build/xclient build/powerc build/outputc \
+		build/capturec
 	tests/session.sh
 
 misc-test: mwc build/vinput build/pngtool build/xclient build/xdgc
@@ -210,5 +232,6 @@ test: smoke input-test wallpaper-test config-test layer-test window-test \
 clean:
 	rm -rf build mwc
 
-.SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN)
+.SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
+	$(CAPTUREC_GEN)
 .PHONY: tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean

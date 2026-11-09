@@ -22,6 +22,8 @@
 #include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_ext_data_control_v1.h>
+#include <wlr/types/wlr_ext_image_capture_source_v1.h>
+#include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -762,6 +764,10 @@ int main(int argc, char *argv[])
 	wlr_single_pixel_buffer_manager_v1_create(server.display);
 	wlr_presentation_create(server.display, server.backend, 2);
 	wlr_screencopy_manager_v1_create(server.display);
+	/* screencopy's successor, with damage and the pointer as an image of its own: a
+	 * VNC or RDP server can send it apart, and the viewer draws it without delay. */
+	wlr_ext_image_copy_capture_manager_v1_create(server.display, 1);
+	wlr_ext_output_image_capture_source_manager_v1_create(server.display, 1);
 	server.idle_notifier = wlr_idle_notifier_v1_create(server.display);
 	server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display);
 	server.new_idle_inhibitor.notify = new_idle_inhibitor;

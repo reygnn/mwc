@@ -47,9 +47,9 @@ resize, maximize, minimize, menu and key binding. The simulated devices and the
 state file only exist when `MWC_TEST_STATE` is set (the devices also with
 `MWC_VIRTUAL_INPUT=1`, for wayvnc), because those protocols let any client type on
 the user's behalf. Other protocols are always on and open to every
-client, as in most wlroots compositors: `wlr-screencopy` lets any of them read the
-screen, `ext-data-control-v1` and `wlr-data-control` let any of them read and set the
-clipboard, `wlr-layer-shell` lets any of them cover it, and
+client, as in most wlroots compositors: `wlr-screencopy` and `ext-image-copy-capture-v1`
+let any of them read the screen, `ext-data-control-v1` and `wlr-data-control` let any of
+them read and set the clipboard, `wlr-layer-shell` lets any of them cover it, and
 `wlr-output-management` lets any of them change the monitors' modes and places. What a
 client set there stays over a reload until mwmrc says something new about that monitor.
 
@@ -71,7 +71,8 @@ end the session, which is worth running against a sanitizer build too:
 
 `make tabs-test` walks through tab groups, and `make state-test` tries orderings of window states, and `make misc-test` key bindings,
 autostart and settings the others don't reach. `make session-test` checks monitor and
-keyboard settings, monitors set by a client (`tests/outputc.c`) and the properties X11 programs look for.
+keyboard settings, monitors set and captured by a client (`tests/outputc.c`,
+`tests/capturec.c`) and the properties X11 programs look for.
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.

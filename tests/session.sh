@@ -5,8 +5,8 @@
 LOG=build/session.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools Xwayland
-for tool in build/vinput build/pngtool build/xclient build/powerc build/outputc; do
+require_tools Xwayland grim
+for tool in build/vinput build/pngtool build/xclient build/powerc build/outputc build/capturec; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -250,6 +250,37 @@ output_is "with the mode it asked for" HEADLESS-1 0 0 1024 768
 kill -0 "$pid" || fail "mwc died"
 finish
 
+# ---- capturing the screen, as a VNC or RDP server does -------------------------------
+
+capturec() { WAYLAND_DISPLAY=wayland-0 build/capturec "$@"; }
+captured_is() { # description file x y rrggbb
+	local got
+	got=$(build/pngtool pixel "$2" "$3" "$4")
+	[ "$got" = "$5" ] || fail "$1: pixel $3,$4 is $got, expected $5"
+	echo "ok: $1"
+}
+echo 'Mwm*rootBackground: #204060' >"$RC"
+begin
+do_input move 400 300
+pixel_is "the desktop under the pointer" 600 300 204060
+capturec frame HEADLESS-1 "$SMOKE_DIR/frame.png" || fail "capturing a frame"
+captured_is "ext-image-copy-capture brings the desktop" "$SMOKE_DIR/frame.png" 600 300 204060
+captured_is "without the pointer" "$SMOKE_DIR/frame.png" 401 301 204060
+# Before any capture with the pointer painted in: wlroots draws it in software after
+# that one, and has no image of its own for it until the pointer's image changes.
+capturec cursor HEADLESS-1 "$SMOKE_DIR/cursor.png" >"$SMOKE_DIR/cursor.txt" ||
+	fail "capturing the pointer"
+read -r _ x y hotspot w h opaque <"$SMOKE_DIR/cursor.txt"
+x=${x#x=} y=${y#y=}
+[ "$x" -ge 400 ] && [ "$x" -le 401 ] && [ "$y" -ge 300 ] && [ "$y" -le 301 ] || fail "the pointer's position: $(cat "$SMOKE_DIR/cursor.txt")"
+echo "ok: the pointer's position comes with it"
+[ "${opaque#opaque=}" -gt 0 ] 2>/dev/null || fail "the pointer's image is empty: $(cat "$SMOKE_DIR/cursor.txt")"
+echo "ok: and its image ($w $h $hotspot)"
+capturec frame HEADLESS-1 "$SMOKE_DIR/painted.png" cursors || fail "capturing with the pointer"
+[ "$(build/pngtool count "$SMOKE_DIR/painted.png" 390 290 30 30 204060)" -lt 900 ] ||
+	fail "the pointer isn't painted in when asked"
+echo "ok: painted in when asked"
+finish
 rm "$RC"
 
 # Two outputs, the other way round.
