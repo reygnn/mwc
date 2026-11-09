@@ -38,6 +38,9 @@ be installed on the host except Podman and Distrobox:
     make test           # headless tests
     ./mwc -s xterm      # nested, opens as a window
 
+Without Distrobox, `tests/Containerfile` runs `make test` in a plain Podman
+container with the same packages; its header has the two commands.
+
 `make smoke` starts mwc headless and checks that a Wayland client (foot) and an
 X11 client (xterm) connect, with a screenshot in `build/smoke.png`.
 
