@@ -14,3 +14,17 @@ TODO
   Eingabefokus (WM_HINTS) bleiben außen vor.
   Abnahme: ein Test in tests/pointer.sh, der diese Fälle mit vinput abfährt,
   und README unter Mouse und Configuration.
+
+* Zeigerbild nach einer Aufnahme mit eingemaltem Zeiger. wlroots zeichnet den
+  Zeiger nach jeder Aufnahme, die ihn eingemalt haben will
+  (ext-image-copy-capture mit paint_cursors, wlr-screencopy mit
+  overlay_cursor, also auch grim -c), in Software, bis sich das Zeigerbild
+  ändert: eine Zeiger-Sitzung (wayvnc) bekommt dann kein Bild, normale
+  Aufnahmen den Zeiger verzögert eingebacken. Über einem Client-Fenster
+  dauert das, bis der Zeiger eine Fläche wechselt. Ausweg: in output_frame
+  merken, wann software_cursor_locks auf 0 fällt, und das Bild neu setzen
+  wie output_back_on() — dafür müsste request_cursor die Fläche und den
+  Hotspot des Clients merken; output_back_on() fehlt dasselbe heute schon
+  (über einem Client ist der Zeiger nach Aus und An unsichtbar).
+  Abnahme: session.sh fängt den Zeiger nach einer Aufnahme mit "cursors"
+  und bekommt ein Bild; ein Upstream-Bericht an wlroots.

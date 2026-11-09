@@ -483,12 +483,16 @@ static void layout_change(struct wl_listener *listener, void *data)
 }
 
 /* What the protocol lets through but mwc doesn't take: sizes a software renderer can't
- * allocate, and positions and scales the layout overflows with, as for mwmrc. */
+ * allocate, and positions and scales the layout overflows with, as for mwmrc. Any
+ * client may ask, so the pixel count is capped too, at 8K (135 MiB a buffer). The
+ * buffers live in /dev/shm: one larger than what is free there kills mwc with SIGBUS
+ * when it is first touched, which the cap makes rarer but can't rule out. */
 static bool head_state_usable(const struct wlr_output_head_v1_state *s)
 {
 	if (!s->enabled)
 		return true;
 	if (!s->mode && (s->custom_mode.width > 16384 || s->custom_mode.height > 16384 ||
+			(int64_t)s->custom_mode.width * s->custom_mode.height > 8192 * 4320 ||
 			s->custom_mode.refresh > 1000000))
 		return false;
 	return s->scale >= 0.1 && s->scale <= 10 && s->x >= -1000000 &&
@@ -529,12 +533,18 @@ static bool output_manager_configure(struct server *server,
 	size_t i = 0;
 	wl_list_for_each(head, &config->heads, link) {
 		struct output *output = head->state.output->data;
+		/* wlroots sends a head switched off with everything else zeroed: it keeps
+		 * its place, and what a client set before comes back with it. */
+		if (!head->state.enabled) {
+			i++;
+			continue;
+		}
 		wlr_output_layout_add(server->output_layout, head->state.output,
 			head->state.x, head->state.y);
 		output_forget_managed(output);
 		output->managed_rc = output_rc_text(head->state.output);
 		output->managed = head->state;
-		if (head->state.enabled && !was_on[i])
+		if (!was_on[i])
 			output_back_on(server, head->state.output);
 		i++;
 	}

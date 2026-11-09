@@ -237,6 +237,7 @@ outputc apply HEADLESS-1 1280x720 scale 2 || fail "applying a scale"
 output_is "a client sets a scale" HEADLESS-1 0 0 640 360 200
 outputc apply HEADLESS-1 1280x720 scale 1 || fail "the scale back"
 outputc apply HEADLESS-1 99999x720 2>/dev/null && fail "a size the renderer can't allocate is taken"
+outputc apply HEADLESS-1 16384x16384 2>/dev/null && fail "a size of 1 GiB a buffer is taken"
 outputc apply HEADLESS-1 1280x720 scale 0.01 2>/dev/null && fail "a scale the layout overflows with is taken"
 outputc apply HEADLESS-1 1280x720 at 2000000,0 2>/dev/null && fail "a position the layout overflows with is taken"
 output_is "what mwc refuses changes nothing" HEADLESS-1 0 0 1280 720
@@ -279,7 +280,7 @@ echo "ok: and its image ($w $h $hotspot)"
 capturec frame HEADLESS-1 "$SMOKE_DIR/painted.png" cursors || fail "capturing with the pointer"
 [ "$(build/pngtool count "$SMOKE_DIR/painted.png" 390 290 30 30 204060)" -lt 900 ] ||
 	fail "the pointer isn't painted in when asked"
-echo "ok: painted in when asked"
+captured_is "painted in when asked, on the desktop" "$SMOKE_DIR/painted.png" 600 300 204060
 finish
 rm "$RC"
 
@@ -304,6 +305,11 @@ output_is "a client moves one" HEADLESS-2 0 720 1280 720
 output_is "the other stays" HEADLESS-1 0 0 1280 720
 reload
 output_is "a reload leaves it where the client put it" HEADLESS-2 0 720 1280 720
+outputc apply HEADLESS-2 off || fail "a client switching one of two off"
+check "it is off" "! outputc list | grep -q '^HEADLESS-2 on=1'"
+output_is "and keeps its place" HEADLESS-2 0 720 1280 720
+outputc apply HEADLESS-2 on || fail "and on again"
+output_is "on again in its place" HEADLESS-2 0 720 1280 720
 finish
 unset WLR_HEADLESS_OUTPUTS
 

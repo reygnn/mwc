@@ -7,12 +7,16 @@
  *
  * list prints one line per output: NAME on=1 w=1280 h=720 x=0 y=0 scale=100.
  * apply and test leave the other outputs as they are. Exits 0 if mwc took it, 1 if
- * it refused or the request came too late, 2 on a usage error.
+ * it refused, the request came too late or nothing came within five seconds, 2 on a
+ * usage error.
  */
+#define _POSIX_C_SOURCE 200809L
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <wayland-client.h>
 #include "wlr-output-management-unstable-v1-client.h"
 
@@ -221,6 +225,14 @@ static const struct zwlr_output_configuration_v1_listener config_listener = {
 	config_succeeded, config_failed, config_cancelled,
 };
 
+static void timed_out(int sig)
+{
+	static const char msg[] = "outputc: no answer within five seconds\n";
+	if (write(2, msg, sizeof(msg) - 1) < 0)
+		_exit(1);
+	_exit(1);
+}
+
 static int usage(void)
 {
 	fprintf(stderr, "usage: outputc list\n"
@@ -238,6 +250,8 @@ int main(int argc, char **argv)
 		return usage();
 	if (!list && argc < 3)
 		return usage();
+	signal(SIGALRM, timed_out);
+	alarm(5);
 
 	struct wl_display *display = wl_display_connect(NULL);
 	if (!display) {

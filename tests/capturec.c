@@ -12,6 +12,7 @@
  */
 #define _GNU_SOURCE
 #include <cairo.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -206,6 +207,14 @@ static const struct ext_image_copy_capture_cursor_session_v1_listener cursor_lis
 	cursor_enter, cursor_leave, cursor_position, cursor_hotspot,
 };
 
+static void timed_out(int sig)
+{
+	static const char msg[] = "capturec: nothing came within five seconds\n";
+	if (write(2, msg, sizeof(msg) - 1) < 0)
+		_exit(1);
+	_exit(1);
+}
+
 static int usage(void)
 {
 	fprintf(stderr, "usage: capturec frame NAME OUT.png [cursors]\n"
@@ -232,6 +241,7 @@ int main(int argc, char **argv)
 	bool paint_cursors = !cursor && argc == 5 && !strcmp(argv[4], "cursors");
 	if (argc != 4 && !paint_cursors)
 		return usage();
+	signal(SIGALRM, timed_out);
 	alarm(5);
 
 	struct wl_display *display = wl_display_connect(NULL);
