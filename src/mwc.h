@@ -654,6 +654,9 @@ void grab_forget(struct server *server);
  * resized. */
 void grab_give_way(struct view *view);
 void input_add_device(struct server *server, struct wlr_input_device *dev);
+/* Lets clients type and click as the user (wayvnc, the tests). */
+void input_virtual_init(struct server *server);
+void input_virtual_fini(void);
 void cursor_set_name(struct server *server, const char *name);
 void process_cursor_motion(struct server *server, uint32_t time);
 /* What is under the pointer may have changed without it moving. */
@@ -778,6 +781,5 @@ void config_reload(struct server *server);
 /* ---- testhook.c --------------------------------------------------------- */
 
 void testhook_init(struct server *server);
-void testhook_fini(void);
 
 #endif

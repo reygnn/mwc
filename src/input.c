@@ -23,6 +23,7 @@
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
+#include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
@@ -1451,4 +1452,50 @@ void input_init(struct server *server)
 		request_set_primary_selection;
 	wl_signal_add(&server->seat->events.request_set_primary_selection,
 		&server->request_set_primary_selection);
+}
+
+/* ---- virtual input --------------------------------------------------------- */
+
+/* zwp_virtual_keyboard_v1 and zwlr_virtual_pointer_v1 let a client type and
+ * click as the user: what a VNC server such as wayvnc needs, and the tests.
+ * Off unless MWC_VIRTUAL_INPUT or MWC_TEST_STATE asks for them, because any
+ * client could use them. */
+static struct server *virtual_server;
+static struct wl_listener new_virtual_keyboard, new_virtual_pointer;
+
+static void on_new_virtual_keyboard(struct wl_listener *listener, void *data)
+{
+	struct wlr_virtual_keyboard_v1 *kb = data;
+	input_add_device(virtual_server, &kb->keyboard.base);
+}
+
+static void on_new_virtual_pointer(struct wl_listener *listener, void *data)
+{
+	struct wlr_virtual_pointer_v1_new_pointer_event *event = data;
+	input_add_device(virtual_server, &event->new_pointer->pointer.base);
+}
+
+void input_virtual_init(struct server *server)
+{
+	if (virtual_server)
+		return;
+	virtual_server = server;
+	struct wlr_virtual_keyboard_manager_v1 *vk =
+		wlr_virtual_keyboard_manager_v1_create(server->display);
+	new_virtual_keyboard.notify = on_new_virtual_keyboard;
+	wl_signal_add(&vk->events.new_virtual_keyboard, &new_virtual_keyboard);
+	struct wlr_virtual_pointer_manager_v1 *vp =
+		wlr_virtual_pointer_manager_v1_create(server->display);
+	new_virtual_pointer.notify = on_new_virtual_pointer;
+	wl_signal_add(&vp->events.new_virtual_pointer, &new_virtual_pointer);
+	wlr_log(WLR_INFO, "virtual keyboard and pointer protocols on");
+}
+
+void input_virtual_fini(void)
+{
+	if (!virtual_server)
+		return;
+	wl_list_remove(&new_virtual_keyboard.link);
+	wl_list_remove(&new_virtual_pointer.link);
+	virtual_server = NULL;
 }

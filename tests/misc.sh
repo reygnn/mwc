@@ -276,4 +276,14 @@ grep -q 'protocols are missing' "$SMOKE_DIR/vinput.log" || fail "vinput failed f
 echo "ok: without MWC_TEST_STATE no client can inject input"
 stop_mwc
 
+# MWC_VIRTUAL_INPUT=1 turns on only the virtual devices, as wayvnc needs them. The
+# key binding for the terminal shows that the keyboard arrives.
+MWC_VIRTUAL_INPUT=1 MWC_TERMINAL="touch $SMOKE_DIR/typed" "$MWC" -s "true" >"$LOG" 2>&1 &
+pid=$!
+wait_for "mwc is up with MWC_VIRTUAL_INPUT" test -S "$SMOKE_DIR/wayland-0"
+echo "key super+Return" | WAYLAND_DISPLAY=wayland-0 build/vinput 1280 720 \
+	>"$SMOKE_DIR/vinput.log" 2>&1 || fail "vinput: $(cat "$SMOKE_DIR/vinput.log")"
+wait_for "with MWC_VIRTUAL_INPUT a virtual keyboard types" test -e "$SMOKE_DIR/typed"
+stop_mwc
+
 echo "PASS: misc"

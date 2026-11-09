@@ -450,7 +450,8 @@ static void usage(const char *argv0)
 		"\n"
 		"Environment: MWC_TERMINAL, MWC_ACTIVE, MWC_INACTIVE, MWC_ROOT,\n"
 		"MWC_WALLPAPER, MWC_FONT, MWC_MOVE_OPAQUE, MWC_TILING,\n"
-		"MWC_TILE_MAIN_WIDTH, XCURSOR_THEME, XCURSOR_SIZE, XKB_DEFAULT_*.\n"
+		"MWC_TILE_MAIN_WIDTH, MWC_VIRTUAL_INPUT, XCURSOR_THEME, XCURSOR_SIZE,\n"
+		"XKB_DEFAULT_*.\n"
 		"Without -s, ~/.config/mwc/autostart is run if executable.\n"
 		"~/.config/mwc/mwmrc is read at startup and on SIGHUP.\n",
 		argv0);
@@ -494,6 +495,11 @@ int main(int argc, char *argv[])
 	wl_event_loop_add_signal(server.event_loop, SIGINT, handle_terminate,
 		&server);
 	testhook_init(&server);
+	/* For a VNC server such as wayvnc. Only for this process: a nested mwc started
+	 * from here asks for itself. */
+	if (config_bool("MWC_VIRTUAL_INPUT", getenv("MWC_VIRTUAL_INPUT")) == 1)
+		input_virtual_init(&server);
+	unsetenv("MWC_VIRTUAL_INPUT");
 
 	config_load();
 	theme_init();
@@ -606,7 +612,7 @@ int main(int argc, char *argv[])
 	/* Their popups may have asked for this, and nothing will run it any more. */
 	if (server.pointer_refresh)
 		wl_event_source_remove(server.pointer_refresh);
-	testhook_fini();
+	input_virtual_fini();
 	if (server.xwayland) {
 		wl_list_remove(&server.xwayland_ready.link);
 		wl_list_remove(&server.new_xwayland_surface.link);

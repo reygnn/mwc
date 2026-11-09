@@ -23,6 +23,10 @@ and get the same frame.
 
 `~/.config/mwc/autostart` (executable) runs on startup unless `-s` is given.
 
+- **Headless over RDP**: [docs/WAYLAND-RDP.md](docs/WAYLAND-RDP.md) moves a server from
+  mwm-x11 with xrdp to mwc behind xrdp and wayvnc, and
+  [docs/wayland-rdp-upgrade.sh](docs/wayland-rdp-upgrade.sh) runs the steps.
+
 ## Develop and test in a container
 
 `distrobox.ini` defines a rootless box with all dependencies, so nothing has to
@@ -40,8 +44,9 @@ X11 client (xterm) connect, with a screenshot in `build/smoke.png`.
 `make input-test` drives the same two clients with a simulated mouse and
 keyboard (`tests/vinput.c`) and checks geometry and focus after each move,
 resize, maximize, minimize, menu and key binding. The simulated devices and the
-state file only exist when `MWC_TEST_STATE` is set, because those protocols let
-any client type on the user's behalf. Other protocols are always on and open to every
+state file only exist when `MWC_TEST_STATE` is set (the devices also with
+`MWC_VIRTUAL_INPUT=1`, for wayvnc), because those protocols let any client type on
+the user's behalf. Other protocols are always on and open to every
 client, as in most wlroots compositors: `wlr-screencopy` lets any of them read the
 screen, `ext-data-control-v1` and `wlr-data-control` let any of them read and set the
 clipboard, and `wlr-layer-shell` lets any of them cover it.
@@ -211,6 +216,7 @@ The environment overrides the global entries:
 | `MWC_TILING`      | `0`            | `1`: start in tiling mode        |
 | `MWC_TILE_MAIN_WIDTH` | `55`       | main tiled window's share in %   |
 | `MWC_TERMINAL`    | first of xterm, foot, alacritty, … | "New Window" and Super+Return, also `Mwm*terminal` |
+| `MWC_VIRTUAL_INPUT` | `0`          | `1`: virtual keyboard and pointer for clients such as wayvnc |
 
 The cursor theme and size come from `XCURSOR_THEME` and `XCURSOR_SIZE`, the keyboard
 layout from `XKB_DEFAULT_LAYOUT` and the like. `-d` logs debug output, and `-v` prints

@@ -4,7 +4,7 @@
  * any client type and click on the user's behalf.
  *
  * - zwp_virtual_keyboard_v1 and zwlr_virtual_pointer_v1 feed simulated devices
- *   into the normal input path (see tests/vinput.c).
+ *   into the normal input path (see tests/vinput.c, and input_virtual_init()).
  * - SIGUSR1 writes the window state to the file so tests can check geometry
  *   and focus, which a Wayland client cannot query for other clients.
  * - SIGUSR2 removes an output.
@@ -18,16 +18,12 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_seat.h>
-#include <wlr/types/wlr_virtual_keyboard_v1.h>
-#include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/util/log.h>
 #include <wlr/xwayland.h>
 #include "mwc.h"
 
 static struct server *test_server;
 static const char *state_path;
-static struct wl_listener new_virtual_keyboard;
-static struct wl_listener new_virtual_pointer;
 
 /* SIGUSR2 unplugs the newest output, which the headless backend can't do by itself. */
 static int unplug_output(int signal, void *data)
@@ -38,18 +34,6 @@ static int unplug_output(int signal, void *data)
 		wlr_output_destroy(newest->wlr_output);
 	}
 	return 0;
-}
-
-static void on_new_virtual_keyboard(struct wl_listener *listener, void *data)
-{
-	struct wlr_virtual_keyboard_v1 *kb = data;
-	input_add_device(test_server, &kb->keyboard.base);
-}
-
-static void on_new_virtual_pointer(struct wl_listener *listener, void *data)
-{
-	struct wlr_virtual_pointer_v1_new_pointer_event *event = data;
-	input_add_device(test_server, &event->new_pointer->pointer.base);
 }
 
 /* One line per window, front to back. Written to a temporary file first, so
@@ -156,24 +140,8 @@ void testhook_init(struct server *server)
 	wlr_log(WLR_INFO, "test hooks on, state file %s", state_path);
 	test_server = server;
 
-	struct wlr_virtual_keyboard_manager_v1 *vk =
-		wlr_virtual_keyboard_manager_v1_create(server->display);
-	new_virtual_keyboard.notify = on_new_virtual_keyboard;
-	wl_signal_add(&vk->events.new_virtual_keyboard, &new_virtual_keyboard);
-
-	struct wlr_virtual_pointer_manager_v1 *vp =
-		wlr_virtual_pointer_manager_v1_create(server->display);
-	new_virtual_pointer.notify = on_new_virtual_pointer;
-	wl_signal_add(&vp->events.new_virtual_pointer, &new_virtual_pointer);
+	input_virtual_init(server);
 
 	wl_event_loop_add_signal(server->event_loop, SIGUSR1, dump_state, NULL);
 	wl_event_loop_add_signal(server->event_loop, SIGUSR2, unplug_output, NULL);
-}
-
-void testhook_fini(void)
-{
-	if (!test_server)
-		return;
-	wl_list_remove(&new_virtual_keyboard.link);
-	wl_list_remove(&new_virtual_pointer.link);
 }
