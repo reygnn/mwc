@@ -54,7 +54,9 @@ client, as in most wlroots compositors: `wlr-screencopy` and `ext-image-copy-cap
 let any of them read the screen, `ext-data-control-v1` and `wlr-data-control` let any of
 them read and set the clipboard, `wlr-layer-shell` lets any of them cover it, and
 `wlr-output-management` lets any of them change the monitors' modes and places. What a
-client set there stays over a reload until mwmrc says something new about that monitor.
+client set there stays over a reload until mwmrc says something new about that monitor;
+a monitor that goes away, also for a VT switch, comes back with what mwmrc says. A
+monitor that is off gives captures no frames until it is on again.
 
 `make wallpaper-test` renders generated images and checks pixels in screenshots,
 and `make config-test` does the same for `mwmrc`, including reloading it.

@@ -62,9 +62,12 @@ static void output_request_state(struct wl_listener *listener, void *data)
 	struct output *output = wl_container_of(listener, output,
 		request_state);
 	const struct wlr_output_event_request_state *event = data;
-	/* Whoever resizes the window decides now, not what a client set before. */
-	if (wlr_output_commit_state(output->wlr_output, event->state) &&
-			(event->state->committed & WLR_OUTPUT_STATE_MODE)) {
+	struct wlr_output *o = output->wlr_output;
+	int w = o->width, h = o->height;
+	/* Whoever resizes the window decides now, not what a client set before. The
+	 * request always carries a mode, also when the window was only moved or
+	 * (de)activated: only a new size counts. */
+	if (wlr_output_commit_state(o, event->state) && (o->width != w || o->height != h)) {
 		free(output->managed_rc);
 		output->managed_rc = NULL;
 	}
@@ -484,20 +487,28 @@ static void layout_change(struct wl_listener *listener, void *data)
 
 /* What the protocol lets through but mwc doesn't take: sizes a software renderer can't
  * allocate, and positions and scales the layout overflows with, as for mwmrc. Any
- * client may ask, so the pixel count is capped too, at 8K (135 MiB a buffer). Where
- * wlroots' own shm allocator is used (0.19.3 on), a buffer larger than what is free in
- * /dev/shm kills mwc with SIGBUS when it is first touched, which the cap makes rarer
- * but can't rule out; shmalloc.c reserves its memory and fails cleanly instead. */
+ * client may ask, so more is refused than mwmrc refuses:
+ * - more pixels than 8K, 135 MiB a buffer. Each output holds a few such buffers, and
+ *   they are memory like any other: past what mwc may use, the OOM killer ends it.
+ *   The cap bounds what one request costs, not what all outputs together do.
+ * - a refresh below 1 Hz (0 means the backend's default): a headless output would draw
+ *   a frame every quarter hour, and whoever watches it over VNC or RDP sees nothing.
+ * - a scale that leaves less than one logical pixel. */
 static bool head_state_usable(const struct wlr_output_head_v1_state *s)
 {
 	if (!s->enabled)
 		return true;
 	if (!s->mode && (s->custom_mode.width > 16384 || s->custom_mode.height > 16384 ||
 			(int64_t)s->custom_mode.width * s->custom_mode.height > 8192 * 4320 ||
-			s->custom_mode.refresh > 1000000))
+			s->custom_mode.refresh > 1000000 ||
+			(s->custom_mode.refresh > 0 && s->custom_mode.refresh < 1000)))
 		return false;
-	return s->scale >= 0.1 && s->scale <= 10 && s->x >= -1000000 &&
-		s->x <= 1000000 && s->y >= -1000000 && s->y <= 1000000;
+	if (!(s->scale >= 0.1 && s->scale <= 10 && s->x >= -1000000 &&
+			s->x <= 1000000 && s->y >= -1000000 && s->y <= 1000000))
+		return false;
+	int w = s->mode ? s->mode->width : s->custom_mode.width;
+	int h = s->mode ? s->mode->height : s->custom_mode.height;
+	return (w <= 0 || w / s->scale >= 1) && (h <= 0 || h / s->scale >= 1);
 }
 
 /* Tests or applies what a client asks for, all outputs at once. An output it switches
@@ -540,8 +551,15 @@ static bool output_manager_configure(struct server *server,
 			i++;
 			continue;
 		}
-		wlr_output_layout_add(server->output_layout, head->state.output,
-			head->state.x, head->state.y);
+		/* Only where it moves: placing an output pins it, and wlroots then lines
+		 * up the others it placed itself behind it. A client must name every
+		 * output, also those it means to leave alone. */
+		struct wlr_box box;
+		wlr_output_layout_get_box(server->output_layout, head->state.output, &box);
+		if (!wlr_output_layout_get(server->output_layout, head->state.output) ||
+				box.x != head->state.x || box.y != head->state.y)
+			wlr_output_layout_add(server->output_layout, head->state.output,
+				head->state.x, head->state.y);
 		output_forget_managed(output);
 		output->managed_rc = output_rc_text(head->state.output);
 		output->managed = head->state;

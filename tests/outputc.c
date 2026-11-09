@@ -3,12 +3,13 @@
  * or RDP server that makes the output as large as the viewer's window.
  *
  *   outputc list
- *   outputc apply|test NAME [WIDTHxHEIGHT[@HZ]] [at X,Y] [scale S] [off|on]
+ *   outputc apply|test NAME [WIDTHxHEIGHT[@HZ]] [at X,Y] [scale S] [off|on] [alone]
  *
  * list prints one line per output: NAME on=1 w=1280 h=720 x=0 y=0 scale=100.
- * apply and test leave the other outputs as they are. Exits 0 if mwc took it, 1 if
- * it refused, the request came too late or nothing came within five seconds, 2 on a
- * usage error.
+ * apply and test leave the other outputs as they are; alone leaves them out of the
+ * configuration, which the protocol forbids but wlroots lets through. Exits 0 if mwc took it, 1 if
+ * it refused or the request came too late, 2 on a usage error, 3 if nothing came
+ * within five seconds.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <signal.h>
@@ -229,14 +230,14 @@ static void timed_out(int sig)
 {
 	static const char msg[] = "outputc: no answer within five seconds\n";
 	if (write(2, msg, sizeof(msg) - 1) < 0)
-		_exit(1);
-	_exit(1);
+		_exit(3);
+	_exit(3);
 }
 
 static int usage(void)
 {
 	fprintf(stderr, "usage: outputc list\n"
-		"       outputc apply|test NAME [WxH[@HZ]] [at X,Y] [scale S] [off|on]\n");
+		"       outputc apply|test NAME [WxH[@HZ]] [at X,Y] [scale S] [off|on] [alone]\n");
 	return 2;
 }
 
@@ -293,15 +294,19 @@ int main(int argc, char **argv)
 	struct zwlr_output_configuration_v1 *config =
 		zwlr_output_manager_v1_create_configuration(manager, serial);
 	zwlr_output_configuration_v1_add_listener(config, &config_listener, NULL);
-	bool off = false;
+	bool off = false, alone = false;
 	for (int i = 3; i < argc; i++) {
 		if (!strcmp(argv[i], "off"))
 			off = true;
 		else if (!strcmp(argv[i], "on"))
 			off = false;
+		else if (!strcmp(argv[i], "alone"))
+			alone = true;
 	}
 	for (int i = 0; i < n_heads; i++) {
 		struct head *h = &heads[i];
+		if (h != target && alone)
+			continue;
 		if (h == target && off) {
 			zwlr_output_configuration_v1_disable_head(config, h->head);
 			continue;
@@ -330,8 +335,8 @@ int main(int argc, char **argv)
 				if (argv[a][consumed])
 					sscanf(argv[a] + consumed, "@%lf", &hz);
 				zwlr_output_configuration_head_v1_set_custom_mode(ch, w, height,
-					(int)(hz * 1000));
-			} else if (strcmp(argv[a], "on")) {
+					(int)(hz * 1000 + 0.5));
+			} else if (strcmp(argv[a], "on") && strcmp(argv[a], "alone")) {
 				return usage();
 			}
 		}

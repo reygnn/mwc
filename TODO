@@ -28,3 +28,14 @@ TODO
   (über einem Client ist der Zeiger nach Aus und An unsichtbar).
   Abnahme: session.sh fängt den Zeiger nach einer Aufnahme mit "cursors"
   und bekommt ein Bild; ein Upstream-Bericht an wlroots.
+
+* Bildschirmaufnahme eines Monitors, der aus war. wlroots 0.19.2 legt die
+  Aufnahmequelle eines Monitors beim ersten Aufnahmewunsch an und nimmt Größe
+  und Formate aus einem Swapchain-Test. Ist der Monitor da aus, bleibt sie bei
+  0x0 ohne Formate und erneuert sich nur bei einem Commit mit neuem Modus oder
+  Renderformat; mwc schaltet ihn aber mit dem alten Modus wieder ein. Ein wayvnc,
+  der während DPMS-aus startet, bekommt so nie ein Bild, bis jemand den Modus
+  ändert. Gehört nach wlroots (die Quelle soll auch auf ENABLED hören); in mwc
+  ginge nur ein erzwungener Moduswechsel beim Einschalten.
+  Abnahme: session.sh schaltet mit powerc aus, startet capturec, schaltet ein
+  und bekommt ein Bild; ein Upstream-Bericht an wlroots.

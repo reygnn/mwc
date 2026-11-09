@@ -192,6 +192,12 @@ for mode in 1024x600 1600x900 800x500 1280x720 640x480 1920x1080 1024x768 1280x7
 	[ "$i" -lt 200 ] || fail "the mode change to $mode never came"
 done
 echo "ok: eight mode changes"
+# The same through wlr-output-management, which commits through the backend.
+for mode in 1600x900 800x600 1280x720; do
+	WAYLAND_DISPLAY=wayland-0 build/outputc apply HEADLESS-1 "$mode" ||
+		fail "a client setting $mode"
+done
+echo "ok: and three set by a client"
 finish
 if [ -n "${mwc_plain-}" ]; then
 	MWC=$mwc_plain
@@ -204,6 +210,14 @@ fi
 # ---- outputs set by a client, as a VNC or RDP server sets them ----------------------
 
 outputc() { WAYLAND_DISPLAY=wayland-0 build/outputc "$@"; }
+# refused <outputc args>: mwc says no, not a timeout or a lost connection.
+refused() {
+	local before status
+	before=$(grep -c 'refusing an output configuration' "$LOG")
+	outputc "$@" 2>/dev/null
+	status=$?
+	[ "$status" = 1 ] && [ "$(grep -c 'refusing an output configuration' "$LOG")" -gt "$before" ]
+}
 reload() {
 	local before
 	before=$(grep -c 'reloading the configuration' "$LOG")
@@ -227,6 +241,7 @@ output_is "a reload leaves it as the client set it" HEADLESS-1 0 0 1600 900
 power off
 check "switched off" "[ \"\$(global output on)\" = 0 ]"
 power on
+check "switched on again" "[ \"\$(global output on)\" = 1 ]"
 output_is "and on again: as the client set it" HEADLESS-1 0 0 1600 900
 echo 'Mwm*HEADLESS-1*outputMode: 800x500' >"$RC"
 reload
@@ -236,10 +251,14 @@ output_is "and stays" HEADLESS-1 0 0 800 500
 outputc apply HEADLESS-1 1280x720 scale 2 || fail "applying a scale"
 output_is "a client sets a scale" HEADLESS-1 0 0 640 360 200
 outputc apply HEADLESS-1 1280x720 scale 1 || fail "the scale back"
-outputc apply HEADLESS-1 99999x720 2>/dev/null && fail "a size the renderer can't allocate is taken"
-outputc apply HEADLESS-1 16384x16384 2>/dev/null && fail "a size of 1 GiB a buffer is taken"
-outputc apply HEADLESS-1 1280x720 scale 0.01 2>/dev/null && fail "a scale the layout overflows with is taken"
-outputc apply HEADLESS-1 1280x720 at 2000000,0 2>/dev/null && fail "a position the layout overflows with is taken"
+refused apply HEADLESS-1 99999x720 || fail "a size the renderer can't allocate is taken"
+refused apply HEADLESS-1 16384x16384 || fail "a size of 1 GiB a buffer is taken"
+refused test HEADLESS-1 16384x16384 || fail "a test of 1 GiB a buffer passes"
+refused apply HEADLESS-1 1280x720@0.001 || fail "a refresh of a frame every quarter hour is taken"
+refused apply HEADLESS-1 1x1 scale 10 || fail "an output of less than a pixel is taken"
+refused apply HEADLESS-1 1280x720 scale 0.01 || fail "a scale the layout overflows with is taken"
+refused apply HEADLESS-1 1280x720 at 2000000,0 || fail "a position the layout overflows with is taken"
+echo "ok: mwc refuses what it can't take, also when only asked to test it"
 output_is "what mwc refuses changes nothing" HEADLESS-1 0 0 1280 720
 outputc apply HEADLESS-1 off || fail "switching it off"
 check "a client switches it off" "[ \"\$(global output on)\" = 0 ]"
@@ -306,10 +325,22 @@ output_is "the other stays" HEADLESS-1 0 0 1280 720
 reload
 output_is "a reload leaves it where the client put it" HEADLESS-2 0 720 1280 720
 outputc apply HEADLESS-2 off || fail "a client switching one of two off"
-check "it is off" "! outputc list | grep -q '^HEADLESS-2 on=1'"
+check "it is off" "outputc list | grep -q '^HEADLESS-2 on=0'"
 output_is "and keeps its place" HEADLESS-2 0 720 1280 720
 outputc apply HEADLESS-2 on || fail "and on again"
-output_is "on again in its place" HEADLESS-2 0 720 1280 720
+check "on again in its place" "outputc list | grep -q '^HEADLESS-2 on=1 w=1280 h=720 x=0 y=720 '"
+finish
+# Placed by wlroots, without outputPosition: a client naming only one of them, at its
+# place, must not push the other behind it.
+: >"$RC"
+begin 2560 720
+# The right one: naming the left one would leave the other where it is anyway.
+right=$(outputc list | awk '{ x = $5; sub("x=", "", x)
+	if (n == "" || x + 0 > max) { max = x + 0; n = $1 } } END { print n }')
+left=$(outputc list | grep -v "^$right ")
+[ -n "$right" ] && [ -n "$left" ] || fail "two outputs: $(outputc list)"
+outputc apply "$right" alone || fail "a client naming one output alone"
+check "the other output stays where wlroots put it" "[ \"\$(outputc list | grep -v '^$right ')\" = \"$left\" ]"
 finish
 unset WLR_HEADLESS_OUTPUTS
 

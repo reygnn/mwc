@@ -10,10 +10,17 @@
  * buffers, and glibc aborts with "corrupted size vs. prev_size". This is the
  * same allocator with the signal, used where wlroots would pick its own.
  *
- * The memory comes from memfd_create() and is reserved up front: a buffer
- * larger than there is room for then fails to allocate, and the commit asking
- * for it fails, where the wlroots allocator kills mwc with SIGBUS when the
- * buffer is first touched.
+ * The memory comes from memfd_create(), not /dev/shm: wlroots' allocator puts its
+ * buffers there, and one larger than what is free in it kills mwc with SIGBUS
+ * when it is first touched (a container gives /dev/shm 64 MiB). A memfd is only
+ * limited by memory itself; posix_fallocate() takes the pages up front, so where
+ * there isn't enough the OOM killer acts at once rather than at the first frame.
+ *
+ * Taken or not is decided when mwc is compiled, by the wlroots headers: a binary
+ * built against 0.19.3 and run with 0.19.2 has the bug again. wlroots' udmabuf
+ * allocator has the same gap in 0.19.2 and isn't replaced here; wlroots only
+ * takes it for a renderer that wants DMA-BUFs without a DRM device, which mwc's
+ * usual setups (pixman headless, a GPU with DRM) never are.
  */
 #define _GNU_SOURCE
 #include <drm_fourcc.h>
@@ -114,11 +121,13 @@ static struct wlr_buffer *allocator_create_buffer(struct wlr_allocator *allocato
 	}
 	if (width <= 0 || height <= 0 || width > INT32_MAX / bpp)
 		return NULL;
+	int stride = width * bpp;
+	if ((size_t)height > SIZE_MAX / (size_t)stride)
+		return NULL;
 	struct shm_buffer *buffer = calloc(1, sizeof(*buffer));
 	if (!buffer)
 		return NULL;
 	wlr_buffer_init(&buffer->base, &buffer_impl, width, height);
-	int stride = width * bpp;
 	buffer->size = (size_t)stride * height;
 	buffer->shm.fd = memfd_create("mwc-shm", MFD_CLOEXEC);
 	if (buffer->shm.fd < 0) {
