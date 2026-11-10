@@ -4,46 +4,52 @@ This is the follow-up to mwm-x11's `docs/HEADLESS-SETUP.md`. That guide put
 Xorg, xorgxrdp and mwm on an Ubuntu server without a GPU, reached through an
 SSH tunnel with Windows' Remote Desktop (`mstsc`), optionally through Bitvise.
 Here the same server moves to mwc. The way in stays the same: the same tunnel,
-the same `mstsc`, the same xrdp on `127.0.0.1:3389`. Behind xrdp there is no X
-server any more.
+the same `mstsc`. Behind the tunnel there is no X server and no xrdp any more,
+but [wayrdp](https://github.com/reygnn/wayrdp), an RDP server for mwc.
 
 ```
 corporate notebook (Windows)              server (Ubuntu 26.04)
 ┌──────────────────────────┐  SSH tunnel  ┌──────────────────────────────────┐
-│ Bitvise SSH Client       │ ═══════════> │ xrdp  127.0.0.1:3389  (RDP→VNC)  │
-│  └─ Remote Desktop       │ (encrypted)  │  └─ wayvnc  127.0.0.1:5900       │
-│     (mstsc)              │              │      └─ mwc, headless output     │
-└──────────────────────────┘              │          ├─ Wayland apps         │
-                                          │          └─ Xwayland: xterm, …   │
+│ Bitvise SSH Client       │ ═══════════> │ wayrdp  127.0.0.1:3389           │
+│  └─ Remote Desktop       │ (encrypted)  │  └─ mwc, headless output         │
+│     (mstsc)              │              │      ├─ Wayland apps             │
+└──────────────────────────┘              │      └─ Xwayland: xterm, …       │
                                           └──────────────────────────────────┘
 ```
 
-wlroots has no RDP server of its own any more. So mwc runs on wlroots'
-headless backend, `wayvnc` serves its screen as VNC, and xrdp translates
-between RDP and VNC. xrdp ships that translation as the `vnc-any` session
-type. Your X programs keep running, through Xwayland.
+mwc runs on wlroots' headless backend, and wayrdp serves its screen over RDP:
+it captures the output, sends it to `mstsc` and passes keyboard, mouse and
+clipboard back. Your X programs keep running, through Xwayland.
+
+wayrdp is new and not yet tested with `mstsc` itself (only with FreeRDP's
+clients). So the old setup keeps running until wayrdp does the job: wayrdp
+starts on port 3390, next to the old xrdp on 3389, and takes 3389 over only
+in section 8.
 
 [`wayland-rdp-upgrade.sh`](wayland-rdp-upgrade.sh) runs the steps below
-(sections 2 to 7, and 8 with `--purge`). This page explains what it does.
+(sections 2 to 7, 8 with `--switch`, 9 with `--purge`). This page explains
+what it does.
 
 ## What changes
 
 | | before (mwm, X11) | after (mwc, Wayland) |
 |---|---|---|
-| Session starts | when you log in through RDP (xrdp starts Xorg) | at boot, as a systemd user service. RDP only looks at it |
-| RDP login | starts or reconnects a session | a password check (PAM), then the running desktop |
-| Screen size | the size of the `mstsc` window at login | fixed in mwmrc (`outputMode`), it doesn't follow the window |
-| Keyboard layout | the notebook's, through xorgxrdp | `wayvnc -k`, set once on the server |
-| Clipboard | text, images, files | plain text, Latin-1 only (a limit of xrdp's VNC module) |
+| RDP server | xrdp, which starts Xorg (xorgxrdp) | wayrdp, a user service next to mwc |
+| Session starts | when you log in through RDP | at boot, as a systemd user service. RDP only looks at it |
+| RDP login | the Linux password (PAM, in xrdp's login window) | an RDP password of its own (NLA), or the Linux password (`-a pam`) |
+| Screen size | the size of the `mstsc` window at login | the size of the `mstsc` window, and it follows when you resize it |
+| Keyboard layout | the notebook's, through xorgxrdp | `wayrdp -k`, set once on the server |
+| Clipboard | text, images, files | text, full Unicode, both ways |
 | X programs | on Xorg | on Xwayland, inside mwc |
 | Config | `~/.config/mwm/mwmrc`, `~/.config/mwm/autostart` | `~/.config/mwc/mwmrc`, `~/.config/mwc/autostart`, same syntax |
 
 ## 1. Requirements
 
-mwc needs wlroots 0.19, which Ubuntu ships from 26.04 on. A 24.04 server
-must be upgraded first. `do-release-upgrade` is made to run over SSH. The
-risks are a connection that drops halfway, a full disk, and a server that
-doesn't come back with its network after the reboot. Each has a precaution.
+mwc needs wlroots 0.19 and wayrdp FreeRDP 3, which Ubuntu ships from 26.04 on.
+A 24.04 server must be upgraded first. `do-release-upgrade` is made to run
+over SSH. The risks are a connection that drops halfway, a full disk, and a
+server that doesn't come back with its network after the reboot. Each has a
+precaution.
 
 ### Before
 
@@ -81,8 +87,8 @@ sudo do-release-upgrade
   through. Through a Bitvise tunnel that only reaches port 22 it usually
   doesn't.
 - When it asks about changed configuration files, keep your own version if
-  in doubt. That matters most for `/etc/ssh/sshd_config`, and always for
-  `/etc/xrdp/xrdp.ini` (`port=tcp://.:3389`).
+  in doubt. That matters most for `/etc/ssh/sshd_config`, and for
+  `/etc/xrdp/xrdp.ini` (`port=tcp://.:3389`) as long as xrdp is the way in.
 - Keep a second SSH session open until the server is back after the reboot.
 
 LTS-to-LTS upgrades (24.04 → 26.04) are offered from the point release
@@ -92,45 +98,54 @@ LTS-to-LTS upgrades (24.04 → 26.04) are offered from the point release
 
 After the reboot, `lsb_release -rs` must show `26.04`.
 
-The old setup keeps working until section 8. Leave it alone until mwc works.
+The old setup keeps working until section 8. Leave it alone until mwc and
+wayrdp work.
 
 ## 2. Packages
 
 ```sh
 sudo apt update
 sudo apt install --no-install-recommends \
-    build-essential pkg-config git \
+    build-essential pkg-config git meson ninja-build \
     libwlroots-0.19-dev wayland-protocols libwayland-dev libxkbcommon-dev \
     libpixman-1-dev libcairo2-dev libpango1.0-dev \
     libxcb1-dev libxcb-icccm4-dev \
-    xwayland wayvnc xrdp dbus-user-session \
+    freerdp3-dev libwinpr3-dev libdrm-dev libpam0g-dev \
+    xwayland dbus-user-session \
     xterm xfonts-base fonts-dejavu-core
 ```
 
 | Packages | Purpose |
 |---|---|
 | `build-essential … libxcb-icccm4-dev` | build mwc |
+| `meson ninja-build freerdp3-dev … libpam0g-dev` | build wayrdp (FreeRDP 3, and PAM for `-a pam`) |
 | `xwayland` | X programs inside mwc |
-| `wayvnc` | VNC server for wlroots compositors |
-| `xrdp` | already there: RDP on the outside, VNC on the inside |
 | `dbus-user-session` | the session bus for user services, replaces `dbus-launch` from `dbus-x11` |
 | `xterm xfonts-base fonts-dejavu-core` | already there: terminal and fonts |
 
-Use `--no-install-recommends` for xrdp too. Otherwise apt keeps (or brings
-back) `xorgxrdp` and with it the whole Xorg server.
-
-## 3. Build and install mwc
+## 3. Build and install mwc and wayrdp
 
 ```sh
 git clone https://github.com/reygnn/mwc.git
-cd mwc
-make
-sudo make install          # /usr/local/bin/mwc
+make -C mwc
+sudo make -C mwc install                  # /usr/local/bin/mwc
+
+git clone https://github.com/reygnn/wayrdp.git
+cd wayrdp
+meson setup build --buildtype=release --sysconfdir=/etc
+ninja -C build
+sudo ninja -C build install               # /usr/local/bin/wayrdp, /etc/pam.d/wayrdp
 ```
 
-Later updates: `git pull && make && sudo make install`, then
-`systemctl --user restart mwc`. That ends the session and every window in it.
-A Wayland compositor can't restart and keep its clients the way mwm can.
+`--sysconfdir=/etc` puts wayrdp's PAM service where PAM looks. wayrdp fetches
+the aml library during `meson setup`; that needs access to github.com.
+
+Later updates: `git pull`, build and install again, then
+`systemctl --user restart mwc` (mwc) or `systemctl --user restart wayrdp`
+(wayrdp). Restarting mwc ends the session and every window in it: a Wayland
+compositor can't restart and keep its clients the way mwm can. Restarting
+wayrdp only drops the RDP connection; `mstsc` reconnects to the same
+desktop.
 
 ## 4. Configuration
 
@@ -140,15 +155,23 @@ mwmrc has the same syntax as mwm's, so you can take the old one along:
 mkdir -p ~/.config/mwc
 [ -f ~/.config/mwm/mwmrc ] && cp ~/.config/mwm/mwmrc ~/.config/mwc/mwmrc
 cat >> ~/.config/mwc/mwmrc <<'EOF'
-! The headless output is HEADLESS-1. Its size is what Remote Desktop shows.
+! The headless output is HEADLESS-1: its size until a client asks for another.
 Mwm*HEADLESS-1*outputMode:   1920x1080
+! The size follows the mstsc window (wayrdp sets it).
+Mwm*outputManagement:        true
 Mwm*terminal:                xterm
 EOF
 ```
 
-Choose the size of your notebook's screen, or a little less if `mstsc` doesn't
-run full screen. `Mwm*fontList` takes Pango names (`Sans Bold 10`). An old
-Xft name such as `Sans:bold:size=10` is logged and ignored, see the README.
+- `outputMode` is the size before the first connection. Then wayrdp gives
+  the output the size of the `mstsc` window, and follows when you resize it.
+- `outputManagement: true` is what lets wayrdp do that. **Then nothing else
+  may use output management** – no `wlr-randr`, `kanshi` or `wdisplays`:
+  wlroots 0.19 and 0.20 abort when a second program uses it, and take the
+  whole session with them. Without the line, `mstsc` simply gets the size of
+  `outputMode`.
+- `Mwm*fontList` takes Pango names (`Sans Bold 10`). An old Xft name such as
+  `Sans:bold:size=10` is logged and ignored, see the README.
 
 Programs to start with the session go in `~/.config/mwc/autostart`. An old
 `~/.config/mwm/autostart` usually works as is:
@@ -157,7 +180,7 @@ Programs to start with the session go in `~/.config/mwc/autostart`. An old
 [ -x ~/.config/mwm/autostart ] && cp ~/.config/mwm/autostart ~/.config/mwc/autostart
 ```
 
-## 5. mwc and wayvnc as user services
+## 5. mwc and wayrdp as user services
 
 `~/.config/systemd/user/mwc.service`:
 
@@ -175,136 +198,114 @@ Restart=on-failure
 WantedBy=default.target
 ```
 
-`~/.config/systemd/user/wayvnc.service`:
+`~/.config/systemd/user/wayrdp.service` is wayrdp's
+[`contrib/wayrdp.service`](https://github.com/reygnn/wayrdp/blob/main/contrib/wayrdp.service):
 
-```ini
-[Unit]
-Description=wayvnc for mwc
-BindsTo=mwc.service
-After=mwc.service
-
-[Service]
-Environment=WAYLAND_DISPLAY=wayland-0
-ExecStart=/usr/bin/wayvnc -k de 127.0.0.1 5900
-# mwc's socket may not be there yet when this starts.
-Restart=on-failure
-RestartSec=1
-
-[Install]
-WantedBy=mwc.service
+```sh
+mkdir -p ~/.config/systemd/user
+cp wayrdp/contrib/wayrdp.service ~/.config/systemd/user/
 ```
+
+Its `ExecStart` is `wayrdp -k de 127.0.0.1 3390`: port 3390 while the old
+xrdp still has 3389, and `-k` the notebook's keyboard layout (`ch`, `us`,
+`de-nodeadkeys`, …). wayrdp turns the keys `mstsc` sends into characters with
+it. Change the layout there if yours isn't German.
+
+The password comes first (section 6), then:
 
 ```sh
 systemctl --user daemon-reload
-systemctl --user enable --now mwc wayvnc
+systemctl --user enable --now mwc wayrdp
 sudo loginctl enable-linger "$USER"   # run them without a login, also after a reboot
 ```
 
 - `WLR_BACKENDS=headless` makes a virtual monitor with no GPU or screen behind
   it, and `WLR_RENDERER=pixman` draws in software.
-- `MWC_VIRTUAL_INPUT=1` lets wayvnc type and click. mwc offers those
+- `MWC_VIRTUAL_INPUT=1` lets wayrdp type and click. mwc offers those
   protocols only when asked, because any program in the session could use
   them. Leave it out of a desktop session started from GDM.
-- `-k de` is the layout wayvnc turns keys into, so it has to match the
-  notebook's (`ch`, `us`, `de-nodeadkeys`, …).
+- wayrdp's service is bound to mwc's: it stops with mwc and starts again
+  with it.
 
-Check that both are up and that wayvnc listens on localhost only:
-
-```sh
-systemctl --user status mwc wayvnc
-ss -ltn | grep 5900          # 127.0.0.1:5900, not 0.0.0.0 or *
-```
-
-## 6. xrdp: a session type for mwc
-
-xrdp keeps its port from the old setup (`port=tcp://.:3389`, localhost only).
-It gets one more section at the end of `/etc/xrdp/xrdp.ini`, and `autorun` in
-`[Globals]` picks it:
+Check that both are up and that wayrdp listens on localhost only:
 
 ```sh
-sudo tee -a /etc/xrdp/xrdp.ini >/dev/null <<'EOF'
-
-[mwc]
-name=mwc
-lib=libvnc.so
-ip=127.0.0.1
-port=5900
-username=ask
-password=ask
-pamusername=same
-pampassword=same
-EOF
-sudo sed -i 's|^autorun=.*|autorun=mwc|' /etc/xrdp/xrdp.ini
-grep -q '^autorun=mwc' /etc/xrdp/xrdp.ini || \
-    sudo sed -i 's|^\[Globals\]$|[Globals]\nautorun=mwc|' /etc/xrdp/xrdp.ini
-sudo systemctl restart xrdp xrdp-sesman
+systemctl --user status mwc wayrdp
+ss -ltn | grep 3390                    # 127.0.0.1:3390, not 0.0.0.0 or *
+journalctl --user -u wayrdp            # "Listening on", and the certificate's thumbprint
 ```
 
-`pamusername=same` makes xrdp check the user name and password from its login
-window (or from `mstsc`) with PAM before it opens the VNC connection. That is
-the Linux password, as before.
+## 6. The RDP login
 
-### Who may get in
+wayrdp has two ways to log in. Either way only your own user gets in, and
+three failed logins in a row lock new connections out for 30 s.
 
-wayvnc itself asks for no password. The only VNC security type xrdp knows
-besides "none" is the old VNC password, and wayvnc doesn't offer that one. So
-two more locks are worth having:
+**NLA with an RDP password of its own** (the default, what `mstsc` expects):
 
-- **Only your user through xrdp.** Without this, any Linux account with a
-  password passes the PAM check. Put yourself in xrdp's group and make the
-  group required, in `/etc/xrdp/sesman.ini`, section `[Security]`:
+```sh
+wayrdp --set-password
+```
 
-  ```sh
-  sudo groupadd -f tsusers
-  sudo adduser "$USER" tsusers
-  sudo sed -i 's|^AlwaysGroupCheck=false|AlwaysGroupCheck=true|' /etc/xrdp/sesman.ini
-  sudo systemctl restart xrdp-sesman
-  ```
+It asks twice and writes `~/.config/wayrdp/sam` (mode 0600). The file holds
+the unsalted NT hash of that password, which is why it should be a password
+of its own, not your Linux one.
 
-- **Nobody past xrdp, straight to port 5900.** On a server with other users
-  (or other services you don't trust), they could connect to
-  `127.0.0.1:5900` themselves. An nftables rule lets only root (xrdp) and you
-  through:
+**The Linux password** (`-a pam`), as with xrdp: add `-a pam` to `ExecStart`
+in `wayrdp.service` and remove the line `NoNewPrivileges=yes` there (PAM
+checks the password with a setgid helper). wayrdp has no login window, so
+`mstsc` must have the credentials saved ("Allow me to save credentials"),
+and it warns that the connection uses no NLA.
 
-  ```sh
-  sudo nft add table inet mwc
-  sudo nft add chain inet mwc out '{ type filter hook output priority 0; }'
-  sudo nft add rule inet mwc out oif lo tcp dport 5900 \
-      meta skuid != "{ 0, $(id -u) }" reject
-  ```
-
-  That holds until the next reboot. To keep it, put it in `/etc/nftables.conf`
-  and `sudo systemctl enable nftables`.
-
-On a server that is yours alone, both are optional.
+On the first start wayrdp makes a self-signed certificate
+(`~/.config/wayrdp/tls.crt`). Its SHA-1 thumbprint is in the log; `mstsc`
+shows the same one when it warns about the certificate.
 
 ## 7. Connect
 
-Nothing changes on the notebook. In Bitvise, use the RDP tab with
-*Computer* = `localhost`, or your C2S rule `127.0.0.1:13389 → localhost:3389`
-and `mstsc /v:127.0.0.1:13389`. Log in with the Linux user name and password.
-With `autorun=mwc`, xrdp goes straight to mwc's desktop when `mstsc` sends the
-credentials. Otherwise pick *Session* = **mwc** in xrdp's login window.
+In Bitvise, add a C2S rule `127.0.0.1:13390 → localhost:3390`, then connect
+with `mstsc /v:127.0.0.1:13390`. Log in with your Linux user name and the RDP
+password (or the Linux password with `-a pam`).
 
-- **Disconnect and come back:** closing Remote Desktop leaves mwc running, so
-  you get the same windows back next time.
+- **The certificate:** `mstsc` warns on the first connection. Compare the
+  thumbprint with `journalctl --user -u wayrdp` and choose "Don't ask me
+  again".
+- **Clipboard:** tick it under *Local Resources*. Text goes both ways, with
+  umlauts and everything else; images and files don't.
+- **Screen size:** the desktop takes the size of the `mstsc` window, also
+  when you make it larger or smaller later.
+- **Disconnect and come back:** closing Remote Desktop leaves mwc running,
+  so you get the same windows back next time. A second connection takes
+  over from the first.
 - **Ending the session:** "Quit..." in the root menu ends mwc with exit code
-  0. The service then stays stopped until `systemctl --user start mwc` (or
+  0. The services then stay stopped until `systemctl --user start mwc` (or
   the next boot), and RDP finds no desktop until then.
-- **Screen size:** `mstsc` scales or scrolls if its window differs from
-  `outputMode`. Change the size in mwmrc and choose "Reload" in the root menu.
-  No restart is needed.
-- **Keyboard shortcuts:** as before, in `mstsc` under *Local Resources →
-  Keyboard*, "Apply Windows key combinations" *On the remote computer*.
-  Windows keeps Win+L and Ctrl+Alt+Del for itself.
+- **Keyboard shortcuts:** in `mstsc` under *Local Resources → Keyboard*,
+  "Apply Windows key combinations" *On the remote computer*. Windows keeps
+  Win+L and Ctrl+Alt+Del for itself.
 
-## 8. Purge what X11 needed
+## 8. Switch over
 
-Only once mwc works over RDP. These are the packages from the old guide that
-nothing needs any more:
+Once wayrdp does the job day to day, xrdp goes and wayrdp takes port 3389:
+
+```sh
+sudo systemctl disable --now xrdp xrdp-sesman
+sed -i 's| 127.0.0.1 3390$| 127.0.0.1|' ~/.config/systemd/user/wayrdp.service
+systemctl --user daemon-reload
+systemctl --user restart wayrdp
+ss -ltn | grep 3389                    # 127.0.0.1:3389
+```
+
+Bitvise's RDP tab with *Computer* = `localhost` works again, and so does an
+old C2S rule `127.0.0.1:13389 → localhost:3389`. The rule for 13390 can go.
+
+## 9. Purge what X11 needed
+
+Only once mwc and wayrdp work on 3389. These are the packages from the old
+guide that nothing needs any more:
 
 | Package | Was for |
 |---|---|
+| `xrdp` | the old RDP server |
 | `xorgxrdp` | Xorg for xrdp. Takes the Xorg server (`xserver-xorg-core` …) with it |
 | `libx11-dev libxext-dev libxft-dev libxrandr-dev` | building mwm |
 | `x11-utils x11-xserver-utils x11-xkb-utils` | `xdpyinfo`, `xrandr`, `xsetroot`, `setxkbmap`: no use under Wayland |
@@ -313,16 +314,16 @@ nothing needs any more:
 | `xauth` | only variant B needed it. Keep it if you use `ssh -X` |
 
 ```sh
-sudo apt purge xorgxrdp libx11-dev libxext-dev libxft-dev libxrandr-dev \
+sudo apt purge xrdp xorgxrdp libx11-dev libxext-dev libxft-dev libxrandr-dev \
     x11-utils x11-xserver-utils x11-xkb-utils dbus-x11 \
     tigervnc-standalone-server tigervnc-tools
 sudo apt autoremove --purge
 ```
 
-apt lists what it will remove before it asks. **`xrdp`, `xwayland`,
-`wayvnc`, `xterm`, `xfonts-base` and `fonts-dejavu-core` must not be on that
-list.** If one is, answer `n` and leave out the package that pulls it along.
-Packages that aren't installed are reported and skipped.
+apt lists what it will remove before it asks. **`xwayland`, `xterm`,
+`xfonts-base` and `fonts-dejavu-core` must not be on that list.** If one is,
+answer `n` and leave out the package that pulls it along. Packages that
+aren't installed are reported and skipped.
 
 Afterwards no Xorg should be left:
 
@@ -342,18 +343,16 @@ systemctl --user daemon-reload
 sudo rm -f /usr/local/bin/mwm /usr/share/xsessions/mwm-x11.desktop
 ```
 
-The `[Xorg]` and `[Xvnc]` sections in `xrdp.ini` don't work any more. With
-`autorun=mwc` they do no harm.
-
 ## Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
-| xrdp: "error - problem connecting" | wayvnc doesn't run: `systemctl --user status mwc wayvnc`, `journalctl --user -u wayvnc`. Is linger on (`loginctl show-user "$USER" -p Linger`)? |
+| `mstsc`: "can't connect" | wayrdp doesn't run: `systemctl --user status mwc wayrdp`, `journalctl --user -u wayrdp`. Is linger on (`loginctl show-user "$USER" -p Linger`)? Does the Bitvise rule point at the port wayrdp listens on? |
+| `wayrdp.service` fails at once | `journalctl --user -u wayrdp`. "No password set": `wayrdp --set-password`. "can be read by others": `chmod 600 ~/.config/wayrdp/sam ~/.config/wayrdp/tls.key`. "virtual keyboard or pointer": `MWC_VIRTUAL_INPUT=1` is missing in `mwc.service`. |
 | `mwc.service` fails at once | `journalctl --user -u mwc`. `failed to create wlr_backend`: the `Environment=WLR_BACKENDS=headless` line is missing. |
-| The picture comes, but keys and mouse do nothing, or wayvnc won't start | `MWC_VIRTUAL_INPUT=1` is missing in `mwc.service` (then `daemon-reload` and restart both). |
-| Login fails although the password is right | `AlwaysGroupCheck=true` without your user in `tsusers`: `id` must list it, then log in to SSH again. See `/var/log/xrdp-sesman.log`. |
-| Wrong characters | `-k` in `wayvnc.service` doesn't match the notebook's layout. |
-| No mouse pointer, or two | Add `-r` to wayvnc's command line: it then draws the pointer into the picture. |
-| Black or wrong size | `outputMode` names `HEADLESS-1`? `journalctl --user -u mwc` reports a value it can't use. |
+| Login fails although the password is right | NLA: the user name must be your Linux one, the password the one from `--set-password`. `-a pam`: are the credentials saved in `mstsc`? After three failures wayrdp takes no connection for 30 s. |
+| Wrong characters | `-k` in `wayrdp.service` doesn't match the notebook's layout. |
+| The size doesn't follow the window | `Mwm*outputManagement: true` is missing in mwmrc, or mwc was not restarted since (it reads it at its start). The log says "offers no output management". |
+| The whole session ends when a tool changes the screen | `wlr-randr`, `kanshi` or the like used output management next to wayrdp: wlroots aborts then. Don't run them with `outputManagement: true`. |
+| No mouse pointer | Add `-r` to `ExecStart`: wayrdp then draws the pointer into the picture. |
 | X programs don't start | `xwayland` is missing, or `journalctl --user -u mwc` shows why Xwayland failed. |
