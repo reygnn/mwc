@@ -1,0 +1,46 @@
+! ~/.config/mwc/mwmrc: read at startup and on reload (root menu, or SIGHUP).
+! No comments after a value on the same line.
+
+! Desktop picture. A set MWC_WALLPAPER takes precedence.
+! Mwm*wallpaper:                         ~/pictures/wallpaper.png
+
+! Desktop colour, shown where no wallpaper covers it: SGI teal ("sgi teal"
+! in X11's rgb.txt). Other SGI/IRIX variants:
+!   #729C9C   Indigo Magic AlternateBackground4, light grey-green
+!   #5680AB   Indigo Magic AlternateBackground5, muted cadet blue
+!   #7171C6   sgi slateblue (rgb.txt)
+!   #555555   plain X11 root grey, dark
+!   #7F7F7F   plain X11 root grey, light
+Mwm*rootBackground:                    #388E8E
+
+! Terminal for New Window and Super+Return. A set MWC_TERMINAL takes precedence.
+Mwm*terminal:                          mwt
+Mwm*mwt*activeBackground:              #2e5e3e
+
+! Firefox: chocolate brown.
+! Navigator is its WM_CLASS under X11. Natively on Wayland it goes by its app_id
+! instead, and that is firefox_firefox for the snap.
+Mwm*Navigator*activeBackground:        #7b3f00
+Mwm*firefox_firefox*activeBackground:  #7b3f00
+Mwm*firefox*activeBackground:          #7b3f00
+Mwm*mfm*activeBackground:              gold
+
+! Programs at the top of the root menu.
+Mwm*rootMenuItem:                      Firefox: firefox
+Mwm*rootMenuItem:                      Dateien: mfm
+Mwm*rootMenuItem:                      Ausführen: mrun
+Mwm*rootMenuItem:                      Starfield: displayOff --stars
+Mwm*rootMenuItem:                      Display Off: displayOff --now
+
+! bottom right corner
+Mwm*pulseControl*geometry:  -0-0
+
+! mrun (middle button, root menu) opens at the pointer. Needs mwc 0.4.3.
+Mwm*mrun*geometry:          pointer
+
+! Print: the whole screen to a file. Shift+Print: a rectangle to the clipboard.
+Mwm*screenshot:             screenShot
+Mwm*clipboardScreenshot:    screenShot -r -c
+
+! Icon placement
+Mwm*iconPlacement:   top right
