@@ -524,6 +524,11 @@ void view_focus_top(struct server *server)
 	focus_next(server, NULL);
 }
 
+struct view *view_focused(struct server *server)
+{
+	return focused_view(server);
+}
+
 void view_close(struct view *view)
 {
 	if (view->type == VIEW_XDG)
@@ -765,10 +770,11 @@ void view_parent_changed(struct view *view)
 	/* Hidden with a window it no longer belongs to, nothing would bring it back. */
 	struct view *parent = view_parent(view);
 	if (view->hidden_with_parent &&
-			!(parent && view_hidden(parent))) {
+			!(parent && view_hidden_by_state(parent))) {
 		view->hidden_with_parent = false;
 		view_show(view, true);
 	}
+	desktop_recheck(view); /* to the new window's desktop */
 	tile_arrange(view->server); /* dialogs float */
 }
 
@@ -784,7 +790,8 @@ void view_minimize(struct view *view)
 	/* Dialogs go away with the window they belong to, without icons. */
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (v->mapped && !view_hidden(v) && view_is_transient_of(v, view)) {
+		/* Also those on another desktop with it, which hiding there doesn't count. */
+		if (v->mapped && !view_hidden_by_state(v) && view_is_transient_of(v, view)) {
 			had_focus |= v->activated;
 			/* A dialog being moved or resized goes too: the grab ends with it. */
 			grab_give_way(v);
@@ -1249,8 +1256,7 @@ void view_handle_map(struct view *view)
 	struct view *parent = view_parent(view);
 	/* Hidden with it, not for being on another desktop: it goes there too, and
 	 * shows when that one does. */
-	bool hide = parent && (parent->minimized || parent->hidden_with_parent ||
-		parent->tab_hidden);
+	bool hide = parent && view_hidden_by_state(parent);
 	view->gravity_edges = 0; /* view_place_mapped() sets it from the entry */
 	if (view->placed)
 		view_set_position(view, view->x, view->y);
@@ -1305,6 +1311,8 @@ void view_handle_unmap(struct view *view)
 	view->minimized = false;
 	view->hidden_with_parent = false;
 	view->off_desktop = false;
+	bool was_urgent = view->attention;
+	view->attention = false;
 	view->tiled = false;
 	view->tile_main = false;
 	view->tile_back = false;
@@ -1317,6 +1325,8 @@ void view_handle_unmap(struct view *view)
 	tile_arrange(server);
 	if (was_active)
 		focus_next(server, view);
+	if (was_urgent)
+		workspace_update(server); /* its desktop may have nothing left to show */
 	input_pointer_changed(server);
 }
 

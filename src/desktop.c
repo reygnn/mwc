@@ -6,7 +6,8 @@
  * current one, and counts as one more way of being hidden (view_hidden()), so focus,
  * Alt+Tab, clicks and the layout pass them by as they do minimized windows.
  *
- * - Panels, desktop windows, notifications and splash screens are on all of them.
+ * - Panels, desktop windows, notifications and splash screens are on all of them,
+ *   and so are their dialogs.
  * - A dialog goes where its window is, a tab group as a whole.
  * - Icons belong to their window's desktop and are only seen there; each desktop
  *   has its own icon slots.
@@ -14,6 +15,8 @@
  *   the layout for when their desktop comes back.
  * - Hiding is the scene's alone: clients aren't told, an X11 window on another
  *   desktop isn't iconic, and a capture of the output sees the current desktop.
+ * - A window there that asks for the focus doesn't switch: it is marked
+ *   (view.attention), and its desktop is urgent while one there is.
  *
  * Switching is for other programs to ask for, through ext-workspace-v1
  * (workspace.c); mwc binds no keys to it. A window moves through its window menu.
@@ -21,17 +24,26 @@
 #include <wlr/types/wlr_scene.h>
 #include "mwc.h"
 
-bool view_on_all_desktops(const struct view *view)
+static bool everywhere(const struct view *view)
 {
 	return view->wtype == WT_DOCK || view->wtype == WT_DESKTOP ||
 		view->wtype == WT_NOTIFICATION || view->wtype == WT_SPLASH;
+}
+
+bool view_on_all_desktops(struct view *view)
+{
+	return everywhere(view) || everywhere(view_transient_root(view));
 }
 
 /* After off_desktop changed: the window and its icon as its other states say. */
 static void apply(struct view *view)
 {
 	if (view->off_desktop) {
+		struct server *server = view->server;
 		grab_give_way(view);
+		/* A frame button held down on it would act on it hidden. */
+		if (server->grabbed_view == view)
+			grab_forget(server);
 		if (view->activated)
 			view_set_activated(view, false);
 		wlr_scene_node_set_enabled(&view->tree->node, false);
@@ -42,16 +54,25 @@ static void apply(struct view *view)
 	wlr_scene_node_set_enabled(&view->icon_node->node, view->minimized);
 }
 
-static bool off(const struct view *view)
+static bool off(struct view *view)
 {
 	return view->mapped && !view_on_all_desktops(view) &&
 		view->desktop != view->server->desktop;
 }
 
-void desktop_view_mapped(struct view *view)
+/* Where it belongs: with its window, or here if it is everywhere or on its own. */
+static int desktop_for(struct view *view)
 {
 	struct view *root = view_transient_root(view);
-	view->desktop = root != view ? root->desktop : view->server->desktop;
+	if (root == view || view_on_all_desktops(view))
+		return view->server->desktop;
+	return root->desktop;
+}
+
+void desktop_view_mapped(struct view *view)
+{
+	view->desktop = desktop_for(view);
+	view->attention = false;
 	view->off_desktop = off(view);
 }
 
@@ -61,10 +82,12 @@ static void focus_after(struct server *server, bool lost)
 	if (lost)
 		view_focus_top(server);
 	icons_arrange(server);
+	/* An X11 window's strut only counts while it is shown. */
+	layers_arrange_all(server);
 	tile_arrange(server);
 	views_update_layers(server);
 	input_pointer_changed(server);
-	workspace_changed(server);
+	workspace_update(server);
 }
 
 void desktop_switch(struct server *server, int n)
@@ -82,6 +105,8 @@ void desktop_switch(struct server *server, int n)
 			v->off_desktop = now;
 			apply(v);
 		}
+		if (!now)
+			v->attention = false; /* it is in sight now */
 		if (v->activated)
 			lost = false;
 	}
@@ -107,11 +132,45 @@ void view_set_desktop(struct view *view, int n)
 			v->off_desktop = now;
 			apply(v);
 		}
+		if (!now)
+			v->attention = false;
 	}
 	focus_after(server, lost);
 }
 
+void desktop_recheck(struct view *view)
+{
+	if (!view->mapped)
+		return;
+	/* A window in sight stays in sight: one that is no longer everywhere stays
+	 * on the current desktop. */
+	if (!view->off_desktop || view_transient_root(view) != view)
+		view->desktop = desktop_for(view);
+	bool now = off(view);
+	if (now == view->off_desktop)
+		return;
+	bool lost = now && view->activated;
+	view->off_desktop = now;
+	apply(view);
+	if (!now)
+		view->attention = false;
+	focus_after(view->server, lost);
+}
+
 void desktop_attention(struct view *view)
 {
-	workspace_urgent(view->server, view->desktop);
+	if (view->attention || !view->off_desktop)
+		return;
+	view->attention = true;
+	workspace_update(view->server);
+}
+
+bool desktop_urgent(struct server *server, int n)
+{
+	struct view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->mapped && v->attention && v->off_desktop && v->desktop == n)
+			return true;
+	}
+	return false;
 }

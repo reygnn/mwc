@@ -3,10 +3,12 @@
  * switching tool does.
  *
  *   workspacec list           one line per workspace, in the order they came:
- *                             workspace id=1 name=1 x=0 state=active caps=activate
- *                             and one for the group: group outputs=N caps=0
+ *                             workspace id=1 name=1 x=0 state=active caps=activate group=1
+ *                             (group=1: in the group), and one for the group:
+ *                             group outputs=N caps=0
  *   workspacec activate ID    activate that one and wait until it says active
  *   workspacec urgent ID      wait until that one says urgent
+ *   workspacec outputs N      wait until the group has N outputs
  *
  * state is a list of active, urgent and hidden joined by +, or none. Exits 0 on
  * success, 1 on failure or after five seconds, 2 on a usage error.
@@ -159,6 +161,12 @@ static const struct ext_workspace_manager_v1_listener manager_listener = {
 	.finished = manager_finished,
 };
 
+static void timed_out(int signal)
+{
+	fprintf(stderr, "workspacec: nothing within five seconds\n");
+	_exit(1);
+}
+
 static void global(void *data, struct wl_registry *registry, uint32_t name,
 	const char *interface, uint32_t version)
 {
@@ -223,10 +231,14 @@ static int next_done(struct wl_display *display)
 
 int main(int argc, char *argv[])
 {
-	if (argc < 2 || (strcmp(argv[1], "list") && argc < 3)) {
-		fprintf(stderr, "usage: workspacec list | activate ID | urgent ID\n");
+	const char *mode = argc > 1 ? argv[1] : "";
+	bool known = !strcmp(mode, "list") || (argc > 2 && (!strcmp(mode, "activate") ||
+		!strcmp(mode, "urgent") || !strcmp(mode, "outputs")));
+	if (!known) {
+		fprintf(stderr, "usage: workspacec list | activate ID | urgent ID | outputs N\n");
 		return 2;
 	}
+	signal(SIGALRM, timed_out);
 	alarm(5);
 	struct wl_display *display = wl_display_connect(NULL);
 	if (!display) {
@@ -253,6 +265,15 @@ int main(int argc, char *argv[])
 				w->name, w->x, state_text(w->state), caps_text(w->caps), w->in_group);
 		}
 		printf("group outputs=%d caps=%d\n", group_outputs, group_caps);
+		return 0;
+	}
+	if (!strcmp(argv[1], "outputs")) {
+		int want_outputs = atoi(argv[2]);
+		wl_display_roundtrip(display);
+		while (group_outputs != want_outputs)
+			if (wl_display_dispatch(display) < 0)
+				return 1;
+		printf("outputs %d\n", group_outputs);
 		return 0;
 	}
 	struct ws *w = find(argv[2]);

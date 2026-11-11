@@ -3,8 +3,9 @@
  *
  * One workspace group for all outputs, as the desktops are global (desktop.c), with
  * MWC_DESKTOPS workspaces in it, named and with the ids "1" to "4", in a row
- * (coordinates 0 to 3). The current one is active; one whose window asked for the
- * focus is urgent until it becomes current. The only request mwc takes is activate,
+ * (coordinates 0 to 3). The current one is active; one with a window that asked for
+ * the focus is urgent until that window is seen or gone (desktop_urgent()). The only
+ * request mwc takes is activate,
  * applied on commit: switching desktops. The number is fixed, so the group can't
  * create workspaces and workspaces can't be removed, assigned or deactivated;
  * the capabilities say so.
@@ -40,42 +41,39 @@ struct ws_output {
 
 static struct wl_list clients;
 static struct server *ws_server;
-static bool urgent[MWC_DESKTOPS];
+/* What each workspace was last said to be, to send only what changed. */
+static uint32_t sent[MWC_DESKTOPS];
 
 static uint32_t state_of(int n)
 {
 	uint32_t state = 0;
 	if (n == ws_server->desktop)
 		state |= EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE;
-	if (urgent[n])
+	if (desktop_urgent(ws_server, n))
 		state |= EXT_WORKSPACE_HANDLE_V1_STATE_URGENT;
 	return state;
 }
 
-static void send_states(void)
+void workspace_update(struct server *server)
 {
+	uint32_t now[MWC_DESKTOPS];
+	bool changed = false;
+	for (int i = 0; i < MWC_DESKTOPS; i++) {
+		now[i] = state_of(i);
+		changed |= now[i] != sent[i];
+	}
+	if (!changed)
+		return;
 	struct ws_client *c;
 	wl_list_for_each(c, &clients, link) {
 		for (int i = 0; i < MWC_DESKTOPS; i++) {
-			if (c->workspaces[i])
-				ext_workspace_handle_v1_send_state(c->workspaces[i], state_of(i));
+			if (c->workspaces[i] && now[i] != sent[i])
+				ext_workspace_handle_v1_send_state(c->workspaces[i], now[i]);
 		}
 		ext_workspace_manager_v1_send_done(c->manager);
 	}
-}
-
-void workspace_changed(struct server *server)
-{
-	urgent[server->desktop] = false;
-	send_states();
-}
-
-void workspace_urgent(struct server *server, int n)
-{
-	if (n < 0 || n >= MWC_DESKTOPS || n == server->desktop || urgent[n])
-		return;
-	urgent[n] = true;
-	send_states();
+	for (int i = 0; i < MWC_DESKTOPS; i++)
+		sent[i] = now[i];
 }
 
 /* ---- workspaces ----------------------------------------------------------- */
@@ -268,7 +266,7 @@ static void manager_bind(struct wl_client *client, void *data, uint32_t version,
 			ext_workspace_handle_v1_send_coordinates(ws, &coordinates);
 		}
 		wl_array_release(&coordinates);
-		ext_workspace_handle_v1_send_state(ws, state_of(i));
+		ext_workspace_handle_v1_send_state(ws, sent[i]);
 		ext_workspace_handle_v1_send_capabilities(ws,
 			EXT_WORKSPACE_HANDLE_V1_WORKSPACE_CAPABILITIES_ACTIVATE);
 		ext_workspace_group_handle_v1_send_workspace_enter(c->group, ws);
@@ -304,6 +302,15 @@ static void output_destroy(struct wl_listener *listener, void *data)
 	free(wo);
 }
 
+void workspace_output_leaving(struct wlr_output *output)
+{
+	struct ws_client *c;
+	wl_list_for_each(c, &clients, link) {
+		send_output(c, output, false);
+		ext_workspace_manager_v1_send_done(c->manager);
+	}
+}
+
 void workspace_output_new(struct wlr_output *output)
 {
 	struct ws_output *wo = calloc(1, sizeof(*wo));
@@ -322,6 +329,8 @@ void workspace_init(struct server *server)
 {
 	ws_server = server;
 	wl_list_init(&clients);
+	/* No windows yet, so nothing is urgent; the views list isn't even there. */
+	sent[server->desktop] = EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE;
 	if (!wl_global_create(server->display, &ext_workspace_manager_v1_interface, 1,
 			server, manager_bind))
 		wlr_log(WLR_ERROR, "no ext_workspace_manager_v1: desktops can't be switched");

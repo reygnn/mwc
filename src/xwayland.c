@@ -354,7 +354,7 @@ static void xw_request_minimize(struct wl_listener *listener, void *data)
 	if (ev->minimize)
 		view_minimize(view);
 	/* Back from an icon, nothing more: it isn't asking to be un-maximized as well. */
-	else if (view_hidden(view))
+	else if (view_hidden_by_state(view))
 		view_restore(view);
 }
 
@@ -371,8 +371,20 @@ static void xw_request_fullscreen(struct wl_listener *listener, void *data)
 static void xw_focus_in(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, focus_in);
-	if (view->mapped && !view->activated)
-		view_focus(view);
+	if (!view->mapped || view->activated)
+		return;
+	/* wlroots lets a program move the X focus between its own windows. One on
+	 * another desktop must not get it: back to where it is, and that one is marked. */
+	if (view->off_desktop) {
+		struct view *focused = view_focused(view->server);
+		if (focused && focused->type == VIEW_XWAYLAND)
+			wlr_xwayland_surface_activate(focused->xsurface, true);
+		else
+			wlr_xwayland_surface_activate(view->xsurface, false);
+		desktop_attention(view);
+		return;
+	}
+	view_focus(view);
 }
 
 static void xw_set_title(struct wl_listener *listener, void *data)
@@ -412,6 +424,7 @@ static void xw_set_window_type(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, set_window_type);
 	view_update_properties(view);
+	desktop_recheck(view); /* a panel is on every desktop */
 }
 
 static void xw_set_strut_partial(struct wl_listener *listener, void *data)

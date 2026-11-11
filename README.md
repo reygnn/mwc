@@ -372,14 +372,18 @@ them show. mwc binds no keys for it. A pager or switching tool does it through
 `4` in one group for all outputs; the only thing it can ask for is to activate one.
 
 - A window opens on the current desktop, a dialog on its window's. A window moves with
-  "To Desktop 1" to "To Desktop 4" in its window menu, its dialogs and tab group along.
-- Panels, desktop windows, notifications and splash screens are on all desktops.
+  "To Desktop 1" to "To Desktop 4" in its window menu (its own desktop grayed out),
+  its dialogs and tab group along. A tab group never spans two desktops.
+- Panels, desktop windows, notifications and splash screens are on all desktops, and
+  so are their dialogs.
 - Icons belong to their window's desktop and only show there; each desktop has its
   own icon slots.
 - Focus, Alt+Tab and clicks stay on the current desktop. Tiling lays out its windows;
   those of the others keep their place for when they come back.
 - A window on another desktop that asks for the focus, or a dialog that opens for one,
-  doesn't switch: its desktop is marked urgent for the tool until it becomes current.
+  doesn't switch: its desktop is marked urgent for the tool until that window is seen
+  or closed.
+- A switch ends a move or resize and closes an open menu.
 - Clients aren't told: an X11 window on another desktop isn't iconified, and a
   capture of a monitor sees the current desktop.
 

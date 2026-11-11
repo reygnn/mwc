@@ -627,6 +627,7 @@ static bool output_manager_configure(struct server *server,
 				output->off_box = output->box_before;
 			output->client_off = true;
 			output->dark = false;
+			workspace_output_leaving(head->state.output);
 			wlr_output_layout_remove(server->output_layout, head->state.output);
 			/* Its panels have nowhere to be: closed, as when it is unplugged. */
 			layer_output_gone(output);

@@ -1,18 +1,21 @@
 #!/bin/bash
 # Headless test of the virtual desktops: switching through ext-workspace-v1 as a
 # tool does, moving windows through the window menu, what goes along (dialogs, tab
-# groups) and what stays everywhere (panels), icons and tiling per desktop, and a
-# window on another desktop asking for attention.
+# groups) and what stays everywhere (panels and their dialogs), icons and tiling per
+# desktop, a window on another desktop asking for attention, and the workspace group
+# following its output.
 # Output goes to build/desktop.log. Exits non-zero on failure.
 LOG=build/desktop.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools Xwayland
-for tool in build/vinput build/xclient build/xdgc build/workspacec; do
+for tool in build/vinput build/xclient build/xdgc build/workspacec build/outputc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
 export MWC_TEST_STATE=$SMOKE_DIR/state
+mkdir -p "$XDG_CONFIG_HOME/mwc"
+echo 'Mwm*outputManagement: true' >"$XDG_CONFIG_HOME/mwc/mwmrc"
 start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
 wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
 X_DISPLAY=$(cat "$SMOKE_DIR/display")
@@ -39,6 +42,7 @@ stop() {
 	wait "${!var}" 2>/dev/null
 	check "$1 is gone" "[ -z \"\$(get $1 x)\" ]"
 }
+said() { grep -q "^$2" "$SMOKE_DIR/$1.log"; }
 ws() { WAYLAND_DISPLAY=wayland-0 build/workspacec "$@"; }
 switch_to() {
 	ws activate "$1" >/dev/null || fail "activating desktop $1"
@@ -47,9 +51,21 @@ switch_to() {
 on() { # description app desktop shown(0/1)
 	check "$1" "[ \"\$(get $2 desktop)\" = $3 ] && [ \"\$(get $2 visible)\" = $4 ]"
 }
+# urgent_is <description> <ids>: which workspaces say urgent, e.g. "" or "2".
+urgent_is() {
+	local out got
+	out=$(ws list) || fail "workspacec list: $out"
+	got=$(sed -n 's/^workspace id=\([0-9]*\) .*state=[a-z+]*urgent.*/\1/p' <<<"$out" | tr -d '\n')
+	[ "$got" = "$2" ] || fail "$1: urgent are '$got', expected '$2': $out"
+	echo "ok: $1"
+}
 to_desktop() { # app n: through its window menu
+	local others
 	do_input key alt+space
 	check "the window menu of $1 is open" "[ \"\$(global menu open)\" = 1 ]"
+	others=$(tr -d "$(get "$1" desktop)" <<<1234)
+	[ "$(global menu sensitive | tr -cd 1234)" = "$others" ] ||
+		fail "the menu should offer desktops $others: $(global menu sensitive)"
 	do_input key "$2"
 	check "$1 went to desktop $2" "[ \"\$(get $1 desktop)\" = $2 ]"
 }
@@ -78,6 +94,12 @@ on "a window opened now is on desktop 2" b 2 1
 check "and has the focus" "[ \"\$(get b active)\" = 1 ]"
 do_input key alt+Tab
 check "Alt+Tab doesn't reach the other desktop" "[ \"\$(get b active)\" = 1 ] && [ \"\$(get a visible)\" = 0 ]"
+urgent_is "nor does it ask for attention there" ""
+# Right after a switch the other desktop's windows are next in the stacking order: a
+# group can't take them.
+do_input key super+g
+check "Super+G doesn't make a tab of a window on another desktop" \
+	"[ \"\$(get b tab)\" = -1 ] && [ \"\$(get a tab)\" = -1 ] && [ \"\$(get a desktop)\" = 1 ]"
 switch_to 1
 on "back on desktop 1: it is there again" a 1 1
 on "and the other one isn't" b 2 0
@@ -87,6 +109,19 @@ grep -q '^workspace id=1 name=1 x=0 state=active' <<<"$out" &&
 	grep -q '^workspace id=2 name=2 x=1 state=none' <<<"$out" ||
 	fail "the tool doesn't see the switch: $out"
 echo "ok: the tool sees which one is current"
+
+# A switch during a move ends the move.
+ax=$(($(get a x) + 100)) ay=$(($(get a y) + $(get a th) + 50))
+do_input hold alt
+do_input move $ax $ay
+do_input down left
+do_input move $((ax + 40)) $((ay + 30))
+check "a is being moved" "[ \"\$(global cursor mode)\" = 1 ]"
+switch_to 3
+check "a switch ends the move" "[ \"\$(global cursor mode)\" = 0 ] && [ \"\$(global outline shown)\" = 0 ]"
+do_input up left
+do_input release alt
+switch_to 1
 
 # ---- moving a window -----------------------------------------------------------------
 
@@ -119,10 +154,13 @@ check "and is shown there, one tab of it" \
 stop g1
 stop g2
 
-# A panel is on every desktop and can't be moved.
-x11 dock type=dock pos=0,0 size=1280x30 strut=0,0,30,0
+# A panel is on every desktop, and so are its dialogs, wherever they open.
+x11 dock type=dock pos=0,0 size=1280x30 strut=0,0,30,0 dialog=dockdlg dialog_ms=2000
 switch_to 2
 on "a panel stays on every desktop" dock 1 1
+check "its dialog opens on desktop 2 too, in sight" \
+	"[ -n \"\$(get dockdlg x)\" ] && [ \"\$(get dockdlg visible)\" = 1 ]"
+urgent_is "and nothing is urgent" ""
 switch_to 1
 stop dock
 
@@ -144,17 +182,44 @@ check "back: the first one's icon shows, the other's doesn't" \
 stop i1
 stop i2
 
+# A window on another desktop that minimizes itself takes its dialog along.
+x11 selfmin size=300x200 dialog=selfkid iconify_ms=2500
+check "its dialog is there" "[ -n \"\$(get selfkid x)\" ]"
+do_input move $(($(get selfmin x) + 30)) $(($(get selfmin y) + $(get selfmin th) + 30))
+do_input click left
+to_desktop selfmin 2
+wait_for "it minimizes itself on desktop 2" said selfmin iconified
+switch_to 2
+check "there it is an icon, and its dialog is hidden with it" \
+	"[ \"\$(get selfmin min)\" = 1 ] && [ \"\$(get selfmin icon_shown)\" = 1 ] && \
+	[ \"\$(get selfkid visible)\" = 0 ]"
+switch_to 1
+stop selfmin
+
+# A maximized X11 window that says it isn't an icon while its desktop is away keeps
+# being maximized.
+x11 maxed size=300x200 state=maximized normalize=1
+check "maximized" "[ \"\$(get maxed max)\" = 1 ]"
+switch_to 2
+wait_for "it says it is a normal window" said maxed normalized
+sleep 0.3
+switch_to 1
+check "still maximized" "[ \"\$(get maxed max)\" = 1 ] && [ \"\$(get maxed visible)\" = 1 ]"
+stop maxed
+
 do_input key super+t
 check "tiling on" "[ \"\$(global tiling on)\" = 1 ]"
 wayland t1 size=300x200
 wayland t2 size=300x200
-check "two tiled on desktop 1" "[ \"\$(get t1 tiled)\" = 1 ] && [ \"\$(get t2 tiled)\" = 1 ]"
+check "two tiled on desktop 1, side by side" \
+	"[ \"\$(get t1 tiled)\" = 1 ] && [ \"\$(get t2 tiled)\" = 1 ] && [ \"\$(get t1 w)\" -lt 1000 ]"
 T1="$(get t1 x) $(get t1 y) $(get t1 w) $(get t1 h)"
 switch_to 2
 wayland t3 size=300x200
 check "alone on desktop 2, it has the whole layout" \
 	"[ \"\$(get t3 tiled)\" = 1 ] && [ \"\$(get t3 tile_main)\" = 1 ] && [ \"\$(get t3 w)\" -gt 1000 ]"
-check "the others stay in their layout" "[ \"\$(get t1 tiled)\" = 1 ] && [ \"\$(get t2 tiled)\" = 1 ]"
+check "the others stay in their layout, untouched" "[ \"\$(get t1 tiled)\" = 1 ] && \
+	[ \"\$(get t2 tiled)\" = 1 ] && [ \"\$(get t1 x) \$(get t1 y) \$(get t1 w) \$(get t1 h)\" = \"$T1\" ]"
 switch_to 1
 check "back: they are where they were" \
 	"[ \"\$(get t1 x) \$(get t1 y) \$(get t1 w) \$(get t1 h)\" = \"$T1\" ]"
@@ -175,13 +240,30 @@ check "its dialog appears, on desktop 2" "[ \"\$(get latekid desktop)\" = 2 ] &&
 wait "$PID_urgent" || fail "desktop 2 isn't marked urgent: $(cat "$SMOKE_DIR/urgent.out")"
 echo "ok: desktop 2 is marked urgent"
 check "the current desktop stays" "[ \"\$(global desktop current)\" = 1 ]"
-switch_to 2
-on "there it is" latekid 2 1
-out=$(ws list) || fail "workspacec list: $out"
-grep -q '^workspace id=2 name=2 x=1 state=active caps' <<<"$out" ||
-	fail "going there doesn't clear urgent: $out"
-echo "ok: going there clears it"
+urgent_is "only that one" 2
 stop late
+urgent_is "the window closes there: nothing is urgent any more" ""
+
+x11 late2 size=300x200 dialog=late2kid dialog_ms=2500
+to_desktop late2 3
+ws urgent 3 >"$SMOKE_DIR/urgent.out" 2>&1 || fail "desktop 3 isn't marked urgent: $(cat "$SMOKE_DIR/urgent.out")"
+switch_to 3
+on "there it is" late2kid 3 1
+urgent_is "going there clears it" ""
+stop late2
+switch_to 1
+
+# ---- the group follows its output -------------------------------------------------------
+
+ws outputs 0 >"$SMOKE_DIR/outputs.out" 2>&1 &
+PID_outputs=$!
+sleep 0.3
+WAYLAND_DISPLAY=wayland-0 build/outputc apply HEADLESS-1 off || fail "switching the output off"
+wait "$PID_outputs" || fail "the group keeps an output that left: $(cat "$SMOKE_DIR/outputs.out")"
+echo "ok: an output switched off leaves the group"
+WAYLAND_DISPLAY=wayland-0 build/outputc apply HEADLESS-1 on || fail "switching it on"
+ws outputs 1 >"$SMOKE_DIR/outputs.out" 2>&1 || fail "the output doesn't come back: $(cat "$SMOKE_DIR/outputs.out")"
+echo "ok: and a new client sees it again"
 
 kill -0 "$pid" || fail "mwc died"
 stop_vinput

@@ -202,6 +202,7 @@ struct view {
 	bool tab_hidden;         /* in a group, and not the one shown */
 	int desktop;             /* 0 to MWC_DESKTOPS - 1, see desktop.c */
 	bool off_desktop;        /* on a desktop other than the current one */
+	bool attention;          /* asked for the focus there; see desktop_attention() */
 	int tab_own_w, tab_own_h; /* the size it had before; 0: its own to choose */
 	void *deco;     /* xdg-decoration object, if any */
 	bool activated;
@@ -267,11 +268,17 @@ struct view {
 	struct wl_listener set_override_redirect;
 };
 
+/* Hidden by its own state, not by being on another desktop: what a dialog goes along
+ * with, and what restoring undoes. */
+static inline bool view_hidden_by_state(const struct view *view)
+{
+	return view->minimized || view->hidden_with_parent || view->tab_hidden;
+}
+
 /* Not on the screen right now, whatever the reason. */
 static inline bool view_hidden(const struct view *view)
 {
-	return view->minimized || view->hidden_with_parent || view->tab_hidden ||
-		view->off_desktop;
+	return view_hidden_by_state(view) || view->off_desktop;
 }
 
 /* Unmanaged XWayland windows: override-redirect menus, tooltips, DnD icons. */
@@ -565,6 +572,8 @@ void view_apply_tile(struct view *view);
 void view_focus_next(struct view *except);
 /* The topmost window that can take the focus gets it, or nobody. */
 void view_focus_top(struct server *server);
+/* The window that has the focus, or NULL. */
+struct view *view_focused(struct server *server);
 /* To the front of its scene layer, alone. */
 void view_raise_one(struct view *view);
 /* Puts every window into its scene layer, by type, state and focus. */
@@ -829,8 +838,9 @@ void testhook_init(struct server *server);
 
 /* ---- desktop.c ------------------------------------------------------------ */
 
-/* Panels, desktop windows, notifications and splash screens are on all of them. */
-bool view_on_all_desktops(const struct view *view);
+/* Panels, desktop windows, notifications and splash screens are on all of them, and
+ * so are their dialogs. */
+bool view_on_all_desktops(struct view *view);
 /* A window that maps goes to the current desktop, a dialog to its window's. */
 void desktop_view_mapped(struct view *view);
 /* Show desktop n (0-based): its windows and icons, and nothing of the others. */
@@ -839,18 +849,22 @@ void desktop_switch(struct server *server, int n);
 void view_set_desktop(struct view *view, int n);
 /* A window on another desktop asked for the focus. */
 void desktop_attention(struct view *view);
+/* Its type or the window it belongs to changed: where it is may change too. */
+void desktop_recheck(struct view *view);
+/* Does any window on desktop n want attention? */
+bool desktop_urgent(struct server *server, int n);
 
 /* ---- workspace.c ---------------------------------------------------------- */
 
 /* ext-workspace-v1: the desktops for panels and switching tools. */
 void workspace_init(struct server *server);
-/* The current desktop changed. */
-void workspace_changed(struct server *server);
-/* A window on desktop n wants attention; cleared when n becomes current. */
-void workspace_urgent(struct server *server, int n);
+/* The current desktop, or which ones are urgent, changed. */
+void workspace_update(struct server *server);
 struct wlr_output;
 /* A new output, for the workspace group's output_enter and output_leave. */
 void workspace_output_new(struct wlr_output *output);
+/* An output leaves the layout: its wl_output objects are about to go inert. */
+void workspace_output_leaving(struct wlr_output *output);
 
 /* ---- fifo.c --------------------------------------------------------------- */
 
