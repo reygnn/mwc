@@ -45,7 +45,9 @@ TODO
   aber bewusst nicht gebaut (Entscheidung 2026-11-11: keine Umgehungen für
   Fehler, die wlroots schon behoben hat). Erledigt sich mit dem Umstieg auf
   0.20.2; bis dahin hilft ein Moduswechsel per Hand (outputc apply, wlr-randr).
-  wayrdp trifft es nicht: Es schaltet den Monitor vor jeder Aufnahme ein.
+  wayrdp löst es nicht selbst aus (schaltet vor jeder Aufnahme ein), bleibt
+  aber ohne Bild, wenn ein anderes Programm (grim, wayvnc, capturec) zuerst
+  bei abgeschaltetem Monitor aufgenommen hat: Es bekommt dieselbe leere Quelle.
   Abnahme nach dem Umstieg: session.sh schaltet mit powerc aus, startet
   capturec, schaltet ein und bekommt ein Bild.
 
