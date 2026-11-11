@@ -7,7 +7,8 @@
  * Alt+Tab, clicks and the layout pass them by as they do minimized windows.
  *
  * - Panels, desktop windows, notifications and splash screens are on all of them,
- *   as are programs with Mwm*NAME*allDesktops, and their dialogs.
+ *   as are programs with Mwm*NAME*allDesktops, windows put there through "On All
+ *   Desktops" in their window menu, and their dialogs.
  * - A dialog goes where its window is, a tab group as a whole.
  * - Icons belong to their window's desktop and are only seen there; each desktop
  *   has its own icon slots.
@@ -24,15 +25,25 @@
 #include <wlr/types/wlr_scene.h>
 #include "mwc.h"
 
-static bool everywhere(const struct view *view)
+static bool by_rule(const struct view *view)
 {
 	return view->all_desktops || view->wtype == WT_DOCK || view->wtype == WT_DESKTOP ||
 		view->wtype == WT_NOTIFICATION || view->wtype == WT_SPLASH;
 }
 
+static bool everywhere(const struct view *view)
+{
+	return view->sticky || by_rule(view);
+}
+
 bool view_on_all_desktops(struct view *view)
 {
 	return everywhere(view) || everywhere(view_transient_root(view));
+}
+
+bool view_sticky_by_rule(struct view *view)
+{
+	return by_rule(view) || by_rule(view_transient_root(view));
 }
 
 /* After off_desktop changed: the window and its icon as its other states say. */
@@ -177,6 +188,25 @@ void desktop_config_changed(struct server *server)
 			v->attention = false;
 	}
 	focus_after(server, lost);
+}
+
+void view_toggle_sticky(struct view *view)
+{
+	struct server *server = view->server;
+	struct view *root = view_transient_root(view);
+	if (view_sticky_by_rule(root))
+		return;
+	/* It is in sight, so on the current desktop; there it stays when it stops. */
+	bool on = !root->sticky;
+	struct view *v;
+	wl_list_for_each(v, &server->views, link) {
+		struct view *r = view_transient_root(v);
+		if (r != root && !(root->group && r->group == root->group))
+			continue;
+		if (r == v)
+			v->sticky = on;
+		v->desktop = server->desktop;
+	}
 }
 
 void desktop_attention(struct view *view)

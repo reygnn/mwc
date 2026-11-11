@@ -286,6 +286,41 @@ switch_to 2
 stop everywhere
 switch_to 1
 
+# ---- On All Desktops from the window menu -------------------------------------------------
+
+wayland stick size=200x100 dialog=stickkid
+check "a window with a dialog" "[ -n \"\$(get stickkid x)\" ]"
+do_input move $(($(get stick x) + 30)) $(($(get stick y) + $(get stick th) + 30))
+do_input click left
+check "it has the focus" "[ \"\$(get stick active)\" = 1 ]"
+do_input key alt+space
+check "its window menu is open" "[ \"\$(global menu open)\" = 1 ]"
+do_input key o
+check "On All Desktops" "[ \"\$(get stick everywhere)\" = 1 ] && [ \"\$(get stickkid everywhere)\" = 1 ]"
+switch_to 3
+check "it and its dialog stay in sight on desktop 3" \
+	"[ \"\$(get stick visible)\" = 1 ] && [ \"\$(get stickkid visible)\" = 1 ]"
+do_input move $(($(get stick x) + 30)) $(($(get stick y) + $(get stick th) + 30))
+do_input click left
+do_input key alt+space
+check "its window menu is open" "[ \"\$(global menu open)\" = 1 ]"
+[ -z "$(global menu sensitive | tr -cd 1234)" ] || fail "a window on all desktops offers one: $(global menu sensitive)"
+echo "ok: and offers no single desktop"
+do_input key o
+check "Only This Desktop: it stays on desktop 3" \
+	"[ \"\$(get stick everywhere)\" = 0 ] && [ \"\$(get stick desktop)\" = 3 ] && \
+	[ \"\$(get stickkid desktop)\" = 3 ] && [ \"\$(get stick visible)\" = 1 ]"
+switch_to 1
+on "and is gone from desktop 1" stick 3 0
+switch_to 3
+stop stick
+switch_to 1
+
+# A panel is on every desktop anyway: the menu can't change that.
+x11 dockmenu type=dock pos=0,690 size=1280x30
+check "a panel" "[ \"\$(get dockmenu everywhere)\" = 1 ]"
+stop dockmenu
+
 # ---- the group follows its output -------------------------------------------------------
 
 ws outputs 0 >"$SMOKE_DIR/outputs.out" 2>&1 &

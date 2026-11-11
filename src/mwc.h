@@ -204,6 +204,7 @@ struct view {
 	bool off_desktop;        /* on a desktop other than the current one */
 	bool attention;          /* asked for the focus there; see desktop_attention() */
 	bool all_desktops;       /* Mwm*NAME*allDesktops, read when it maps */
+	bool sticky;             /* "On All Desktops" from its window menu */
 	int tab_own_w, tab_own_h; /* the size it had before; 0: its own to choose */
 	void *deco;     /* xdg-decoration object, if any */
 	bool activated;
@@ -320,6 +321,7 @@ enum menu_action {
 	ACT_TOGGLE_TILING,
 	ACT_RAISE_TILED,
 	ACT_LOWER_TILED,
+	ACT_TOGGLE_STICKY,
 	ACT_TO_DESKTOP, /* ACT_TO_DESKTOP + n moves the window to desktop n */
 	ACT_TO_DESKTOP_LAST = ACT_TO_DESKTOP + MWC_DESKTOPS - 1,
 	ACT_RUN,      /* the item's command */
@@ -856,6 +858,10 @@ void desktop_attention(struct view *view);
 void desktop_recheck(struct view *view);
 /* Does any window on desktop n want attention? */
 bool desktop_urgent(struct server *server, int n);
+/* "On All Desktops" from the window menu, or back to the desktop it is seen on. */
+void view_toggle_sticky(struct view *view);
+/* On all desktops by its type or the mwmrc, which the menu can't change. */
+bool view_sticky_by_rule(struct view *view);
 /* After a reload: allDesktops may have changed for windows that are there. */
 void desktop_config_changed(struct server *server);
 

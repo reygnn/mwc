@@ -193,6 +193,10 @@ static void add_desktops(struct menu *m, struct view *view)
 	for (int i = 0; i < MWC_DESKTOPS; i++)
 		add(m, labels[i], '1' + i, NULL, ACT_TO_DESKTOP + i,
 			movable && i != view->desktop);
+	/* A panel or a program with allDesktops is there anyway. */
+	bool sticky = view_transient_root(view)->sticky;
+	add(m, sticky ? "Only This Desktop" : "On All Desktops", 'O', NULL,
+		ACT_TOGGLE_STICKY, !view_sticky_by_rule(view) && !view->minimized);
 }
 
 static uint32_t now_msec(void)
@@ -531,6 +535,10 @@ void run_action(struct server *server, enum menu_action action,
 	case ACT_RESTORE:
 		if (view)
 			view_restore(view);
+		break;
+	case ACT_TOGGLE_STICKY:
+		if (view)
+			view_toggle_sticky(view);
 		break;
 	case ACT_MOVE:
 		if (!view)

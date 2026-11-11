@@ -310,6 +310,9 @@ bool tabs_join(struct view *view, struct view *target)
 	view->tab_hidden = true;
 	view->group = g;
 	view->gravity_edges = target->gravity_edges = 0;
+	/* A group is on one desktop, or on all of them, as the one it joins. */
+	view->sticky = target->sticky;
+	view->desktop = target->desktop;
 	wl_list_insert(g->members.prev, &view->tab_link);
 	switch_to(g, view, g->shown, false);
 	return true;

@@ -68,7 +68,7 @@ resize_by() { # app dx dy
 
 sensitive_is() { # description window expected, leaving out the entries for tabs and desktops
 	do_input key alt+space
-	check "$1" "[ \"\$(global menu sensitive | tr -d TePD1234)\" = $3 ]"
+	check "$1" "[ \"\$(global menu sensitive | tr -d TePD1234O)\" = $3 ]"
 	do_input key Escape
 }
 

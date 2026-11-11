@@ -383,6 +383,10 @@ them show. mwc binds no keys for it. A pager or switching tool does it through
   ```
 
   A reload that drops the entry leaves its windows on the desktop they are seen on.
+- "On All Desktops" in a window menu does the same for one window, with its dialogs
+  and tab group; then the entry says "Only This Desktop" and takes it back to the
+  desktop it is seen on. Panels and programs with `allDesktops` show it grayed out, a
+  reload leaves the choice alone, and a window joining a tab group takes the group's.
 - Icons belong to their window's desktop and only show there; each desktop has its
   own icon slots.
 - Focus, Alt+Tab and clicks stay on the current desktop. Tiling lays out its windows;
