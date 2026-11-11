@@ -147,7 +147,7 @@ grep -qi '^Mwm\*HEADLESS-1\*outputMode:' "$CFG/mwmrc" ||
 	printf '! The headless output: its size until a client asks for another.\nMwm*HEADLESS-1*outputMode:   %s\n' \
 		"$SIZE" >>"$CFG/mwmrc"
 grep -qi '^Mwm\*outputManagement:' "$CFG/mwmrc" ||
-	printf '! The size follows the mstsc window (wayrdp sets it).\nMwm*outputManagement:        true\n' \
+	printf '! The size mstsc connects with (wayrdp sets it).\nMwm*outputManagement:        true\n' \
 		>>"$CFG/mwmrc"
 grep -qi '^Mwm\*terminal:' "$CFG/mwmrc" ||
 	echo 'Mwm*terminal:                xterm' >>"$CFG/mwmrc"

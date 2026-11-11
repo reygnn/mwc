@@ -36,7 +36,7 @@ Between the two the server has no RDP, only SSH.
 | RDP server | xrdp, which starts Xorg (xorgxrdp) | wayrdp, a user service next to mwc |
 | Session starts | when you log in through RDP | at boot, as a systemd user service. RDP only looks at it |
 | RDP login | the Linux password (PAM, in xrdp's login window) | an RDP password of its own (NLA), or the Linux password (`-a pam`) |
-| Screen size | the size of the `mstsc` window at login | the size of the `mstsc` window, and it follows when you resize it |
+| Screen size | the size of the `mstsc` window at login | the same: the size `mstsc` connects with. It doesn't follow the window afterwards (other clients do) |
 | Keyboard layout | the notebook's, through xorgxrdp | `wayrdp -k`, set once on the server |
 | Clipboard | text, images, files | text, full Unicode, both ways |
 | X programs | on Xorg | on Xwayland, inside mwc |
@@ -155,14 +155,18 @@ mkdir -p ~/.config/mwc
 cat >> ~/.config/mwc/mwmrc <<'EOF'
 ! The headless output is HEADLESS-1: its size until a client asks for another.
 Mwm*HEADLESS-1*outputMode:   1920x1080
-! The size follows the mstsc window (wayrdp sets it).
+! The size mstsc connects with (wayrdp sets it).
 Mwm*outputManagement:        true
 Mwm*terminal:                xterm
 EOF
 ```
 
 - `outputMode` is the size before the first connection. Then wayrdp gives
-  the output the size of the `mstsc` window, and follows when you resize it.
+  the output the size `mstsc` connects with: its window, or the screen's
+  resolution in full screen. `mstsc` doesn't send a new size when you resize
+  its window during the session (it seems to do that for Windows hosts only);
+  reconnect for a new one, the session stays. Clients that do send one, such
+  as Remmina or `xfreerdp /dynamic-resolution`, are followed.
 - `outputManagement: true` is what lets wayrdp do that. **Then nothing else
   may use output management** – no `wlr-randr`, `kanshi` or `wdisplays`:
   wlroots 0.19 and 0.20 abort when a second program uses it, and take the
@@ -287,8 +291,9 @@ the Linux password with `-a pam`).
   again".
 - **Clipboard:** tick it under *Local Resources*. Text goes both ways, with
   umlauts and everything else; images and files don't.
-- **Screen size:** the desktop takes the size of the `mstsc` window, also
-  when you make it larger or smaller later.
+- **Screen size:** the desktop takes the size `mstsc` connects with, full
+  screen the screen's resolution. Resizing the window later doesn't change
+  it: disconnect and connect again, the windows stay.
 - **Disconnect and come back:** closing Remote Desktop leaves mwc running,
   so you get the same windows back next time. A second connection takes
   over from the first.
@@ -352,7 +357,7 @@ sudo rm -f /usr/local/bin/mwm /usr/share/xsessions/mwm-x11.desktop
 | `mwc.service` fails at once | `journalctl --user -u mwc`. `failed to create wlr_backend`: the `Environment=WLR_BACKENDS=headless` line is missing. |
 | Login fails although the password is right | NLA: the user name must be your Linux one, the password the one from `--set-password`. `-a pam`: are the credentials saved in `mstsc`? After three failures wayrdp takes no connection for 30 s. |
 | Wrong characters | `-k` in `wayrdp.service` doesn't match the notebook's layout. |
-| The size doesn't follow the window | `Mwm*outputManagement: true` is missing in mwmrc, or mwc was not restarted since (it reads it at its start). The log says "offers no output management". |
+| The desktop doesn't take the size `mstsc` connects with | `Mwm*outputManagement: true` is missing in mwmrc, or mwc was not restarted since (it reads it at its start). The log says "offers no output management". That it doesn't follow a resized `mstsc` window is `mstsc`: reconnect. |
 | The whole session ends when a tool changes the screen | `wlr-randr`, `kanshi` or the like used output management next to wayrdp: wlroots aborts then. Don't run them with `outputManagement: true`. |
 | No mouse pointer | Add `-r` to `ExecStart`: wayrdp then draws the pointer into the picture. |
 | X programs don't start | `xwayland` is missing, or `journalctl --user -u mwc` shows why Xwayland failed. |
