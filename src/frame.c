@@ -117,13 +117,15 @@ void frame_title_center(struct view *view, int *x, int *y)
 	*y = frame_border(view) + theme.title_height / 2;
 }
 
-/* How far the resize corners reach along each side of a W x H frame: B+T, at
- * most half the frame. Hit testing and the grooves agree. */
+/* How far the resize corners reach along each side of a W x H frame: B+T, as mwm's
+ * CornerWidth() and CornerHeight(), and like them at most a third of the frame, so
+ * a piece of side is always left between two corners. Hit testing and the grooves
+ * agree. */
 static void corner_reach(int W, int H, int *kx, int *ky)
 {
 	int k = theme.border + theme.title_height;
-	*kx = k < W / 2 ? k : W / 2;
-	*ky = k < H / 2 ? k : H / 2;
+	*kx = 3 * k > W ? W / 3 : k;
+	*ky = 3 * k > H ? H / 3 : k;
 }
 
 void draw_text(cairo_t *cr, const char *text, const char *font,
@@ -321,20 +323,24 @@ void frame_render(struct view *view)
 				H - 2 * B + 2, 1, s, true);
 	}
 
-	/* Resize corner grooves, cutting the border at title-bar distance. */
-	/* Tiled windows keep them: the decoration stays, inactive. */
+	/* Resize corner grooves, cutting the border at title-bar distance. As in mwm's
+	 * StretcherCorner(), each corner ends in its own shadow and the side piece starts
+	 * with its light edge: dark on k - 1, light on k. That is where the menu and the
+	 * maximize button meet the title, and the title bar meets the window, so the
+	 * grooves go on from those lines. Tiled windows keep them: the decoration stays,
+	 * inactive. */
 	if (full && ((view->funcs & FUNC_RESIZE) || view->tiled) &&
 			(!view->maximized || view->tiled)) {
 		int kx, ky;
 		corner_reach(W, H, &kx, &ky);
-		draw_groove_v(cr, kx, bv, B - bv - 1, s);
-		draw_groove_v(cr, W - kx - 2, bv, B - bv - 1, s);
-		draw_groove_v(cr, kx, H - B + 1, B - bv - 1, s);
-		draw_groove_v(cr, W - kx - 2, H - B + 1, B - bv - 1, s);
-		draw_groove_h(cr, bv, ky, B - bv - 1, s);
-		draw_groove_h(cr, W - B + 1, ky, B - bv - 1, s);
-		draw_groove_h(cr, bv, H - ky - 2, B - bv - 1, s);
-		draw_groove_h(cr, W - B + 1, H - ky - 2, B - bv - 1, s);
+		draw_groove_v(cr, kx - 1, bv, B - bv - 1, s);
+		draw_groove_v(cr, W - kx - 1, bv, B - bv - 1, s);
+		draw_groove_v(cr, kx - 1, H - B + 1, B - bv - 1, s);
+		draw_groove_v(cr, W - kx - 1, H - B + 1, B - bv - 1, s);
+		draw_groove_h(cr, bv, ky - 1, B - bv - 1, s);
+		draw_groove_h(cr, W - B + 1, ky - 1, B - bv - 1, s);
+		draw_groove_h(cr, bv, H - ky - 1, B - bv - 1, s);
+		draw_groove_h(cr, W - B + 1, H - ky - 1, B - bv - 1, s);
 	}
 
 	/* Title bar: menu button | title | minimize | maximize */
@@ -391,7 +397,7 @@ enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges)
 		return PART_TITLE;
 
 	/* Border: the corner pieces extend B+T along each side, but no further
-	 * than half the frame, or a short window would be at its top and bottom
+	 * than a third of the frame, or a short window would be at its top and bottom
 	 * edge at once. */
 	int kx, ky;
 	corner_reach(W, H, &kx, &ky);

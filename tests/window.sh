@@ -735,6 +735,56 @@ refresh
 echo "ok: the hidden dialog stays where it is"
 stop dlgmain
 
+# The corner grooves go on from the lines where the buttons meet, as in mwm: dark on
+# B + T - 1, light on B + T, along the top and down the sides.
+wayland grooves size=300x200
+check "it has the focus" "[ \"\$(get grooves active)\" = 1 ]"
+sleep 0.5
+refresh
+GX=$(get grooves x) GY=$(get grooves y) GB=$(get grooves bw) GT=$(get grooves th)
+GW=$(($(get grooves w) + 2 * GB)) GH=$(($(get grooves h) + 2 * GB + GT))
+K=$((GB + GT))
+WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/grooves.png" || fail "a screenshot"
+px() { build/pngtool pixel "$SMOKE_DIR/grooves.png" "$1" "$2"; }
+BORDER_Y=$((GY + GB / 2)) TITLE_Y=$((GY + GB + GT / 2))
+line_at() { # description x: a groove in the border and a button edge in the title there
+	local x=$2
+	[ "$(px $((x - 1)) $BORDER_Y)" != "$(px $x $BORDER_Y)" ] ||
+		fail "$1: no groove in the border at $x"
+	[ "$(px $((x - 1)) $BORDER_Y)" = "$(px $((x - 1)) $TITLE_Y)" ] &&
+		[ "$(px $x $BORDER_Y)" = "$(px $x $TITLE_Y)" ] ||
+		fail "$1: the groove at $x isn't on the button edge: border $(px $((x - 1)) $BORDER_Y) $(px $x $BORDER_Y), title $(px $((x - 1)) $TITLE_Y) $(px $x $TITLE_Y)"
+	echo "ok: $1"
+}
+line_at "top left: the groove goes on from the menu button's edge" $((GX + K))
+line_at "top right: and from the maximize button's" $((GX + GW - K))
+SIDE_X=$((GX + GW - GB / 2)) CLIENT_X=$((GX + GW - GB - 10))
+[ "$(px $SIDE_X $((GY + K - 1)))" = "$(px $CLIENT_X $((GY + K - 1)))" ] &&
+	[ "$(px $SIDE_X $((GY + K - 1)))" != "$(px $SIDE_X $((GY + K)))" ] ||
+	fail "the side groove isn't on the title bar's lower edge"
+echo "ok: down the side it goes on from the title bar's lower edge"
+stop grooves
+
+# A narrow window: the corners take at most a third of the frame, as in mwm, so a
+# piece of the side is left between them.
+wayland narrow size=40x150
+check "narrow is mapped" "[ -n \"\$(get narrow x)\" ]"
+sleep 0.5
+refresh
+NX=$(get narrow x) NY=$(get narrow y) NB=$(get narrow bw)
+NW=$(($(get narrow w) + 2 * NB))
+NK=$((NW / 3))
+WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/narrow.png" || fail "a screenshot"
+npx() { build/pngtool pixel "$SMOKE_DIR/narrow.png" "$1" "$2"; }
+NY0=$((NY + NB / 2))
+[ "$(npx $((NX + NK - 1)) $NY0)" != "$(npx $((NX + NK)) $NY0)" ] &&
+	[ "$(npx $((NX + NW - NK - 1)) $NY0)" != "$(npx $((NX + NW - NK)) $NY0)" ] ||
+	fail "the corners of a frame $NW wide don't end at a third, $NK"
+[ "$(npx $((NX + NW / 2)) $NY0)" = "$(npx $((NX + NW / 2 + 1)) $NY0)" ] ||
+	fail "no side left between the corners"
+echo "ok: a narrow window's corners take a third each, with side between them"
+stop narrow
+
 stop_vinput
 stop_mwc
 echo "PASS: window"
