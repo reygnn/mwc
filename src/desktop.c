@@ -7,7 +7,7 @@
  * Alt+Tab, clicks and the layout pass them by as they do minimized windows.
  *
  * - Panels, desktop windows, notifications and splash screens are on all of them,
- *   and so are their dialogs.
+ *   as are programs with Mwm*NAME*allDesktops, and their dialogs.
  * - A dialog goes where its window is, a tab group as a whole.
  * - Icons belong to their window's desktop and are only seen there; each desktop
  *   has its own icon slots.
@@ -26,7 +26,7 @@
 
 static bool everywhere(const struct view *view)
 {
-	return view->wtype == WT_DOCK || view->wtype == WT_DESKTOP ||
+	return view->all_desktops || view->wtype == WT_DOCK || view->wtype == WT_DESKTOP ||
 		view->wtype == WT_NOTIFICATION || view->wtype == WT_SPLASH;
 }
 
@@ -155,6 +155,28 @@ void desktop_recheck(struct view *view)
 	if (!now)
 		view->attention = false;
 	focus_after(view->server, lost);
+}
+
+void desktop_config_changed(struct server *server)
+{
+	struct view *v;
+	/* Windows in sight stay in sight: one that is no longer everywhere stays here. */
+	wl_list_for_each(v, &server->views, link) {
+		if (v->mapped && !v->off_desktop)
+			v->desktop = desktop_for(v);
+	}
+	bool lost = false;
+	wl_list_for_each(v, &server->views, link) {
+		bool now = off(v);
+		if (now != v->off_desktop) {
+			lost |= now && v->activated;
+			v->off_desktop = now;
+			apply(v);
+		}
+		if (!now)
+			v->attention = false;
+	}
+	focus_after(server, lost);
 }
 
 void desktop_attention(struct view *view)

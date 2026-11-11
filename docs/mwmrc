@@ -32,11 +32,16 @@ Mwm*rootMenuItem:                      Ausführen: mrun
 Mwm*rootMenuItem:                      Starfield: displayOff --stars
 Mwm*rootMenuItem:                      Display Off: displayOff --now
 
-! bottom right corner
-Mwm*pulseControl*geometry:  -0-0
+! pulseControl: bottom right corner, on every desktop
+Mwm*pulseControl*geometry:     -0-0
+Mwm*pulseControl*allDesktops:  true
 
 ! mrun (middle button, root menu) opens at the pointer. Needs mwc 0.4.3.
 Mwm*mrun*geometry:          pointer
+
+! deskControl switches the desktops: on every one of them, top right.
+Mwm*deskControl*allDesktops:   true
+Mwm*deskControl*geometry:      -0+0
 
 ! Print: a rectangle to the clipboard, Shift+Print the whole screen there. Ctrl+Print:
 ! a rectangle to a file, Ctrl+Shift+Print the whole screen. These are the defaults.

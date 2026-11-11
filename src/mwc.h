@@ -203,6 +203,7 @@ struct view {
 	int desktop;             /* 0 to MWC_DESKTOPS - 1, see desktop.c */
 	bool off_desktop;        /* on a desktop other than the current one */
 	bool attention;          /* asked for the focus there; see desktop_attention() */
+	bool all_desktops;       /* Mwm*NAME*allDesktops, read when it maps */
 	int tab_own_w, tab_own_h; /* the size it had before; 0: its own to choose */
 	void *deco;     /* xdg-decoration object, if any */
 	bool activated;
@@ -810,6 +811,8 @@ int config_bool(const char *name, const char *value);
 void config_view_shades(struct view *view);
 /* Whether the tiling layout may take it, from DoNotTile or TileOnly. */
 void config_view_tiling(struct view *view);
+/* Mwm*NAME*allDesktops: its windows are on every desktop, as panels are. */
+bool config_view_all_desktops(struct view *view);
 /* Where a program's mwmrc entry wants a new window. The distances are from the
  * left and top edges, or from the right and bottom ones. With at_pointer, the
  * middle of the title bar goes to the pointer instead. */
@@ -853,6 +856,8 @@ void desktop_attention(struct view *view);
 void desktop_recheck(struct view *view);
 /* Does any window on desktop n want attention? */
 bool desktop_urgent(struct server *server, int n);
+/* After a reload: allDesktops may have changed for windows that are there. */
+void desktop_config_changed(struct server *server);
 
 /* ---- workspace.c ---------------------------------------------------------- */
 

@@ -142,6 +142,7 @@ Mwm*wallpaper:                 ~/pictures/desk.png
 | `background` | frame color while unfocused (globally: also menus and icons) |
 | `activeForeground`, `foreground` | title text; default is black or white, whichever contrasts |
 | `geometry` | where a program's windows appear, see below (per program only) |
+| `allDesktops` | `true`: a program's windows are on every desktop, as panels are, see Virtual desktops (per program only) |
 | `fontList` | Pango font name for titles and menus, title bars grow with it (global only) |
 | `rootBackground` | desktop color, or `none` to leave the desktop to a wallpaper tool such as `swaybg` (global only) |
 | `wallpaper` | PNG on the desktop, see below (global only) |
@@ -375,7 +376,13 @@ them show. mwc binds no keys for it. A pager or switching tool does it through
   "To Desktop 1" to "To Desktop 4" in its window menu (its own desktop grayed out),
   its dialogs and tab group along. A tab group never spans two desktops.
 - Panels, desktop windows, notifications and splash screens are on all desktops, and
-  so are their dialogs.
+  so are their dialogs. So is a program with `allDesktops`, a switcher for one:
+
+  ```
+  Mwm*deskControl*allDesktops:   true
+  ```
+
+  A reload that drops the entry leaves its windows on the desktop they are seen on.
 - Icons belong to their window's desktop and only show there; each desktop has its
   own icon slots.
 - Focus, Alt+Tab and clicks stay on the current desktop. Tiling lays out its windows;

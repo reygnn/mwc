@@ -253,6 +253,39 @@ urgent_is "going there clears it" ""
 stop late2
 switch_to 1
 
+# ---- a program on every desktop: Mwm*NAME*allDesktops -------------------------------------
+
+RC=$XDG_CONFIG_HOME/mwc/mwmrc
+reload() {
+	local n
+	n=$(grep -c 'reloading the configuration' "$LOG")
+	kill -HUP "$pid"
+	wait_for "the reload" eval "[ \$(grep -c 'reloading the configuration' \"$LOG\") -gt $n ]"
+}
+printf 'Mwm*outputManagement: true\nMwm*everywhere*allDesktops: true\n' >"$RC"
+reload
+wayland everywhere size=200x100
+switch_to 2
+check "with allDesktops it stays in sight on desktop 2" "[ \"\$(get everywhere visible)\" = 1 ]"
+do_input move $(($(get everywhere x) + 30)) $(($(get everywhere y) + $(get everywhere th) + 30))
+do_input click left
+check "it has the focus" "[ \"\$(get everywhere active)\" = 1 ]"
+do_input key alt+space
+check "its window menu is open" "[ \"\$(global menu open)\" = 1 ]"
+[ -z "$(global menu sensitive | tr -cd 1234)" ] ||
+	fail "it can be moved to a desktop: $(global menu sensitive)"
+echo "ok: and offers no desktop to move to"
+do_input key Escape
+echo 'Mwm*outputManagement: true' >"$RC"
+reload
+check "without the entry it stays where it is in sight" \
+	"[ \"\$(get everywhere desktop)\" = 2 ] && [ \"\$(get everywhere visible)\" = 1 ]"
+switch_to 1
+on "and is on that desktop only now" everywhere 2 0
+switch_to 2
+stop everywhere
+switch_to 1
+
 # ---- the group follows its output -------------------------------------------------------
 
 ws outputs 0 >"$SMOKE_DIR/outputs.out" 2>&1 &

@@ -1245,6 +1245,7 @@ void view_handle_map(struct view *view)
 	config_view_tiling(view);
 	view->tile_seq = --view->server->tile_front; /* a new window leads the layout */
 	view_update_properties(view); /* the window type, for desktop_view_mapped() */
+	view->all_desktops = config_view_all_desktops(view);
 	desktop_view_mapped(view);
 	wlr_scene_node_set_enabled(&view->tree->node, !view->off_desktop);
 	view_update_content_pos(view);

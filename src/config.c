@@ -23,6 +23,7 @@
  *   Mwm*XTerm*activeBackground:    #8a0303    per client
  *   Mwm*foot*activeBackground:     gold
  *   Mwm*pulseControl*geometry:     -0-0       where its windows appear, per client
+ *   Mwm*deskControl*allDesktops:   true       its windows are on every desktop
  *   Mwm*iconPlacement:             top right  icons from the top right corner down
  *
  * The client part matches an X11 window's WM_CLASS instance or class name, or
@@ -434,6 +435,15 @@ static bool rule_color(const struct rule *r, struct mwc_color *out)
 	return false;
 }
 
+bool config_view_all_desktops(struct view *view)
+{
+	const char *name = view_app_id(view), *class = name;
+	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
+		name = view->xsurface->instance;
+	const struct rule *r = client_rule(name, class, "allDesktops");
+	return r && config_bool("allDesktops", r->value) == 1;
+}
+
 bool config_view_position(struct view *view, struct config_position *out)
 {
 	/* Dialogs belong with their window, not in the program's corner. */
@@ -522,8 +532,12 @@ void config_reload(struct server *server)
 		wallpaper_place(output, true);
 	}
 	struct view *view;
-	wl_list_for_each(view, &server->views, link)
+	wl_list_for_each(view, &server->views, link) {
 		view_theme_changed(view);
+		if (view->mapped)
+			view->all_desktops = config_view_all_desktops(view);
+	}
+	desktop_config_changed(server);
 	/* iconPlacement may have changed: every icon finds its slot anew. */
 	wl_list_for_each(view, &server->views, link)
 		view->icon_placed = false;
