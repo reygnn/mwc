@@ -38,10 +38,16 @@ TODO
   0x0 ohne Formate und erneuert sich nur bei einem Commit mit neuem Modus oder
   Renderformat; mwc schaltet ihn aber mit dem alten Modus wieder ein. Ein wayvnc,
   der während DPMS-aus startet, bekommt so nie ein Bild, bis jemand den Modus
-  ändert. wlroots 0.20.2 behebt das (die Quelle hört dort auch auf ENABLED);
-  in mwc ginge vorher nur ein erzwungener Moduswechsel beim Einschalten.
-  Abnahme: session.sh schaltet mit powerc aus, startet capturec, schaltet ein
-  und bekommt ein Bild.
+  ändert. wlroots 0.20.2 behebt das (die Quelle hört dort auch auf ENABLED).
+  Bestätigt von wayrdp im Code und im Versuch (2026-11-11): erste Aufnahme bei
+  ausgeschaltetem Monitor, dann ein: kein Bild; nach einem Moduswechsel wieder.
+  Ein erzwungener Moduswechsel beim Einschalten würde es in mwc umgehen, wird
+  aber bewusst nicht gebaut (Entscheidung 2026-11-11: keine Umgehungen für
+  Fehler, die wlroots schon behoben hat). Erledigt sich mit dem Umstieg auf
+  0.20.2; bis dahin hilft ein Moduswechsel per Hand (outputc apply, wlr-randr).
+  wayrdp trifft es nicht: Es schaltet den Monitor vor jeder Aufnahme ein.
+  Abnahme nach dem Umstieg: session.sh schaltet mit powerc aus, startet
+  capturec, schaltet ein und bekommt ein Bild.
 
 * wlroots 0.20. Ubuntu-Paket libwlroots-0.20-dev prüfen. 0.20.2 behebt beides,
   was mwc heute umgeht oder offen lässt: den shm-Allocator ohne
