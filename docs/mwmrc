@@ -36,12 +36,13 @@ Mwm*rootMenuItem:                      Display Off: displayOff --now
 Mwm*pulseControl*geometry:     -0-0
 Mwm*pulseControl*allDesktops:  true
 
-! mrun (middle button, root menu) opens at the pointer. Needs mwc 0.4.3.
-Mwm*mrun*geometry:          pointer
-
-! deskControl switches the desktops: on every one of them, top right.
+! deskControl switches the desktops: on every one of them, top right. Start it from
+! ~/.config/mwc/autostart, with a line "deskControl &".
 Mwm*deskControl*allDesktops:   true
 Mwm*deskControl*geometry:      -0+0
+
+! mrun (middle button, root menu) opens at the pointer. Needs mwc 0.4.3.
+Mwm*mrun*geometry:          pointer
 
 ! Print: a rectangle to the clipboard, Shift+Print the whole screen there. Ctrl+Print:
 ! a rectangle to a file, Ctrl+Shift+Print the whole screen. These are the defaults.
