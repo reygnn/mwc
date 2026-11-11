@@ -188,10 +188,11 @@ states_fit() { # W H
 		[ \"\$(get maxed y)\" = \"\$(global output uy)\" ] && \
 		[ \"\$(fw maxed)\" = \"\$(global output uw)\" ] && \
 		[ \"\$(fh maxed)\" = \"\$(global output uh)\" ]"
+	# A half keeps MWC_GAP (8) to the edges and to the other half.
 	check "${w}x$h: snapped keeps the left half" \
-		"[ \"\$(get snapped snap)\" != 0 ] && [ \"\$(get snapped x)\" = \"\$(global output ux)\" ] && \
-		near \"\$(fw snapped)\" \$((\$(global output uw) / 2)) && \
-		[ \"\$(fh snapped)\" = \"\$(global output uh)\" ]"
+		"[ \"\$(get snapped snap)\" != 0 ] && [ \"\$(get snapped x)\" = \$((\$(global output ux) + 8)) ] && \
+		near \"\$(fw snapped)\" \$(((\$(global output uw) - 24) / 2)) && \
+		[ \"\$(fh snapped)\" = \$((\$(global output uh) - 16)) ]"
 	check "${w}x$h: the icon stays on the output" \
 		"[ \"\$(get iconic min)\" = 1 ] && [ \"\$(get iconic icon_x)\" -ge 0 ] && \
 		[ \"\$(get iconic icon_y)\" -ge 0 ] && [ \"\$(get iconic icon_x)\" -lt $w ] && \

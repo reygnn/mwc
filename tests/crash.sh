@@ -88,7 +88,7 @@ check "a window without a frame yet" "[ \"\$(get latesnap frame)\" = 0 ]"
 do_input key super+Left
 check "snapped" "[ \"\$(get latesnap snap)\" != 0 ]"
 check "the frame comes, and it still fits its half" \
-	"[ \"\$(get latesnap frame)\" = 1 ] && [ \$((\$(get latesnap w) + 2 * B)) = 640 ]"
+	"[ \"\$(get latesnap frame)\" = 1 ] && [ \$((\$(get latesnap w) + 2 * B)) = 628 ]"
 stop latesnap
 check "the window is gone" "[ -z \"\$(get latesnap x)\" ]"
 

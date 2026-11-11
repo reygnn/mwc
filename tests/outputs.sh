@@ -62,13 +62,13 @@ check "the window is mapped" "[ -n \"\$(get win x)\" ]"
 
 grab_title win
 do_input move 1279 360
-preview_is "the first output's right edge: its right half" 640 0 640 720
+preview_is "the first output's right edge: its right half" 644 8 628 704
 do_input move 1280 360
-preview_is "the second output's left edge: its left half" 1280 0 640 720
+preview_is "the second output's left edge: its left half" 1288 8 628 704
 do_input move 2559 360
-preview_is "the second output's right edge: its right half" 1920 0 640 720
+preview_is "the second output's right edge: its right half" 1924 8 628 704
 do_input up left
-frame_is "dropped there" win 1920 0 640 720
+frame_is "dropped there" win 1924 8 628 704
 do_input key alt+F5
 client_is "Alt+F5 comes back from the other output" win 100 100 300 200
 
@@ -86,7 +86,7 @@ refresh
 X=$(get win x) Y=$(get win y)
 
 do_input key super+Left
-frame_is "Super+Left: a half of the output it is on" win 1280 0 640 720
+frame_is "Super+Left: a half of the output it is on" win 1288 8 628 704
 do_input key super+Right
 do_input key alt+F10
 frame_is "Alt+F10: that output" win 1280 0 1280 720
@@ -120,7 +120,7 @@ settle
 do_input move "$(title_x win)" "$(title_y win)"
 do_input down left
 do_input move 0 360
-preview_is "the other output has all its room" 0 0 640 720
+preview_is "the other output has all its room" 8 8 628 704
 do_input key Escape
 do_input up left
 kill "$PID_panel"
@@ -139,7 +139,7 @@ client_is "tiling off: back on the output it came from" win "$X" "$Y" 300 200
 do_input key super+Right
 do_input key super+t
 do_input key super+t
-frame_is "snapped there, it comes back snapped there" win 1920 0 640 720
+frame_is "snapped there, it comes back snapped there" win 1924 8 628 704
 kill "$PID_win"
 wait "$PID_win" 2>/dev/null
 check "the window is gone" "[ -z \"\$(get win x)\" ]"

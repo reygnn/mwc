@@ -120,9 +120,9 @@ do_input key alt+F10
 check "and un-maximized, it goes where the group was" \
 	"[ \"\$(get a max)\" = 0 ] && [ \"\$(get a w)\" = $W ] && [ \"\$(get a x)\" = $AX ]"
 do_input key super+Left
-check "snapped" "[ \"\$(get a snap)\" != 0 ] && [ \"\$(get a x)\" = 0 ]"
+check "snapped" "[ \"\$(get a snap)\" != 0 ] && [ \"\$(get a x)\" = 8 ]"
 do_input key super+3
-check "the state moves over too" "[ \"\$(get c snap)\" != 0 ] && [ \"\$(get c x)\" = 0 ] && \
+check "the state moves over too" "[ \"\$(get c snap)\" != 0 ] && [ \"\$(get c x)\" = 8 ] && \
 	[ \"\$(get a snap)\" = 0 ]"
 do_input key alt+F5
 check "restored" "[ \"\$(get c snap)\" = 0 ] && [ \"\$(get c x)\" = $AX ]"

@@ -26,7 +26,7 @@
 #include <wlr/util/log.h>
 #include "mwc.h"
 
-#define TILE_GAP 8       /* px around and between windows */
+#define TILE_GAP MWC_GAP /* px around and between windows */
 #define TILE_MAIN_PCT 55
 #define TILE_MAIN_MIN 10
 #define TILE_MAIN_MAX 90

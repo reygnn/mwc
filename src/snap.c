@@ -3,6 +3,8 @@
  * edge snaps it to that half, against a corner to that quarter, against the top
  * edge to the whole usable area. A Motif-bevelled outline shows the target while
  * dragging. Super+arrow keys step between the same positions, as in Windows 11.
+ * Halves and quarters keep MWC_GAP to the edges and to each other, as the tiling
+ * layout does, so the desktop stays in reach; maximized is the whole area.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <wlr/util/box.h>
@@ -18,21 +20,27 @@ static bool preview_visible;
 
 struct wlr_box snap_rect(enum snap s, struct wlr_box a)
 {
-	int hw = a.width / 2, hh = a.height / 2;
+	if (s == SNAP_NONE || s == SNAP_MAXIMIZE)
+		return a;
+	/* The gap around, then the two halves with the gap between them. */
+	const int g = MWC_GAP;
+	struct wlr_box in = { a.x + g, a.y + g, a.width - 2 * g, a.height - 2 * g };
+	int lw = (in.width - g) / 2, rw = in.width - g - lw;
+	int th = (in.height - g) / 2, bh = in.height - g - th;
+	int rx = in.x + lw + g, by = in.y + th + g;
 	switch (s) {
 	case SNAP_LEFT:
-		return (struct wlr_box){ a.x, a.y, hw, a.height };
+		return (struct wlr_box){ in.x, in.y, lw, in.height };
 	case SNAP_RIGHT:
-		return (struct wlr_box){ a.x + hw, a.y, a.width - hw, a.height };
+		return (struct wlr_box){ rx, in.y, rw, in.height };
 	case SNAP_TOP_LEFT:
-		return (struct wlr_box){ a.x, a.y, hw, hh };
+		return (struct wlr_box){ in.x, in.y, lw, th };
 	case SNAP_TOP_RIGHT:
-		return (struct wlr_box){ a.x + hw, a.y, a.width - hw, hh };
+		return (struct wlr_box){ rx, in.y, rw, th };
 	case SNAP_BOTTOM_LEFT:
-		return (struct wlr_box){ a.x, a.y + hh, hw, a.height - hh };
+		return (struct wlr_box){ in.x, by, lw, bh };
 	case SNAP_BOTTOM_RIGHT:
-		return (struct wlr_box){ a.x + hw, a.y + hh, a.width - hw,
-			a.height - hh };
+		return (struct wlr_box){ rx, by, rw, bh };
 	default:
 		return a;
 	}

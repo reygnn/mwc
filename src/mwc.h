@@ -28,6 +28,10 @@ struct wlr_xwayland_surface;
 /* background, bottom, top, overlay: the layers of wlr-layer-shell. */
 #define MWC_SHELL_LAYERS 4
 
+/* Space left around and between tiled and snapped windows, so the desktop and its
+ * root menu stay in reach. */
+#define MWC_GAP 8
+
 /* Virtual desktops: a fixed number, the same on every output (desktop.c). */
 #define MWC_DESKTOPS 4
 

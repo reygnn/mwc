@@ -297,8 +297,11 @@ there when you let go:
 | a corner (64 px zone)   | that quarter                       |
 | top edge                | the whole usable area (maximized)  |
 
-Dragging a snapped or maximized window away gives it back its previous size, still
-under the pointer, and Escape during the drag puts it back. Panels stay uncovered.
+Halves and quarters keep 8 px to the monitor's edges and to each other, as tiled
+windows do, so the desktop and its root menu stay in reach; maximized fills the whole
+usable area. Dragging a snapped or maximized window away gives it back its previous
+size, still under the pointer, and Escape during the drag puts it back. Panels stay
+uncovered.
 
 Keyboard: Super+Left/Right snap to a half (pressing the other direction restores
 the window). Super+Up goes from a half to its top quarter, or maximizes. Super+Down

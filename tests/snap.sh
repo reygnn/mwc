@@ -92,16 +92,16 @@ zone() { # x y name preview:x y w h
 	do_input key alt+F5
 	client_is "Alt+F5 puts it back" win 100 100 300 200
 }
-zone 0 360 Left_half 0 0 640 720
-zone 1279 360 Right_half 640 0 640 720
-zone 0 10 Top_left 0 0 640 360
-zone 1279 10 Top_right 640 0 640 360
-zone 0 710 Bottom_left 0 360 640 360
-zone 1279 710 Bottom_right 640 360 640 360
-zone 10 0 Top_left 0 0 640 360
-zone 1270 0 Top_right 640 0 640 360
-zone 10 719 Bottom_left 0 360 640 360
-zone 1270 719 Bottom_right 640 360 640 360
+zone 0 360 Left_half 8 8 628 704
+zone 1279 360 Right_half 644 8 628 704
+zone 0 10 Top_left 8 8 628 348
+zone 1279 10 Top_right 644 8 628 348
+zone 0 710 Bottom_left 8 364 628 348
+zone 1279 710 Bottom_right 644 364 628 348
+zone 10 0 Top_left 8 8 628 348
+zone 1270 0 Top_right 644 8 628 348
+zone 10 719 Bottom_left 8 364 628 348
+zone 1270 719 Bottom_right 644 364 628 348
 zone 640 0 Maximize 0 0 1280 720
 
 grab_title win
@@ -114,14 +114,14 @@ client_is "and Escape cancels" win 100 100 300 200
 # ---- coming back from a snapped state --------------------------------------------
 
 drag_to win 0 360
-frame_is "snapped to the left" win 0 0 640 720
+frame_is "snapped to the left" win 8 8 628 704
 grab_title win
 do_input move 320 300
 check "dragging it away gives it back its size" \
 	"[ \"\$(get win snap)\" = 0 ] && [ \"\$(global outline w)\" = $((300 + 2 * B)) ] && \
 	[ \"\$(global outline h)\" = $((200 + 2 * B + T)) ]"
 do_input key Escape
-frame_is "Escape snaps it again" win 0 0 640 720
+frame_is "Escape snaps it again" win 8 8 628 704
 check "and it counts as snapped" "[ \"\$(get win snap)\" != 0 ]"
 do_input up left
 do_input key alt+F5
@@ -142,7 +142,7 @@ WX=$(get win x) WY=$(get win y)
 # From one zone straight to another: the place from before the first one counts.
 drag_to win 0 360
 drag_to win 1279 360
-frame_is "from half to half" win 640 0 640 720
+frame_is "from half to half" win 644 8 628 704
 do_input key alt+F5
 client_is "Alt+F5 goes back to the place before the first snap" win "$WX" "$WY" 300 200
 
@@ -158,29 +158,30 @@ drag_to win 0 360
 do_input key alt+F11
 check "a snapped window goes fullscreen" "[ \"\$(get win full)\" = 1 ] && [ \"\$(get win w)\" = 1280 ]"
 do_input key alt+F11
-frame_is "and comes back snapped" win 0 0 640 720
+frame_is "and comes back snapped" win 8 8 628 704
 do_input key alt+F5
 client_is "its place from before is still known" win "$WX" "$WY" 300 200
 
 # Resizing a snapped window frees it.
 drag_to win 0 360
 refresh
-RX=$((640 - 2)) RY=360
+# The right border of the left half: it ends at 8 + 628.
+RX=$((8 + 628 - 2)) RY=360
 do_input move "$RX" "$RY"
 do_input down left
 do_input move $((RX - 100)) "$RY"
 do_input key Escape
-frame_is "Escape keeps a snapped window snapped" win 0 0 640 720
+frame_is "Escape keeps a snapped window snapped" win 8 8 628 704
 check "still counted as snapped" "[ \"\$(get win snap)\" != 0 ]"
 do_input up left
 do_input move "$RX" "$RY"
 do_input down left
 do_input move $((RX - 100)) "$RY"
 do_input up left
-frame_is "resized, it is narrower" win 0 0 540 720
+frame_is "resized, it is narrower" win 8 8 528 704
 check "and no longer snapped" "[ \"\$(get win snap)\" = 0 ]"
 do_input key alt+F5
-frame_is "so Alt+F5 has nothing to restore" win 0 0 540 720
+frame_is "so Alt+F5 has nothing to restore" win 8 8 528 704
 
 # With opaque dragging the window has already moved when it is dropped.
 mkdir -p "$XDG_CONFIG_HOME/mwc"
@@ -190,7 +191,7 @@ sleep 0.2
 stop win
 x11 opaque pos=100,100 size=300x200
 drag_to opaque 0 360
-frame_is "moveOpaque: snapped" opaque 0 0 640 720
+frame_is "moveOpaque: snapped" opaque 8 8 628 704
 do_input key alt+F5
 client_is "moveOpaque: back to where the drag began, not to the screen's edge" opaque 100 100 300 200
 grab_title opaque
@@ -208,23 +209,23 @@ sleep 0.2
 
 x11 keys pos=100,100 size=300x200
 do_input key super+Left
-frame_is "Super+Left: left half" keys 0 0 640 720
+frame_is "Super+Left: left half" keys 8 8 628 704
 do_input key super+Right
 client_is "Super+Right goes back" keys 100 100 300 200
 do_input key super+Right
-frame_is "Super+Right: right half" keys 640 0 640 720
+frame_is "Super+Right: right half" keys 644 8 628 704
 do_input key super+Up
-frame_is "Super+Up from a half: top quarter" keys 640 0 640 360
+frame_is "Super+Up from a half: top quarter" keys 644 8 628 348
 do_input key super+Left
-frame_is "Super+Left: the other top quarter" keys 0 0 640 360
+frame_is "Super+Left: the other top quarter" keys 8 8 628 348
 do_input key super+Down
-frame_is "Super+Down: back to the half" keys 0 0 640 720
+frame_is "Super+Down: back to the half" keys 8 8 628 704
 do_input key super+Down
-frame_is "Super+Down: bottom quarter" keys 0 360 640 360
+frame_is "Super+Down: bottom quarter" keys 8 364 628 348
 do_input key super+Right
-frame_is "Super+Right: the other bottom quarter" keys 640 360 640 360
+frame_is "Super+Right: the other bottom quarter" keys 644 364 628 348
 do_input key super+Up
-frame_is "Super+Up: back to the half" keys 640 0 640 720
+frame_is "Super+Up: back to the half" keys 644 8 628 704
 do_input key super+Left
 client_is "Super+Left goes back" keys 100 100 300 200
 do_input key super+Up
@@ -255,7 +256,7 @@ do_input key super+shift+Down
 client_is "Super+Shift+Down: the bottom edge" keys $((1280 - OW)) $((720 - OH)) 300 200
 do_input key super+Left
 do_input key super+shift+Right
-frame_is "Super+Shift does nothing to a snapped window" keys 0 0 640 720
+frame_is "Super+Shift does nothing to a snapped window" keys 8 8 628 704
 do_input key super+Right
 do_input key alt+F10
 do_input key super+shift+Left
@@ -281,7 +282,7 @@ grab_title nomax
 do_input move 640 0
 check "without Maximize, the top edge is no zone" "[ \"\$(global preview shown)\" = 0 ]"
 do_input move 0 360
-preview_is "but the side is" 0 0 640 720
+preview_is "but the side is" 8 8 628 704
 do_input key Escape
 do_input up left
 do_input key super+Up
@@ -292,36 +293,36 @@ stop nomax
 
 x11 limited pos=100,100 size=300x200 max=400x300
 do_input key super+Left
-check "a maximum size holds when snapped" "[ \"\$(get limited w)\" = 400 ] && [ \"\$(get limited h)\" = 300 ] && [ \"\$(get limited x)\" = 0 ]"
+check "a maximum size holds when snapped" "[ \"\$(get limited w)\" = 400 ] && [ \"\$(get limited h)\" = 300 ] && [ \"\$(get limited x)\" = 8 ]"
 do_input key super+Right
 stop limited
 
 x11 normal pos=100,100 size=300x200
 do_input key super+Right
-frame_is "snapped, no panel" normal 640 0 640 720
+frame_is "snapped, no panel" normal 644 8 628 704
 x11 panel type=dock pos=0,0 size=1280x40 strut=0,0,40,0
-frame_is "snapped windows follow a new panel" normal 640 40 640 680
+frame_is "snapped windows follow a new panel" normal 644 48 628 664
 grab_title normal
 do_input move 0 360
-preview_is "the target leaves the panel out" 0 40 640 680
+preview_is "the target leaves the panel out" 8 48 628 664
 do_input key Escape
 do_input up left
 stop panel
-frame_is "and the free space when it goes" normal 640 0 640 720
+frame_is "and the free space when it goes" normal 644 8 628 704
 stop normal
 
 wayland wl size=300x200
 refresh
 WX=$(get wl x) WY=$(get wl y)
 do_input key super+Left
-frame_is "Wayland: left half" wl 0 0 640 720
+frame_is "Wayland: left half" wl 8 8 628 704
 do_input key super+Up
-frame_is "Wayland: top quarter" wl 0 0 640 360
+frame_is "Wayland: top quarter" wl 8 8 628 348
 do_input key super+Down
 do_input key super+Right
 client_is "Wayland: and back" wl "$WX" "$WY" 300 200
 drag_to wl 1279 360
-frame_is "Wayland: dragged to a half" wl 640 0 640 720
+frame_is "Wayland: dragged to a half" wl 644 8 628 704
 grab_title wl
 do_input move 640 300
 do_input up left

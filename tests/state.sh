@@ -372,16 +372,16 @@ export WLR_HEADLESS_OUTPUTS=2
 begin 2560 720
 x11 roam pos=100,100 size=300x200
 drag_to roam 2559 360
-check "snapped on the second output" "[ \"\$(get roam x)\" = 1920 ]"
+check "snapped on the second output" "[ \"\$(get roam x)\" = 1924 ]"
 do_input key alt+F11
 check "fullscreen on it" "[ \"\$(get roam x)\" = 1280 ] && [ \"\$(get roam full)\" = 1 ]"
 do_input key alt+F11
 check "and back snapped on the same output, not where it was before" \
-	"[ \"\$(get roam x)\" = 1920 ] && [ \"\$(get roam full)\" = 0 ]"
+	"[ \"\$(get roam x)\" = 1924 ] && [ \"\$(get roam full)\" = 0 ]"
 do_input key super+t
 check "tiling takes it to the first output" "[ \"\$(get roam x)\" -lt 1280 ]"
 do_input key super+t
-check "and it comes back on the second" "[ \"\$(get roam x)\" = 1920 ]"
+check "and it comes back on the second" "[ \"\$(get roam x)\" = 1924 ]"
 do_input key alt+F5
 check "restored" "[ \"\$(get roam snap)\" = 0 ]"
 
@@ -439,7 +439,7 @@ check "a half" "[ \"\$(get halfre snap)\" != 0 ]"
 HALF=$(get halfre snap)
 wait_for "shown again" said halfre 'reshown 1'
 check "still that half, not maximized" "[ \"\$(get halfre snap)\" = $HALF ] && [ \"\$(get halfre max)\" = 0 ] && \
-	[ \"\$(get halfre x)\" = 0 ] && [ \$((\$(get halfre w) + 2 * B)) = 640 ]"
+	[ \"\$(get halfre x)\" = 8 ] && [ \$((\$(get halfre w) + 2 * B)) = 628 ]"
 do_input key alt+F5
 check "and it can leave, for its own size" "[ \"\$(get halfre snap)\" = 0 ] && [ \"\$(get halfre w)\" = 300 ]"
 stop halfre
@@ -449,18 +449,18 @@ do_input key super+Left
 check "a half" "[ \"\$(get halfdrop snap)\" != 0 ]"
 wait_for "shown again, without its properties" said halfdrop 'reshown 1'
 check "still that half" "[ \"\$(get halfdrop snap)\" != 0 ] && [ \"\$(get halfdrop max)\" = 0 ] && \
-	[ \"\$(get halfdrop x)\" = 0 ]"
+	[ \"\$(get halfdrop x)\" = 8 ]"
 stop halfdrop
 
 x11 quarterre rehide=1 rehide_ms=1500 size=300x200
 do_input key super+Left
 do_input key super+Up
-check "a quarter" "[ \"\$(get quarterre snap)\" != 0 ] && [ \$((\$(get quarterre h) + 2 * B + T)) = 360 ]"
+check "a quarter" "[ \"\$(get quarterre snap)\" != 0 ] && [ \$((\$(get quarterre h) + 2 * B + T)) = 348 ]"
 QUARTER=$(get quarterre snap)
 wait_for "shown again" said quarterre 'reshown 1'
 check "in that quarter, not somewhere else" "[ \"\$(get quarterre snap)\" = $QUARTER ] && \
-	[ \"\$(get quarterre x)\" = 0 ] && [ \"\$(get quarterre y)\" = 0 ] && \
-	[ \$((\$(get quarterre h) + 2 * B + T)) = 360 ]"
+	[ \"\$(get quarterre x)\" = 8 ] && [ \"\$(get quarterre y)\" = 8 ] && \
+	[ \$((\$(get quarterre h) + 2 * B + T)) = 348 ]"
 stop quarterre
 
 x11 minre rehide=1 rehide_ms=1500

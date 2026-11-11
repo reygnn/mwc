@@ -222,7 +222,7 @@ do_input key super+Left
 do_input key super+t
 cell_is "a snapped window tiles" c 8 8 1264 "$FULL_H"
 do_input key super+t
-check "and is snapped again afterwards" "[ \"\$(get c snap)\" != 0 ] && [ \"\$(get c x)\" = 0 ] && [ \"\$(frame_w c)\" = 640 ]"
+check "and is snapped again afterwards" "[ \"\$(get c snap)\" != 0 ] && [ \"\$(get c x)\" = 8 ] && [ \"\$(frame_w c)\" = 628 ]"
 do_input key alt+F5
 floats_at "and knows its place" c 400 350 300 200
 
