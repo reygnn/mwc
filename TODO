@@ -15,6 +15,19 @@ TODO
   Abnahme: ein Test in tests/pointer.sh, der diese Fälle mit vinput abfährt,
   und README unter Mouse und Configuration.
 
+* Programme als Icon starten, etwa Firefox aus dem Autostart (geparkt
+  2026-11-11). X11-Programme, die selbst iconic starten wollen (xterm
+  -iconic, WM_HINTS), kann mwc schon; Firefox hat dafür keine Option, und
+  unter Wayland gibt es kein Protokoll dafür. Idee: Mwm*NAME*startIconic: true,
+  wie allDesktops pro Programm; das Fenster kommt gleich beim Mappen als Icon,
+  ohne kurz sichtbar zu sein (in view_handle_map(), vor dem Einschalten des
+  Knotens). Dialoge sind ausgenommen.
+  Zu klären: gilt es nur für das erste Fenster, das ein Programm seit dem
+  Start von mwc öffnet (passt zum Autostart, ein späteres Strg+N öffnet
+  normal), oder für jedes Hauptfenster?
+  Abnahme: ein Test in tests/window.sh mit xdgc und xclient, README unter
+  Configuration.
+
 * Zeigerbild nach einer Aufnahme mit eingemaltem Zeiger. wlroots zeichnet den
   Zeiger nach jeder Aufnahme, die ihn eingemalt haben will
   (ext-image-copy-capture mit paint_cursors, wlr-screencopy mit
