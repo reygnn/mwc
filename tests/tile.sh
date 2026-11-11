@@ -245,6 +245,25 @@ stop fixed
 x11 toowide pos=100,100 size=900x200 min=900x100
 check "too wide for the stack, it floats" "[ \"\$(get toowide tiled)\" = 0 ]"
 cell_is "and the other keeps the room" c 8 8 1264 "$FULL_H"
+# Being moved, it stays floating through the next layout round: trying it in the layout
+# again would end the move.
+tx=$(($(get toowide x) + 300)) ty=$(($(get toowide y) + $(get toowide th) + 50))
+do_input hold alt
+do_input move $tx $ty
+do_input down left
+do_input move $((tx + 40)) $((ty + 30))
+check "the one that floats is being moved" "[ \"\$(global cursor mode)\" = 1 ]"
+x11 newcomer size=200x150
+check "a new window starts a layout round" "[ \"\$(get newcomer tiled)\" = 1 ]"
+sleep 0.2
+refresh
+[ "$(global cursor mode)" = 1 ] || fail "the layout round ended the move"
+echo "ok: the move goes on"
+do_input move $((tx + 80)) $((ty + 60))
+do_input up left
+do_input release alt
+check "dropped, it still floats" "[ \"\$(get toowide tiled)\" = 0 ] && [ \"\$(global cursor mode)\" = 0 ]"
+stop newcomer
 stop toowide
 x11 splashy type=splash
 check "a splash screen floats" "[ \"\$(get splashy tiled)\" = 0 ]"

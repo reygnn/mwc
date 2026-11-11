@@ -590,6 +590,8 @@ void view_show_content(struct view *view);
 /* Tells the client what it is: maximized, tiled, snapped. */
 void view_publish_state(struct view *view);
 void view_refit(struct view *view);
+/* The same around a point of its own choosing, for the monitor and the cell there. */
+void view_refit_at(struct view *view, double px, double py);
 void view_place(struct view *view);
 void view_parent_changed(struct view *view);
 bool view_is_transient_of(struct view *view, struct view *ancestor);

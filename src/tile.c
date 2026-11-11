@@ -271,6 +271,20 @@ static struct view *plan(struct server *server, struct view **list, int n,
 	return NULL;
 }
 
+/* Would the layout take it, as things are? The same plan as a round, with the window
+ * counted in, but without tiling it. */
+static bool fits(struct server *server, struct view *view)
+{
+	view->tiled = true;
+	int n;
+	struct view **list = tiled_windows(server, &n);
+	bool overflow = false;
+	struct view *misfit = plan(server, list, n, &overflow);
+	free(list);
+	view->tiled = false;
+	return misfit != view;
+}
+
 void tile_arrange(struct server *server)
 {
 	/* Leaving or entering the layout reconfigures windows, which must not start
@@ -282,14 +296,24 @@ void tile_arrange(struct server *server)
 		return;
 	busy = true;
 
+	/* One being moved or resized: taking it into the layout ends that. */
+	struct view *held = server->cursor_mode == CURSOR_MOVE ||
+		server->cursor_mode == CURSOR_RESIZE ? server->grabbed_view : NULL;
 	struct view *v;
 	wl_list_for_each(v, &server->views, link)
 		v->tile_nofit = false;
 	for (;;) {
 		wl_list_for_each(v, &server->views, link) {
 			bool want = server->tiling && tileable(v);
-			if (want != v->tiled)
-				view_set_tiled(v, want, true);
+			if (want == v->tiled)
+				continue;
+			/* Only if it fits now: trying it and letting it float again would end
+			 * the grab for nothing. */
+			if (want && v == held && !fits(server, v)) {
+				v->tile_nofit = true;
+				continue;
+			}
+			view_set_tiled(v, want, true);
 		}
 		int n;
 		struct view **list = tiled_windows(server, &n);

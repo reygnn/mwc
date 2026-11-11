@@ -38,6 +38,7 @@
  *     normalize=1         once mapped, WM_CHANGE_STATE to NormalState
  *     iconify_ms=MS       that long after mapping (and the dialog), WM_CHANGE_STATE to
  *                         IconicState, as a program minimizing itself; says "iconified"
+ *     iconify_dialog=1    that goes to the dialog instead of the main window
  *     rehide=N            withdraw and map it again, N times; says "reshown N" each time,
  *                         and what WM_STATE then is
  *     rehide_ms=MS        wait that long before each, default 700
@@ -100,6 +101,7 @@ struct options {
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	const char *script, *title_later;
 	int iconify_ms;
+	bool iconify_dialog;
 	int moveresize;
 	bool has_moveto, iconic, normalize, report, netstate;
 	int moveto_x, moveto_y;
@@ -492,6 +494,8 @@ int main(int argc, char *argv[])
 			o.normalize = atoi(v);
 		else if (!strcmp(k, "iconify_ms"))
 			o.iconify_ms = atoi(v);
+		else if (!strcmp(k, "iconify_dialog"))
+			o.iconify_dialog = atoi(v);
 		else if (!strcmp(k, "move_press"))
 			o.move_press = atoi(v);
 		else if (!strcmp(k, "pulldown"))
@@ -612,7 +616,7 @@ int main(int argc, char *argv[])
 		usleep(o.iconify_ms * 1000);
 		XEvent e = { 0 };
 		e.xclient.type = ClientMessage;
-		e.xclient.window = main_win;
+		e.xclient.window = o.iconify_dialog && dialog_win ? dialog_win : main_win;
 		e.xclient.message_type = XInternAtom(dpy, "WM_CHANGE_STATE", False);
 		e.xclient.format = 32;
 		e.xclient.data.l[0] = IconicState;

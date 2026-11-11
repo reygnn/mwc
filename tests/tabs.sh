@@ -967,6 +967,46 @@ check "takes the half over" "[ \"\$(get hs1 snap)\" != 0 ]"
 wait_for "and hears it is maximized vertically too" net_state_is hs1 'vert=1 horz=0'
 stop hs1
 stop hs2
+
+# A dialog its program minimized stays an icon when its window's tab goes and comes.
+x11 tq size=300x200
+x11 tp size=300x200 dialog=td dialog_ms=800 iconify_ms=1200 iconify_dialog=1
+wait_for "the dialog minimizes itself" grep -q '^iconified' "$SMOKE_DIR/tp.log"
+check "the dialog is an icon" "[ \"\$(get td min)\" = 1 ] && [ \"\$(get td visible)\" = 0 ]"
+do_input move $(($(get tp x) + 100)) $(($(get tp y) + $(get tp th) + 50))
+do_input click left
+check "its window has the focus" "[ \"\$(get tp active)\" = 1 ]"
+do_input key super+g
+shown "its window joins the other" tp
+do_input key super+Tab
+shown "the other tab" tq
+do_input key super+Tab
+shown "and back" tp
+sleep 0.3
+check "the dialog is still an icon, not on the screen" \
+	"[ \"\$(get td min)\" = 1 ] && [ \"\$(get td visible)\" = 0 ]"
+stop tp
+stop tq
 finish
+
+# Two monitors: a wide window joining a right half of the left one stays on the left
+# one, whatever its own width was.
+export WLR_HEADLESS_OUTPUTS=2
+begin
+x11 half size=300x200
+do_input key super+Right
+check "a right half" "[ \"\$(get half snap)\" != 0 ]"
+HX=$(get half x)
+[ "$HX" -lt 1280 ] || fail "the half isn't on the left monitor: x=$HX"
+x11 wide size=1300x300
+do_input key super+g
+shown "a wide window joins the half" wide
+check "it takes the half, on the same monitor" \
+	"[ \"\$(get wide snap)\" != 0 ] && [ \"\$(get wide x)\" = $HX ] && \
+	[ \"\$(get wide w)\" = \"\$(get half w)\" ]"
+stop wide
+stop half
+finish
+unset WLR_HEADLESS_OUTPUTS
 
 echo "PASS: tabs"

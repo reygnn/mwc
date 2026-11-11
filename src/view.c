@@ -401,6 +401,11 @@ void view_refit(struct view *view)
 		view->y + view->height / 2.0);
 }
 
+void view_refit_at(struct view *view, double px, double py)
+{
+	view_fit_state(view, px, py);
+}
+
 /* What the client should know about it. Snapped halves count as maximized
  * vertically for X11 programs, as in mwm-x11; xdg clients hear which of their
  * edges touch something. */

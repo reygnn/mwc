@@ -68,7 +68,8 @@ static void dialogs_show(struct view *view, bool show)
 	struct view *v;
 	wl_list_for_each(v, &view->server->views, link) {
 		/* Going: those on the screen. Coming: those that went. */
-		if (!v->mapped || !view_is_transient_of(v, view) ||
+		/* One its program minimized is an icon of its own, and stays one. */
+		if (!v->mapped || v->minimized || !view_is_transient_of(v, view) ||
 				v->hidden_with_parent != show)
 			continue;
 		if (!show)
@@ -165,7 +166,9 @@ static void switch_to(struct tab_group *g, struct view *to, struct view *from, b
 	if (to->tiled) {
 		view_apply_tile(to);
 	} else if (to->maximized || to->snap != SNAP_NONE) {
-		view_refit(to);
+		/* Around the middle of the place it takes over: its own size is still that of
+		 * before, and a wide one would pick the next monitor from it. */
+		view_refit_at(to, to->x + w / 2.0, to->y + h / 2.0);
 	} else {
 		view_apply_size_hints(to, &w, &h, false);
 		view_set_geometry(to, to->x, to->y, w, h);
