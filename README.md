@@ -400,14 +400,17 @@ such as a video player, counts, also when it is minimized.
 
 ## Screenshots
 
-Print runs `Mwm*screenshot`, Shift+Print `Mwm*clipboardScreenshot`, by default
-[screenShot](https://github.com/reygnn/screenShot) to a file in `Screenshots` under
-the pictures folder and `screenShot -c` to the clipboard:
+Print takes a rectangle you drag with the mouse to the clipboard, Ctrl+Print to a
+file; with Shift, the whole screen instead. Each runs an entry of its own, by default
+[screenShot](https://github.com/reygnn/screenShot), whose files go to `Screenshots`
+under the pictures folder:
 
-```
-Mwm*screenshot:            screenShot
-Mwm*clipboardScreenshot:   screenShot -c
-```
+| Keys | Entry | Default |
+|---|---|---|
+| Print | `Mwm*clipboardRectangleScreenshot` | `screenShot -c -r` |
+| Shift+Print | `Mwm*clipboardScreenshot` | `screenShot -c` |
+| Ctrl+Print | `Mwm*rectangleScreenshot` | `screenShot -r` |
+| Ctrl+Shift+Print | `Mwm*screenshot` | `screenShot` |
 
 Programs without a window, such as `screenShot -c`, `wl-copy` and `wl-paste`, reach
 the clipboard through `ext-data-control-v1` or `wlr-data-control`, which mwc both

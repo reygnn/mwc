@@ -46,14 +46,24 @@ started() { test -e "$SMOKE_DIR/started-$1"; }
 # ---- screenshots ---------------------------------------------------------------------
 
 cat >"$XDG_CONFIG_HOME/mwc/mwmrc" <<MWMRC
-Mwm*screenshot:          touch $SMOKE_DIR/shot-file
-Mwm*clipboardScreenshot: touch $SMOKE_DIR/shot-clip
+Mwm*clipboardScreenshot:          touch $SMOKE_DIR/shot-clip
+Mwm*clipboardRectangleScreenshot: touch $SMOKE_DIR/shot-clip-rect
+Mwm*screenshot:                   touch $SMOKE_DIR/shot-file
+Mwm*rectangleScreenshot:          touch $SMOKE_DIR/shot-file-rect
 MWMRC
+# shot <keys> <file> <entry> <n>: the keys run that entry and nothing else, n so far.
+shot() {
+	do_input key "$1"
+	wait_for "$1 runs Mwm*$3" test -e "$SMOKE_DIR/$2"
+	sleep 0.2
+	[ "$(ls "$SMOKE_DIR"/shot-* | wc -l)" = "$4" ] ||
+		fail "$1 ran more than Mwm*$3: $(ls "$SMOKE_DIR"/shot-*)"
+}
 begin
-do_input key Print
-wait_for "Print runs Mwm*screenshot" test -e "$SMOKE_DIR/shot-file"
-do_input key shift+Print
-wait_for "Shift+Print runs Mwm*clipboardScreenshot" test -e "$SMOKE_DIR/shot-clip"
+shot Print shot-clip-rect clipboardRectangleScreenshot 1
+shot shift+Print shot-clip clipboardScreenshot 2
+shot ctrl+Print shot-file-rect rectangleScreenshot 3
+shot ctrl+shift+Print shot-file screenshot 4
 finish
 rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 

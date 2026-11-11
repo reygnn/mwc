@@ -1011,10 +1011,20 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		spawn(saver ? saver : "displayOff --stars");
 		return true;
 	}
-	/* Shift+Print still gives Print in the usual layouts, Alt+Print gives Sys_Req. */
-	if (!alt && !ctrl && !logo && sym == XKB_KEY_Print) {
-		const char *shot = config_get(shift ? "clipboardScreenshot" : "screenshot");
-		spawn(shot ? shot : shift ? "screenShot -c" : "screenShot");
+	/* Print: a rectangle to the clipboard, the more common need; Shift for the whole
+	 * screen, Ctrl to a file instead. Shift+Print and Ctrl+Print still give Print in
+	 * the usual layouts, Alt+Print gives Sys_Req. */
+	if (!alt && !logo && sym == XKB_KEY_Print) {
+		static const struct {
+			const char *resource, *fallback;
+		} shots[2][2] = {
+			{ { "clipboardRectangleScreenshot", "screenShot -c -r" },
+			  { "clipboardScreenshot", "screenShot -c" } },
+			{ { "rectangleScreenshot", "screenShot -r" },
+			  { "screenshot", "screenShot" } },
+		};
+		const char *shot = config_get(shots[ctrl][shift].resource);
+		spawn(shot ? shot : shots[ctrl][shift].fallback);
 		return true;
 	}
 	if (logo && !alt && !ctrl) {

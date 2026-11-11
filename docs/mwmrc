@@ -38,9 +38,12 @@ Mwm*pulseControl*geometry:  -0-0
 ! mrun (middle button, root menu) opens at the pointer. Needs mwc 0.4.3.
 Mwm*mrun*geometry:          pointer
 
-! Print: the whole screen to a file. Shift+Print: a rectangle to the clipboard.
-Mwm*screenshot:             screenShot
-Mwm*clipboardScreenshot:    screenShot -r -c
+! Print: a rectangle to the clipboard, Shift+Print the whole screen there. Ctrl+Print:
+! a rectangle to a file, Ctrl+Shift+Print the whole screen. These are the defaults.
+Mwm*clipboardRectangleScreenshot:   screenShot -c -r
+Mwm*clipboardScreenshot:            screenShot -c
+Mwm*rectangleScreenshot:            screenShot -r
+Mwm*screenshot:                     screenShot
 
 ! Icon placement
 Mwm*iconPlacement:   top right
