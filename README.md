@@ -79,7 +79,11 @@ keyboard settings, monitors set and captured by a client (`tests/outputc.c`,
 `tests/capturec.c`) and the properties X11 programs look for.
 
 `make fifo-test` checks that updates held with `wp_fifo_v1` come one per refresh
-(`tests/fifoc.c`).
+(`tests/fifoc.c`). `make rdp-test` does what an RDP server such as wayrdp does to mwc:
+its keyboard and pointer go with a key or a button down and in the middle of a
+move, a capture starts afresh on a still desktop after a size change or the
+monitor off and on, and the windows in every state follow the sizes connections
+ask for.
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.

@@ -219,6 +219,12 @@ build/fifoc: tests/fifoc.c $(FIFOC_GEN)
 fifo-test: mwc build/fifoc
 	tests/fifo.sh
 
+# What an RDP server such as wayrdp does: devices that go mid-press, fresh captures,
+# sizes per connection.
+rdp-test: mwc build/vinput build/xdgc build/outputc build/capturec build/powerc \
+		build/pngtool
+	tests/rdp.sh
+
 tabs-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 	tests/tabs.sh
 
@@ -260,11 +266,11 @@ config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
 test: smoke input-test wallpaper-test config-test layer-test window-test \
-	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test
+	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test
 
 clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN)
-.PHONY: fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
