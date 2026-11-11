@@ -447,14 +447,11 @@ static void view_publish_snap(struct view *view)
 		view->maximized && !view->tiled);
 }
 
+/* Snapped halves included: an X11 window taking over a half as a tab must hear it is
+ * maximized vertically, as it does when snapped itself. */
 void view_publish_state(struct view *view)
 {
-	if (view->type == VIEW_XDG) {
-		view_publish_snap(view);
-	} else {
-		bool shown = view->maximized && !view->tiled;
-		wlr_xwayland_surface_set_maximized(view->xsurface, shown, shown);
-	}
+	view_publish_snap(view);
 }
 
 /* What it goes back to is only recorded while it is free. The size is the one last
@@ -773,6 +770,8 @@ void view_minimize(struct view *view)
 	wl_list_for_each(v, &server->views, link) {
 		if (v->mapped && !view_hidden(v) && view_is_transient_of(v, view)) {
 			had_focus |= v->activated;
+			/* A dialog being moved or resized goes too: the grab ends with it. */
+			grab_give_way(v);
 			v->hidden_with_parent = true;
 			view_show(v, false);
 			if (v->activated)

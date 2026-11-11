@@ -951,6 +951,22 @@ check "dropped on another window, it joins that one" \
 	[ \"\$(get lone x)\" = 900 ]"
 stop lone
 stop other
+
+# A half is maximized vertically for X11 programs, also for the tab that takes it over.
+net_state_is() { [ "$(grep '^net-state' "$SMOKE_DIR/$1.log" | tail -1)" = "net-state $2" ]; }
+x11 hs1 size=300x200 netstate=1
+x11 hs2 size=300x200 netstate=1
+do_input key super+g
+shown "a group of two X11 windows" hs2
+do_input key super+Left
+check "snapped to the left half" "[ \"\$(get hs2 snap)\" != 0 ]"
+wait_for "it hears it is maximized vertically" net_state_is hs2 'vert=1 horz=0'
+do_input key super+Tab
+shown "the other tab" hs1
+check "takes the half over" "[ \"\$(get hs1 snap)\" != 0 ]"
+wait_for "and hears it is maximized vertically too" net_state_is hs1 'vert=1 horz=0'
+stop hs1
+stop hs2
 finish
 
 echo "PASS: tabs"

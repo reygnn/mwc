@@ -189,4 +189,37 @@ kill "$PID_rightwin" "$PID_innerdock" "$PID_topdock"
 wait "$PID_rightwin" "$PID_innerdock" "$PID_topdock" 2>/dev/null
 stop_vinput
 stop_mwc
+
+# The oldest monitor unplugged while the places are fixed: the other one doesn't move,
+# and X11 programs must still hear its workarea, now the first one's.
+mkdir -p "$XDG_CONFIG_HOME/mwc"
+printf 'Mwm*HEADLESS-1*outputPosition: 0,0\nMwm*HEADLESS-2*outputPosition: 1280,0\n' \
+	>"$XDG_CONFIG_HOME/mwc/mwmrc"
+rm -f "$SMOKE_DIR/display"
+start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
+wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
+X_DISPLAY=$(cat "$SMOKE_DIR/display")
+start_vinput 2560 720
+DISPLAY=$X_DISPLAY build/xclient class=wa workarea=1 size=200x100 >"$SMOKE_DIR/wa.log" 2>&1 &
+PID_wa=$!
+check "a window that watches the workarea" "[ -n \"\$(get wa x)\" ]"
+workarea_is() { [ "$(grep '^workarea' "$SMOKE_DIR/wa.log" | tail -1)" = "workarea $1" ]; }
+# The oldest is the one announced first, whichever number the backend gave it.
+oldest=$(sed -n 's/.*new output \(HEADLESS-[0-9]*\).*/\1/p' "$LOG" | head -1)
+case $oldest in HEADLESS-1) other=HEADLESS-2 ;; HEADLESS-2) other=HEADLESS-1 ;;
+*) fail "which output came first: '$oldest'" ;; esac
+area() { refresh; echo "$(global "output_$1" x) $(global "output_$1" y) 1280 720"; }
+first_area=$(area "$oldest") other_area=$(area "$other")
+wait_for "the workarea is the oldest monitor's ($oldest)" workarea_is "$first_area"
+echo "$oldest" >"$MWC_TEST_STATE.unplug"
+kill -USR2 "$pid"
+check "$oldest is unplugged, the other stays where it was" \
+	"[ -z \"\$(global output_$oldest x)\" ] && \
+	[ \"\$(global output_$other x) \$(global output_$other y) 1280 720\" = \"$other_area\" ]"
+wait_for "the workarea is now the other monitor's" workarea_is "$other_area"
+kill "$PID_wa"
+wait "$PID_wa" 2>/dev/null
+rm "$XDG_CONFIG_HOME/mwc/mwmrc"
+stop_vinput
+stop_mwc
 echo "PASS: outputs"

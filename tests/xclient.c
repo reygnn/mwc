@@ -21,6 +21,8 @@
  *     color=rrggbb        background
  *     dialog=NAME         also open a transient dialog with this WM_CLASS
  *     workarea=1          print the root's _NET_WORKAREA whenever it changes
+ *     netstate=1          print "net-state vert=V horz=H" whenever _NET_WM_STATE changes:
+ *                         whether it says maximized vertically and horizontally
  *     moveresize=1        don't map; ask for _NET_WM_MOVERESIZE, destroy the window
  *     override=late       create it normal, set override-redirect, then map
  *     override=clear      create it override-redirect, clear that, then map
@@ -34,6 +36,8 @@
  *     grow=WxH            1 s after mapping, XResizeWindow to that size; says "grown"
  *     iconic=1            WM_HINTS with the initial state iconic
  *     normalize=1         once mapped, WM_CHANGE_STATE to NormalState
+ *     iconify_ms=MS       that long after mapping (and the dialog), WM_CHANGE_STATE to
+ *                         IconicState, as a program minimizing itself; says "iconified"
  *     rehide=N            withdraw and map it again, N times; says "reshown N" each time,
  *                         and what WM_STATE then is
  *     rehide_ms=MS        wait that long before each, default 700
@@ -95,8 +99,9 @@ struct options {
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	const char *script, *title_later;
+	int iconify_ms;
 	int moveresize;
-	bool has_moveto, iconic, normalize, report;
+	bool has_moveto, iconic, normalize, report, netstate;
 	int moveto_x, moveto_y;
 	int grow_w, grow_h;
 	const char *override;
@@ -140,7 +145,7 @@ static Window create_window(const struct options *o, const char *class,
 	};
 	if (o->move_press || o->pulldown)
 		a.event_mask |= ButtonPressMask | ButtonReleaseMask;
-	if (o->report)
+	if (o->report || o->netstate)
 		a.event_mask |= PropertyChangeMask;
 	Window win = XCreateWindow(dpy, DefaultRootWindow(dpy), o->x, o->y, o->w, o->h,
 		0, CopyFromParent, InputOutput, CopyFromParent,
@@ -314,6 +319,25 @@ static void print_frame_extents(Window win)
 		XFree(data);
 }
 
+static void print_net_state(Window win)
+{
+	Atom type, vert = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False),
+		horz = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+	int format, v = 0, h = 0;
+	unsigned long n = 0, after;
+	unsigned char *data = NULL;
+	if (XGetWindowProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STATE", False), 0, 32,
+			False, XA_ATOM, &type, &format, &n, &after, &data) == Success && data) {
+		for (unsigned long i = 0; i < n; i++) {
+			v |= ((Atom *)data)[i] == vert;
+			h |= ((Atom *)data)[i] == horz;
+		}
+	}
+	if (data)
+		XFree(data);
+	printf("net-state vert=%d horz=%d\n", v, h);
+}
+
 /* What a toolkit asks before it believes _NET_FRAME_EXTENTS. */
 static void print_supported(void)
 {
@@ -456,6 +480,8 @@ int main(int argc, char *argv[])
 			o.clipboard = atoi(v);
 		else if (!strcmp(k, "report"))
 			o.report = atoi(v);
+		else if (!strcmp(k, "netstate"))
+			o.netstate = atoi(v);
 		else if (!strcmp(k, "moveto"))
 			o.has_moveto = sscanf(v, "%d,%d", &o.moveto_x, &o.moveto_y) == 2;
 		else if (!strcmp(k, "grow"))
@@ -464,6 +490,8 @@ int main(int argc, char *argv[])
 			o.iconic = atoi(v);
 		else if (!strcmp(k, "normalize"))
 			o.normalize = atoi(v);
+		else if (!strcmp(k, "iconify_ms"))
+			o.iconify_ms = atoi(v);
 		else if (!strcmp(k, "move_press"))
 			o.move_press = atoi(v);
 		else if (!strcmp(k, "pulldown"))
@@ -578,6 +606,20 @@ int main(int argc, char *argv[])
 		d.x = d.y = 0;
 		dialog_win = create_window(&d, o.dialog, main_win);
 		XMapWindow(dpy, dialog_win);
+	}
+	if (o.iconify_ms) {
+		XSync(dpy, False);
+		usleep(o.iconify_ms * 1000);
+		XEvent e = { 0 };
+		e.xclient.type = ClientMessage;
+		e.xclient.window = main_win;
+		e.xclient.message_type = XInternAtom(dpy, "WM_CHANGE_STATE", False);
+		e.xclient.format = 32;
+		e.xclient.data.l[0] = IconicState;
+		XSendEvent(dpy, DefaultRootWindow(dpy), False,
+			SubstructureRedirectMask | SubstructureNotifyMask, &e);
+		XSync(dpy, False);
+		printf("iconified\n");
 	}
 	if (o.clipboard) {
 		XSync(dpy, False);
@@ -738,6 +780,9 @@ int main(int argc, char *argv[])
 			if (o.report && e.xproperty.atom ==
 					XInternAtom(dpy, "_NET_FRAME_EXTENTS", False))
 				print_frame_extents(main_win);
+			if (o.netstate && e.xproperty.window == main_win && e.xproperty.atom ==
+					XInternAtom(dpy, "_NET_WM_STATE", False))
+				print_net_state(main_win);
 			if (o.workarea && e.xproperty.atom ==
 					XInternAtom(dpy, "_NET_WORKAREA", False))
 				print_workarea();

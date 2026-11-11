@@ -711,6 +711,30 @@ stop gsized
 stop ghalf
 rm "$RC"
 
+# A dialog that is being moved goes away with its window: the move ends with it.
+x11 dlgmain size=400x300 dialog=dlgkid iconify_ms=2500
+check "a window with a dialog" "[ -n \"\$(get dlgkid x)\" ] && [ -n \"\$(get dlgmain x)\" ]"
+kx=$(($(get dlgkid x) + $(get dlgkid bw) + 40)) ky=$(($(get dlgkid y) + $(get dlgkid bw) + $(get dlgkid th) + 30))
+do_input hold alt
+do_input move $kx $ky
+do_input down left
+do_input move $((kx + 60)) $((ky + 40))
+check "the dialog is being moved" "[ \"\$(global cursor mode)\" = 1 ]"
+wait_for "the window minimizes itself" grep -q '^iconified' "$SMOKE_DIR/dlgmain.events"
+check "and the dialog goes with it" "[ \"\$(get dlgmain min)\" = 1 ] && [ \"\$(get dlgkid hidden)\" = 1 ]"
+check "the move ends" "[ \"\$(global cursor mode)\" = 0 ] && [ \"\$(global outline shown)\" = 0 ]"
+do_input move $((kx + 200)) $((ky + 100))
+do_input up left
+do_input release alt
+kx2=$(get dlgkid x) ky2=$(get dlgkid y)
+do_input move 900 600
+sleep 0.2
+refresh
+[ "$(get dlgkid x)" = "$kx2" ] && [ "$(get dlgkid y)" = "$ky2" ] ||
+	fail "the hidden dialog still follows the pointer"
+echo "ok: the hidden dialog stays where it is"
+stop dlgmain
+
 stop_vinput
 stop_mwc
 echo "PASS: window"

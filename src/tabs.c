@@ -71,6 +71,8 @@ static void dialogs_show(struct view *view, bool show)
 		if (!v->mapped || !view_is_transient_of(v, view) ||
 				v->hidden_with_parent != show)
 			continue;
+		if (!show)
+			grab_give_way(v);
 		v->hidden_with_parent = !show;
 		view_show(v, show);
 		if (!show && v->activated)

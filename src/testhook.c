@@ -7,7 +7,8 @@
  *   into the normal input path (see tests/vinput.c, and input_virtual_init()).
  * - SIGUSR1 writes the window state to the file so tests can check geometry
  *   and focus, which a Wayland client cannot query for other clients.
- * - SIGUSR2 removes an output.
+ * - SIGUSR2 removes an output: the newest, or the one named in the file
+ *   <state file>.unplug if there is one (read and removed then).
  */
 #define _POSIX_C_SOURCE 200809L
 #include <signal.h>
@@ -25,14 +26,35 @@
 static struct server *test_server;
 static const char *state_path;
 
-/* SIGUSR2 unplugs the newest output, which the headless backend can't do by itself. */
+/* SIGUSR2 unplugs an output, which the headless backend can't do by itself: the
+ * newest, or the one <state file>.unplug names. */
 static int unplug_output(int signal, void *data)
 {
-	if (!wl_list_empty(&test_server->outputs)) {
-		struct output *newest = wl_container_of(test_server->outputs.next, newest,
-			link);
-		wlr_output_destroy(newest->wlr_output);
+	if (wl_list_empty(&test_server->outputs))
+		return 0;
+	struct output *target = wl_container_of(test_server->outputs.next, target, link);
+	char path[4096], name[64] = "";
+	snprintf(path, sizeof(path), "%s.unplug", state_path);
+	FILE *f = fopen(path, "r");
+	if (f) {
+		if (fscanf(f, "%63s", name) != 1)
+			name[0] = '\0';
+		fclose(f);
+		remove(path);
 	}
+	if (name[0]) {
+		struct output *o;
+		target = NULL;
+		wl_list_for_each(o, &test_server->outputs, link) {
+			if (!strcmp(o->wlr_output->name, name))
+				target = o;
+		}
+		if (!target) {
+			wlr_log(WLR_ERROR, "test hook: no output %s to unplug", name);
+			return 0;
+		}
+	}
+	wlr_output_destroy(target->wlr_output);
 	return 0;
 }
 
