@@ -21,14 +21,13 @@ mwc runs on wlroots' headless backend, and wayrdp serves its screen over RDP:
 it captures the output, sends it to `mstsc` and passes keyboard, mouse and
 clipboard back. Your X programs keep running, through Xwayland.
 
-wayrdp is new and not yet tested with `mstsc` itself (only with FreeRDP's
-clients). So the old setup keeps running until wayrdp does the job: wayrdp
-starts on port 3390, next to the old xrdp on 3389, and takes 3389 over only
-in section 8.
+wayrdp is new. It goes on a server only once it runs stable on a test
+machine, because there is no phase with both next to each other: section 5
+removes xrdp and wayvnc, and wayrdp takes their port 3389 straight away.
+Between the two the server has no RDP, only SSH.
 
 [`wayland-rdp-upgrade.sh`](wayland-rdp-upgrade.sh) runs the steps below
-(sections 2 to 7, 8 with `--switch`, 9 with `--purge`). This page explains
-what it does.
+(sections 2 to 8, 9 with `--purge`). This page explains what it does.
 
 ## What changes
 
@@ -98,8 +97,7 @@ LTS-to-LTS upgrades (24.04 → 26.04) are offered from the point release
 
 After the reboot, `lsb_release -rs` must show `26.04`.
 
-The old setup keeps working until section 8. Leave it alone until mwc and
-wayrdp work.
+The old setup keeps working until section 5. Leave it alone until then.
 
 ## 2. Packages
 
@@ -180,7 +178,24 @@ Programs to start with the session go in `~/.config/mwc/autostart`. An old
 [ -x ~/.config/mwm/autostart ] && cp ~/.config/mwm/autostart ~/.config/mwc/autostart
 ```
 
-## 5. mwc and wayrdp as user services
+## 5. xrdp and wayvnc out
+
+wayrdp needs port 3389, so xrdp goes now, and wayvnc with it if an earlier
+version of this guide put it there. Do this from a plain SSH session, not
+from the RDP desktop: stopping xrdp ends that session. From here until
+wayrdp runs (section 6) there is no RDP, only SSH.
+
+```sh
+systemctl --user disable --now wayvnc 2>/dev/null
+sudo systemctl disable --now xrdp xrdp-sesman
+sudo apt purge xrdp wayvnc
+ss -ltn | grep 3389                    # prints nothing
+```
+
+The script does this only after mwc and wayrdp built, so a failed build
+leaves xrdp in place. The rest of the X11 setup goes in section 9.
+
+## 6. mwc and wayrdp as user services
 
 `~/.config/systemd/user/mwc.service`:
 
@@ -206,12 +221,12 @@ mkdir -p ~/.config/systemd/user
 cp wayrdp/contrib/wayrdp.service ~/.config/systemd/user/
 ```
 
-Its `ExecStart` is `wayrdp -k de 127.0.0.1 3390`: port 3390 while the old
-xrdp still has 3389, and `-k` the notebook's keyboard layout (`ch`, `us`,
-`de-nodeadkeys`, …). wayrdp turns the keys `mstsc` sends into characters with
-it. Change the layout there if yours isn't German.
+Its `ExecStart` is `wayrdp -k de`: no address or port, so wayrdp listens on
+its default 127.0.0.1:3389, where xrdp was. `-k` is the notebook's keyboard
+layout (`ch`, `us`, `de-nodeadkeys`, …). wayrdp turns the keys `mstsc` sends
+into characters with it. Change the layout there if yours isn't German.
 
-The password comes first (section 6), then:
+The password comes first (section 7), then:
 
 ```sh
 systemctl --user daemon-reload
@@ -231,11 +246,11 @@ Check that both are up and that wayrdp listens on localhost only:
 
 ```sh
 systemctl --user status mwc wayrdp
-ss -ltn | grep 3390                    # 127.0.0.1:3390, not 0.0.0.0 or *
+ss -ltn | grep 3389                    # 127.0.0.1:3389, not 0.0.0.0 or *
 journalctl --user -u wayrdp            # "Listening on", and the certificate's thumbprint
 ```
 
-## 6. The RDP login
+## 7. The RDP login
 
 wayrdp has two ways to log in. Either way only your own user gets in, and
 three failed logins in a row lock new connections out for 30 s.
@@ -260,11 +275,12 @@ On the first start wayrdp makes a self-signed certificate
 (`~/.config/wayrdp/tls.crt`). Its SHA-1 thumbprint is in the log; `mstsc`
 shows the same one when it warns about the certificate.
 
-## 7. Connect
+## 8. Connect
 
-In Bitvise, add a C2S rule `127.0.0.1:13390 → localhost:3390`, then connect
-with `mstsc /v:127.0.0.1:13390`. Log in with your Linux user name and the RDP
-password (or the Linux password with `-a pam`).
+As with xrdp: Bitvise's RDP tab with *Computer* = `localhost`, or an old C2S
+rule `127.0.0.1:13389 → localhost:3389` with `mstsc /v:127.0.0.1:13389`. No
+new rule is needed. Log in with your Linux user name and the RDP password (or
+the Linux password with `-a pam`).
 
 - **The certificate:** `mstsc` warns on the first connection. Compare the
   thumbprint with `journalctl --user -u wayrdp` and choose "Don't ask me
@@ -283,29 +299,13 @@ password (or the Linux password with `-a pam`).
   "Apply Windows key combinations" *On the remote computer*. Windows keeps
   Win+L and Ctrl+Alt+Del for itself.
 
-## 8. Switch over
-
-Once wayrdp does the job day to day, xrdp goes and wayrdp takes port 3389:
-
-```sh
-sudo systemctl disable --now xrdp xrdp-sesman
-sed -i 's| 127.0.0.1 3390$| 127.0.0.1|' ~/.config/systemd/user/wayrdp.service
-systemctl --user daemon-reload
-systemctl --user restart wayrdp
-ss -ltn | grep 3389                    # 127.0.0.1:3389
-```
-
-Bitvise's RDP tab with *Computer* = `localhost` works again, and so does an
-old C2S rule `127.0.0.1:13389 → localhost:3389`. The rule for 13390 can go.
-
 ## 9. Purge what X11 needed
 
-Only once mwc and wayrdp work on 3389. These are the packages from the old
-guide that nothing needs any more:
+Only once mwc and wayrdp work. xrdp is gone since section 5; these are the
+other packages from the old guide that nothing needs any more:
 
 | Package | Was for |
 |---|---|
-| `xrdp` | the old RDP server |
 | `xorgxrdp` | Xorg for xrdp. Takes the Xorg server (`xserver-xorg-core` …) with it |
 | `libx11-dev libxext-dev libxft-dev libxrandr-dev` | building mwm |
 | `x11-utils x11-xserver-utils x11-xkb-utils` | `xdpyinfo`, `xrandr`, `xsetroot`, `setxkbmap`: no use under Wayland |
@@ -314,7 +314,7 @@ guide that nothing needs any more:
 | `xauth` | only variant B needed it. Keep it if you use `ssh -X` |
 
 ```sh
-sudo apt purge xrdp xorgxrdp libx11-dev libxext-dev libxft-dev libxrandr-dev \
+sudo apt purge xorgxrdp libx11-dev libxext-dev libxft-dev libxrandr-dev \
     x11-utils x11-xserver-utils x11-xkb-utils dbus-x11 \
     tigervnc-standalone-server tigervnc-tools
 sudo apt autoremove --purge
@@ -347,7 +347,7 @@ sudo rm -f /usr/local/bin/mwm /usr/share/xsessions/mwm-x11.desktop
 
 | Symptom | Cause / fix |
 |---|---|
-| `mstsc`: "can't connect" | wayrdp doesn't run: `systemctl --user status mwc wayrdp`, `journalctl --user -u wayrdp`. Is linger on (`loginctl show-user "$USER" -p Linger`)? Does the Bitvise rule point at the port wayrdp listens on? |
+| `mstsc`: "can't connect" | wayrdp doesn't run: `systemctl --user status mwc wayrdp`, `journalctl --user -u wayrdp`. Is linger on (`loginctl show-user "$USER" -p Linger`)? Does Bitvise forward to `localhost:3389`? |
 | `wayrdp.service` fails at once | `journalctl --user -u wayrdp`. "No password set": `wayrdp --set-password`. "can be read by others": `chmod 600 ~/.config/wayrdp/sam ~/.config/wayrdp/tls.key`. "virtual keyboard or pointer": `MWC_VIRTUAL_INPUT=1` is missing in `mwc.service`. |
 | `mwc.service` fails at once | `journalctl --user -u mwc`. `failed to create wlr_backend`: the `Environment=WLR_BACKENDS=headless` line is missing. |
 | Login fails although the password is right | NLA: the user name must be your Linux one, the password the one from `--set-password`. `-a pam`: are the credentials saved in `mstsc`? After three failures wayrdp takes no connection for 30 s. |

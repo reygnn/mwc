@@ -2,11 +2,14 @@
 # Moves a headless Ubuntu 26.04 server from mwm (X11, xrdp + xorgxrdp) to mwc
 # (Wayland) with wayrdp as the RDP server. The steps of docs/WAYLAND-RDP.md.
 #
-#   sh wayland-rdp-upgrade.sh            sections 2-7: mwc and wayrdp on port
-#                                        3390, the old xrdp stays on 3389
-#   sh wayland-rdp-upgrade.sh --switch   section 8: xrdp off, wayrdp on 3389
-#   sh wayland-rdp-upgrade.sh --purge    section 9: remove xrdp, X11 packages
-#                                        and files
+#   sh wayland-rdp-upgrade.sh            sections 2-8: build mwc and wayrdp,
+#                                        remove xrdp and wayvnc, wayrdp on 3389
+#   sh wayland-rdp-upgrade.sh --purge    section 9: remove X11 packages and
+#                                        files
+#
+# There is no phase with wayrdp next to xrdp: xrdp and wayvnc go just before
+# wayrdp starts, on xrdp's port 3389. Between the two there is no RDP, only
+# SSH. So run it from a plain SSH session, not from the RDP desktop.
 #
 # Run as the user who logs in through RDP, not as root; it uses sudo where
 # needed. Can be run again: it only adds what is missing.
@@ -31,40 +34,22 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" != 0 ] || die "run this as your own user, not as root"
 case $AUTH in nla|pam) ;; *) die "WAYRDP_AUTH is nla or pam, not $AUTH" ;; esac
 
-switch() {
-	say "xrdp off, wayrdp on 127.0.0.1:3389"
-	[ -f "$UNITS/wayrdp.service" ] || die "no wayrdp.service yet: run without options first"
-	systemctl --user is-active --quiet wayrdp ||
-		die "wayrdp is not running; fix that first (journalctl --user -u wayrdp)"
-	sudo systemctl disable --now xrdp xrdp-sesman 2>/dev/null || :
-	sed -i 's| 127.0.0.1 3390$| 127.0.0.1|' "$UNITS/wayrdp.service"
-	systemctl --user daemon-reload
-	systemctl --user restart wayrdp
-	sleep 2
-	ss -ltn | grep -q '127.0.0.1:3389' ||
-		die "wayrdp is not on 127.0.0.1:3389: journalctl --user -u wayrdp"
-	cat <<EOF
-
-wayrdp now listens on 127.0.0.1:3389. Bitvise's RDP tab (Computer = localhost)
-works again; the C2S rule for 13390 can go.
-Once everything works: sh $0 --purge
-EOF
-	exit 0
+installed() {	# installed <package>...: prints those that are installed
+	for p; do
+		dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'install ok installed' &&
+			printf ' %s' "$p"
+	done
+	:
 }
 
 purge() {
-	if systemctl is-active --quiet xrdp 2>/dev/null; then
-		die "xrdp still runs: sh $0 --switch first"
-	fi
-	say "Purging xrdp and X11 packages (apt shows the list and asks)"
+	systemctl --user is-active --quiet wayrdp ||
+		die "wayrdp doesn't run: run sh $0 without options first, or see journalctl --user -u wayrdp"
+	say "Purging X11 packages (apt shows the list and asks)"
 	echo "xwayland, xterm, xfonts-base and fonts-dejavu-core must NOT be on it."
-	pkgs=
-	for p in xrdp xorgxrdp libx11-dev libxext-dev libxft-dev libxrandr-dev \
-			x11-utils x11-xserver-utils x11-xkb-utils dbus-x11 \
-			tigervnc-standalone-server tigervnc-tools; do
-		dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'install ok installed' &&
-			pkgs="$pkgs $p"
-	done
+	pkgs=$(installed xrdp xorgxrdp libx11-dev libxext-dev libxft-dev libxrandr-dev \
+		x11-utils x11-xserver-utils x11-xkb-utils dbus-x11 \
+		tigervnc-standalone-server tigervnc-tools)
 	if [ -n "$pkgs" ]; then
 		# shellcheck disable=SC2086 # one word per package
 		sudo apt-get purge $pkgs
@@ -92,11 +77,20 @@ purge() {
 }
 
 case ${1:-} in
---switch) switch ;;
 --purge) purge ;;
+--switch) die "--switch is gone: the run without options puts wayrdp on 3389 itself" ;;
 "") ;;
-*) die "unknown option $1 (only --switch or --purge)" ;;
+*) die "unknown option $1 (only --purge)" ;;
 esac
+
+# Stopping xrdp, or restarting mwc, ends a session started from them, and
+# this script with it. DISPLAY=localhost:N is ssh -X and harmless.
+case ${DISPLAY:-} in
+""|localhost:*) ;;
+*) die "DISPLAY=$DISPLAY: run this from a plain SSH session, not from the RDP desktop" ;;
+esac
+[ -z "${WAYLAND_DISPLAY:-}" ] ||
+	die "WAYLAND_DISPLAY=$WAYLAND_DISPLAY: run this from a plain SSH session, not from inside mwc"
 
 # ---- 1. requirements ----------------------------------------------------------
 . /etc/os-release
@@ -158,7 +152,22 @@ grep -qi '^Mwm\*outputManagement:' "$CFG/mwmrc" ||
 grep -qi '^Mwm\*terminal:' "$CFG/mwmrc" ||
 	echo 'Mwm*terminal:                xterm' >>"$CFG/mwmrc"
 
-# ---- 5. user services ---------------------------------------------------------
+# ---- 5. xrdp and wayvnc out -----------------------------------------------------
+# Only now, with mwc and wayrdp built: a failed build leaves xrdp in place.
+say "xrdp and wayvnc out (apt shows the list and asks)"
+systemctl --user disable --now wayvnc 2>/dev/null || :
+sudo systemctl disable --now xrdp xrdp-sesman 2>/dev/null || :
+pkgs=$(installed xrdp wayvnc)
+if [ -n "$pkgs" ]; then
+	# shellcheck disable=SC2086 # one word per package
+	sudo apt-get purge $pkgs
+fi
+if ss -ltn | grep -qE ':3389 ' && ! systemctl --user is-active --quiet wayrdp; then
+	ss -ltnp | grep -E ':3389 '
+	die "something else still listens on 3389; wayrdp needs it"
+fi
+
+# ---- 6. user services ---------------------------------------------------------
 say "User services mwc and wayrdp"
 mkdir -p "$UNITS"
 cat >"$UNITS/mwc.service" <<'EOF'
@@ -176,8 +185,9 @@ WantedBy=default.target
 EOF
 if [ ! -e "$UNITS/wayrdp.service" ]; then
 	cp "$WSRC/contrib/wayrdp.service" "$UNITS/wayrdp.service"
-	# The notebook's layout; port 3390 while xrdp still has 3389.
-	sed -i "s|^ExecStart=.*|ExecStart=/usr/local/bin/wayrdp -k $KBD 127.0.0.1 3390|" \
+	# The notebook's layout. No address or port: wayrdp's default is
+	# 127.0.0.1:3389.
+	sed -i "s|^ExecStart=.*|ExecStart=/usr/local/bin/wayrdp -k $KBD|" \
 		"$UNITS/wayrdp.service"
 	if [ "$AUTH" = pam ]; then
 		sed -i "s|^ExecStart=/usr/local/bin/wayrdp |&-a pam |" "$UNITS/wayrdp.service"
@@ -186,9 +196,14 @@ if [ ! -e "$UNITS/wayrdp.service" ]; then
 	fi
 else
 	echo "keeping the existing $UNITS/wayrdp.service"
+	# An older version of this script put wayrdp on 3390 next to xrdp.
+	if grep -q '^ExecStart=.* 127\.0\.0\.1 3390$' "$UNITS/wayrdp.service"; then
+		sed -i 's|^\(ExecStart=.*\) 127\.0\.0\.1 3390$|\1|' "$UNITS/wayrdp.service"
+		echo "dropped the old port 3390 from it: wayrdp takes 3389"
+	fi
 fi
 
-# ---- 6. the RDP login -----------------------------------------------------------
+# ---- 7. the RDP login -----------------------------------------------------------
 if [ "$AUTH" = nla ] && [ ! -e "$HOME/.config/wayrdp/sam" ]; then
 	say "The RDP password (one of its own, not your Linux password)"
 	if [ -t 0 ]; then
@@ -208,15 +223,15 @@ systemctl --user enable mwc wayrdp
 systemctl --user restart mwc
 systemctl --user restart wayrdp
 
-# ---- 7. check -------------------------------------------------------------------
+# ---- 8. check -------------------------------------------------------------------
 say "Check"
 sleep 3
 ok=1
 systemctl --user is-active --quiet mwc || { echo "mwc is not running: journalctl --user -u mwc"; ok=; }
 systemctl --user is-active --quiet wayrdp || { echo "wayrdp is not running: journalctl --user -u wayrdp"; ok=; }
-ss -ltn | grep -qE '127.0.0.1:(3390|3389) ' || { echo "wayrdp listens on neither 127.0.0.1:3390 nor :3389"; ok=; }
-if ss -ltn | grep -E ':3390 ' | grep -qv '127.0.0.1'; then
-	echo "WARNING: 3390 listens beyond localhost:"; ss -ltn | grep -E ':3390 '
+ss -ltn | grep -qE '127.0.0.1:3389 ' || { echo "wayrdp doesn't listen on 127.0.0.1:3389"; ok=; }
+if ss -ltn | grep -E ':3389 ' | grep -qv '127.0.0.1'; then
+	echo "WARNING: 3389 listens beyond localhost:"; ss -ltn | grep -E ':3389 '
 	ok=
 fi
 [ -n "$ok" ] || die "see above"
@@ -224,9 +239,9 @@ thumb=$(journalctl --user -u wayrdp -n 50 --no-pager 2>/dev/null |
 	sed -n 's/.*SHA-1 thumbprint: //p' | tail -1)
 cat <<EOF
 
-mwc runs on a ${SIZE} headless output, wayrdp on 127.0.0.1:3390.
-In Bitvise: a C2S rule 127.0.0.1:13390 -> localhost:3390,
-then mstsc /v:127.0.0.1:13390 and your Linux user name.
+mwc runs on a ${SIZE} headless output, wayrdp on 127.0.0.1:3389.
+Bitvise's RDP tab (Computer = localhost) works as it did with xrdp;
+log in with your Linux user name.
 EOF
 [ -z "$thumb" ] || echo "Certificate thumbprint (SHA-1, mstsc shows it): $thumb"
-echo "The old xrdp still answers on 3389. Once wayrdp does the job: sh $0 --switch"
+echo "Once everything works: sh $0 --purge"
