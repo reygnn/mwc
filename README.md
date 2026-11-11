@@ -78,6 +78,9 @@ autostart and settings the others don't reach. `make session-test` checks monito
 keyboard settings, monitors set and captured by a client (`tests/outputc.c`,
 `tests/capturec.c`) and the properties X11 programs look for.
 
+`make fifo-test` checks that updates held with `wp_fifo_v1` come one per refresh
+(`tests/fifoc.c`).
+
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
 
@@ -472,6 +475,11 @@ RDP server uses, are the ones that run into it. The fix is on wlroots' master (c
   work too, as do programs that ask to start maximized or fullscreen.
 - **Placement** of X11 windows follows `USPosition`, `PPosition` and `win_gravity`.
   An X11 window that takes no input focus (`WM_HINTS`) only comes to the front.
+
+- **`wp_fifo_v1`**: programs that wait for the refresh this way, as SDL 3 does and
+  Vulkan's FIFO mode in Mesa, get an update on the screen per refresh. Without it
+  SDL 3 prefers X11 and runs through Xwayland. A minimized window, or one on a
+  monitor that is off, gets about one update a second.
 
 Only `_NET_WM_STRUT_PARTIAL` counts for X11 panels, not the older `_NET_WM_STRUT`,
 because that is what wlroots reads.

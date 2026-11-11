@@ -890,6 +890,7 @@ int main(int argc, char *argv[])
 	wlr_viewporter_create(server.display);
 	wlr_single_pixel_buffer_manager_v1_create(server.display);
 	wlr_presentation_create(server.display, server.backend, 2);
+	fifo_init(&server);
 	wlr_screencopy_manager_v1_create(server.display);
 	/* screencopy's successor, with damage and the pointer as an image of its own: a
 	 * VNC or RDP server can send it apart, and the viewer draws it without delay. */

@@ -49,5 +49,6 @@ TODO
   beim Einschalten nicht neu wird (siehe oben, hört dort auch auf
   WLR_OUTPUT_STATE_ENABLED). Nicht behoben ist der Absturz in
   wlr-output-management (head_send_state, 40640950 nur auf master):
-  Mwm*outputManagement bleibt nötig. Ein eigener Branch, mit allen API-Änderungen
-  von 0.19 auf 0.20.
+  Mwm*outputManagement bleibt nötig. src/fifo.c fällt zugunsten von wlroots'
+  wlr_fifo_manager_v1 weg (vorher prüfen, dass tests/fifo.sh weiter besteht).
+  Ein eigener Branch, mit allen API-Änderungen von 0.19 auf 0.20.

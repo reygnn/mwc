@@ -25,11 +25,13 @@ MWC_LIBS = $(shell $(PKG_CONFIG) --libs $(PKGS))
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
 	src/input.c src/draw.c src/wallpaper.c src/config.c src/layer.c \
 	src/hints.c src/outline.c src/snap.c src/tile.c src/tabs.c src/testhook.c \
-	src/shmalloc.c
-OBJ = $(SRC:src/%.c=build/%.o)
+	src/shmalloc.c src/fifo.c
+# Protocols mwc implements itself, not through wlroots: their glue code too.
+PROTO_CODE = build/fifo-v1-protocol.c
+OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)
 PROTO = build/xdg-shell-protocol.h build/wlr-layer-shell-unstable-v1-protocol.h \
 	build/wlr-output-power-management-unstable-v1-protocol.h \
-	build/ext-image-copy-capture-v1-protocol.h
+	build/ext-image-copy-capture-v1-protocol.h build/fifo-v1-protocol.h
 
 all: mwc
 
@@ -44,6 +46,18 @@ build/xdg-shell-protocol.h: | build
 build/ext-image-copy-capture-v1-protocol.h: | build
 	$(WAYLAND_SCANNER) server-header \
 		$(WAYLAND_PROTOCOLS)/staging/ext-image-copy-capture/ext-image-copy-capture-v1.xml $@
+
+# wp_fifo_v1, in wayland-protocols from 1.38 on; wlroots 0.19 has no implementation.
+build/fifo-v1-protocol.h: | build
+	$(WAYLAND_SCANNER) server-header \
+		$(WAYLAND_PROTOCOLS)/staging/fifo/fifo-v1.xml $@
+
+build/fifo-v1-protocol.c: | build
+	$(WAYLAND_SCANNER) private-code \
+		$(WAYLAND_PROTOCOLS)/staging/fifo/fifo-v1.xml $@
+
+build/fifo-v1-protocol.o: build/fifo-v1-protocol.c
+	$(CC) $(MWC_CFLAGS) $(CFLAGS) -c -o $@ $<
 
 build/wlr-layer-shell-unstable-v1-protocol.h: protocols/wlr-layer-shell-unstable-v1.xml | build
 	$(WAYLAND_SCANNER) server-header $< $@
@@ -186,6 +200,25 @@ build/capturec: tests/capturec.c $(CAPTUREC_GEN)
 		$(CAPTURE_PROTOS:%=build/%-v1-code.c) \
 		$(shell $(PKG_CONFIG) --libs wayland-client cairo)
 
+# A window that waits for the refresh with wp_fifo_v1, as SDL 3 does.
+FIFOC_GEN = build/fifo-v1-client.h build/fifo-v1-client-code.c \
+	build/xdg-shell-client.h build/xdg-shell-code.c
+
+build/fifo-v1-client.h: | build
+	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/staging/fifo/fifo-v1.xml $@
+
+build/fifo-v1-client-code.c: | build
+	$(WAYLAND_SCANNER) private-code $(WAYLAND_PROTOCOLS)/staging/fifo/fifo-v1.xml $@
+
+build/fifoc: tests/fifoc.c $(FIFOC_GEN)
+	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
+		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/fifoc.c \
+		build/fifo-v1-client-code.c build/xdg-shell-code.c \
+		$(shell $(PKG_CONFIG) --libs wayland-client)
+
+fifo-test: mwc build/fifoc
+	tests/fifo.sh
+
 tabs-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 	tests/tabs.sh
 
@@ -227,11 +260,11 @@ config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
 test: smoke input-test wallpaper-test config-test layer-test window-test \
-	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test
+	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test
 
 clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
-	$(CAPTUREC_GEN)
-.PHONY: tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+	$(CAPTUREC_GEN) $(FIFOC_GEN)
+.PHONY: fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean

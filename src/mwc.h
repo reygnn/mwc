@@ -814,6 +814,11 @@ void config_reload(struct server *server);
 
 void testhook_init(struct server *server);
 
+/* ---- fifo.c --------------------------------------------------------------- */
+
+/* wp_fifo_v1: updates that wait for the next refresh (SDL 3 wants it for Wayland). */
+void fifo_init(struct server *server);
+
 /* ---- shmalloc.c ----------------------------------------------------------- */
 
 /* wlroots' shm allocator, but one that tells who kept a buffer it is gone. */
