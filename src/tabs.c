@@ -97,6 +97,7 @@ static void pass_icon(struct view *from, struct view *to)
 	to->icon_x = from->icon_x;
 	to->icon_y = from->icon_y;
 	to->icon_placed = from->icon_placed;
+	to->icon_seq = from->icon_seq; /* the group's icon keeps its place among the others */
 	view_minimize(to);
 }
 

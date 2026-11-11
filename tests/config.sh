@@ -383,6 +383,30 @@ icons_at "top right: down the right edge" 1200,8 1200,88
 echo "Mwm*iconPlacement: right top tight" >>"$RC"
 kill -HUP "$pid"
 icons_at "right top tight: along the top from the right, no gap" 1200,8 1128,8
+# In the middle of an edge, as one block: two icons of 72 with 8 between are 152
+# high, so on 720 they start at 284.
+echo "Mwm*iconPlacement: center right" >>"$RC"
+kill -HUP "$pid"
+icons_at "center right: both together in the middle of the right edge" 1200,284 1200,364
+echo "Mwm*iconPlacement: right center" >>"$RC"
+kill -HUP "$pid"
+icons_at "right center is the same" 1200,284 1200,364
+# One goes: the other closes up to the middle. It comes back: both as before.
+do_input move $(($(get foot icon_x) + 30)) $(($(get foot icon_y) + 30))
+do_input click left
+do_input click left
+check "foot is back" "[ \"\$(get foot min)\" = 0 ]"
+check "the other icon is in the middle now" "[ \"\$(get XTerm icon_x),\$(get XTerm icon_y)\" = 1200,324 ]"
+do_input key alt+F9
+check "foot is an icon again" "[ \"\$(get foot min)\" = 1 ]"
+check "first again, as it became an icon first" \
+	"[ \"\$(get foot icon_y)\" = 284 ] && [ \"\$(get XTerm icon_y)\" = 364 ]"
+echo "Mwm*iconPlacement: center bottom tight" >>"$RC"
+kill -HUP "$pid"
+icons_at "center bottom tight: along the bottom in the middle, no gap" 568,640 640,640
+echo "Mwm*iconPlacement: center center" >>"$RC"
+kill -HUP "$pid"
+wait_for "center twice is reported" grep -q 'not "center center"' "$LOG"
 echo "Mwm*iconPlacement: left right" >>"$RC"
 kill -HUP "$pid"
 wait_for "a wrong iconPlacement is reported" grep -q 'expected an iconPlacement' "$LOG"

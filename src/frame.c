@@ -468,6 +468,23 @@ static bool icon_slot_taken(struct server *server, struct view *self,
 	return false;
 }
 
+/* Where slot k of a row or column starts, along it, from one end. */
+static int along_pos(int start, int len, int size, int gap, int k, bool from_end)
+{
+	return from_end ? start + len - 8 - size - k * (size + gap) :
+		start + 8 + k * (size + gap);
+}
+
+/* How many icons a row or column holds. */
+static int icons_per_line(const struct config_icon_placement *p, struct wlr_box area,
+	int gap)
+{
+	int along = p->horizontal ? area.width : area.height;
+	int size = p->horizontal ? ICON_W : ICON_H;
+	int n = (along - 16 + gap) / (size + gap);
+	return n < 1 ? 1 : n;
+}
+
 /* Slot i of the usable area, as Mwm*iconPlacement lays them out: along a row or
  * a column from one corner, the next row or column further in. mwm's default
  * "left bottom" fills the bottom row from the left. */
@@ -475,23 +492,102 @@ static void icon_slot(struct wlr_box area, int i, int *x, int *y)
 {
 	const struct config_icon_placement *p = config_icon_placement();
 	int gap = p->tight ? 0 : 8;
-	int along = p->horizontal ? area.width : area.height;
+	int per_line = icons_per_line(p, area, gap);
+	int k = i % per_line, line = i / per_line;
+	if (p->horizontal) {
+		*x = along_pos(area.x, area.width, ICON_W, gap, k, p->from_right);
+		*y = along_pos(area.y, area.height, ICON_H, gap, line, p->from_bottom);
+	} else {
+		*x = along_pos(area.x, area.width, ICON_W, gap, line, p->from_right);
+		*y = along_pos(area.y, area.height, ICON_H, gap, k, p->from_bottom);
+	}
+}
+
+static int by_icon_seq(const void *a, const void *b)
+{
+	const struct view *x = *(struct view *const *)a, *y = *(struct view *const *)b;
+	return (x->icon_seq > y->icon_seq) - (x->icon_seq < y->icon_seq);
+}
+
+/* With center: the icons in sight on each output stand as one block in the middle of
+ * its edge, in the order they first became icons; a full row or column goes on in the
+ * next one, which is centred for itself. They close up when one goes. */
+static void icons_arrange_centred(struct server *server)
+{
+	const struct config_icon_placement *p = config_icon_placement();
+	int gap = p->tight ? 0 : 8;
 	int size = p->horizontal ? ICON_W : ICON_H;
-	int per_line = (along - 16 + gap) / (size + gap);
-	if (per_line < 1)
-		per_line = 1;
-	int col = p->horizontal ? i % per_line : i / per_line;
-	int row = p->horizontal ? i / per_line : i % per_line;
-	*x = p->from_right ? area.x + area.width - 8 - ICON_W - col * (ICON_W + gap) :
-		area.x + 8 + col * (ICON_W + gap);
-	*y = p->from_bottom ? area.y + area.height - 8 - ICON_H - row * (ICON_H + gap) :
-		area.y + 8 + row * (ICON_H + gap);
+	int n = 0;
+	struct view *v;
+	wl_list_for_each(v, &server->views, link)
+		n += v->minimized && !v->off_desktop;
+	if (!n)
+		return;
+	struct view **list = calloc(n, sizeof(*list));
+	struct wlr_box *areas = calloc(n, sizeof(*areas));
+	bool *done = calloc(n, sizeof(*done));
+	if (!list || !areas || !done)
+		goto out;
+	int i = 0;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->minimized && !v->off_desktop)
+			list[i++] = v;
+	}
+	qsort(list, n, sizeof(*list), by_icon_seq);
+	for (i = 0; i < n; i++)
+		areas[i] = output_usable_area(server, list[i]->x + 1, list[i]->y + 1);
+	for (i = 0; i < n; i++) {
+		if (done[i])
+			continue;
+		struct wlr_box a = areas[i];
+		int count = 0;
+		for (int j = i; j < n; j++)
+			count += !done[j] && wlr_box_equal(&areas[j], &a);
+		int per_line = icons_per_line(p, a, gap);
+		int start = p->horizontal ? a.x : a.y, len = p->horizontal ? a.width : a.height;
+		for (int j = i, m = 0; j < n; j++) {
+			if (done[j] || !wlr_box_equal(&areas[j], &a))
+				continue;
+			done[j] = true;
+			int line = m / per_line, k = m % per_line;
+			int in_line = count - line * per_line;
+			if (in_line > per_line)
+				in_line = per_line;
+			int total = in_line * size + (in_line - 1) * gap;
+			int along = start + (len - total) / 2 + k * (size + gap);
+			v = list[j];
+			if (p->horizontal) {
+				v->icon_x = along;
+				v->icon_y = along_pos(a.y, a.height, ICON_H, gap, line, p->from_bottom);
+			} else {
+				v->icon_x = along_pos(a.x, a.width, ICON_W, gap, line, p->from_right);
+				v->icon_y = along;
+			}
+			v->icon_placed = true;
+			wlr_scene_node_set_position(&v->icon_node->node, v->icon_x, v->icon_y);
+			m++;
+		}
+	}
+out:
+	free(list);
+	free(areas);
+	free(done);
 }
 
 /* A window keeps its slot when re-iconified. */
 void icons_arrange(struct server *server)
 {
+	static long seq;
 	struct view *v;
+	/* The order they become icons in, for center; kept when restored. */
+	wl_list_for_each_reverse(v, &server->views, link) {
+		if (v->minimized && !v->icon_seq)
+			v->icon_seq = ++seq;
+	}
+	if (config_icon_placement()->center) {
+		icons_arrange_centred(server);
+		return;
+	}
 	wl_list_for_each_reverse(v, &server->views, link) {
 		if (!v->minimized)
 			continue;

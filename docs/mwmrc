@@ -51,5 +51,6 @@ Mwm*clipboardScreenshot:            screenShot -c
 Mwm*rectangleScreenshot:            screenShot -r
 Mwm*screenshot:                     screenShot
 
-! Icon placement
-Mwm*iconPlacement:   top right
+! Icons: a column in the middle of the right edge, clear of deskControl and
+! pulseControl in the corners.
+Mwm*iconPlacement:   center right

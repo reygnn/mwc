@@ -831,6 +831,7 @@ void view_restore(struct view *view)
 	if (view->minimized) {
 		view->minimized = false;
 		wlr_scene_node_set_enabled(&view->icon_node->node, false);
+		icons_arrange(view->server); /* centred ones close up */
 		view_show(view, true);
 		struct view *v;
 		wl_list_for_each(v, &view->server->views, link) {
@@ -1306,7 +1307,7 @@ void view_handle_unmap(struct view *view)
 	}
 	if (shown && !focused_view(server))
 		view_focus(shown);
-	bool was_active = view->activated;
+	bool was_active = view->activated, was_icon = view->minimized;
 	view->mapped = false;
 	view->activated = false;
 	view->minimized = false;
@@ -1321,6 +1322,8 @@ void view_handle_unmap(struct view *view)
 	view_show_content(view);
 	wlr_scene_node_set_enabled(&view->tree->node, false);
 	wlr_scene_node_set_enabled(&view->icon_node->node, false);
+	if (was_icon)
+		icons_arrange(server); /* centred ones close up */
 	struts_changed(view);
 	/* The layout first: a shaded window may become the main one, and take the focus. */
 	tile_arrange(server);

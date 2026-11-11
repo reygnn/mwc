@@ -25,6 +25,7 @@
  *   Mwm*pulseControl*geometry:     -0-0       where its windows appear, per client
  *   Mwm*deskControl*allDesktops:   true       its windows are on every desktop
  *   Mwm*iconPlacement:             top right  icons from the top right corner down
+ *   Mwm*iconPlacement:             center right  a column centred on the right edge
  *
  * The client part matches an X11 window's WM_CLASS instance or class name, or
  * a Wayland client's app_id, ignoring case. Colours are #rrggbb, colour names
@@ -233,12 +234,15 @@ static void check_positions(void)
 
 /* "left bottom", "top right tight" and so on: one horizontal and one vertical
  * direction, the first is where a row or column of icons grows. */
+/* "primary secondary [tight]" as in mwm. center may take the place of either word:
+ * then the icons stand centred along the edge the other word names ("center right",
+ * or "right center": a column in the middle of the right edge). */
 static bool parse_icon_placement(const char *value,
 	struct config_icon_placement *out)
 {
 	*out = (struct config_icon_placement){ 0 };
 	char *copy = strdup(value), *save = NULL;
-	int n = 0, have_h = 0, have_v = 0;
+	int n = 0, have_h = 0, have_v = 0, have_c = 0;
 	bool ok = true;
 	for (char *tok = strtok_r(copy, " \t", &save); tok && ok;
 			tok = strtok_r(NULL, " \t", &save), n++) {
@@ -249,6 +253,8 @@ static bool parse_icon_placement(const char *value,
 		} else if (n < 2 && (!strcasecmp(tok, "top") || !strcasecmp(tok, "bottom"))) {
 			out->from_bottom = !strcasecmp(tok, "bottom");
 			ok = !have_v++;
+		} else if (n < 2 && !strcasecmp(tok, "center")) {
+			ok = !have_c++;
 		} else if (n == 2 && !strcasecmp(tok, "tight")) {
 			out->tight = true;
 		} else {
@@ -256,6 +262,13 @@ static bool parse_icon_placement(const char *value,
 		}
 	}
 	free(copy);
+	if (have_c) {
+		/* The other word is the edge: a row along top or bottom, a column along
+		 * left or right. */
+		out->center = true;
+		out->horizontal = have_v;
+		return ok && have_h + have_v == 1;
+	}
 	return ok && have_h && have_v;
 }
 
@@ -274,8 +287,8 @@ static void load_icon_placement(void)
 	if (parse_icon_placement(r->value, &p))
 		icon_placement = p;
 	else
-		wlr_log(WLR_ERROR, "%s:%d: expected an iconPlacement like \"left bottom\" "
-			"or \"top right\", not \"%s\"", path, r->line, r->value);
+		wlr_log(WLR_ERROR, "%s:%d: expected an iconPlacement like \"left bottom\", "
+			"\"top right\" or \"center right\", not \"%s\"", path, r->line, r->value);
 }
 
 const struct config_icon_placement *config_icon_placement(void)

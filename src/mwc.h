@@ -237,6 +237,7 @@ struct view {
 	int requested_w, requested_h; /* xdg: the client's size once it has caught up */
 	int icon_x, icon_y;
 	bool icon_placed;
+	long icon_seq;   /* the order it first became an icon in, see icons_arrange() */
 
 	enum frame_part pressed; /* button currently held down, for drawing */
 	bool pressed_inside;
@@ -830,6 +831,7 @@ bool config_view_position(struct view *view, struct config_position *out);
 struct config_icon_placement {
 	bool horizontal;
 	bool from_right, from_bottom;
+	bool center; /* the icons stand as one block in the middle of the edge */
 	bool tight;
 };
 const struct config_icon_placement *config_icon_placement(void);

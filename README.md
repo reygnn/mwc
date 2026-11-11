@@ -215,6 +215,18 @@ bottom row from the left.
 Mwm*iconPlacement:  top right
 ```
 
+`center` in place of the first direction puts the icons of a monitor as one block in
+the middle of the edge the other word names: half of all of them above the middle,
+half below. They close up when one goes, and keep the order they first became icons
+in. A full row or column goes on in the next one, centred for itself. `center right`
+(or `right center`) is a column in the middle of the right edge, out of the way of
+tools in the corners; `center bottom` a row in the middle of the bottom.
+
+```
+! a column in the middle of the right edge
+Mwm*iconPlacement:  center right
+```
+
 In tiling mode the layout leaves out the strip the icons fill, up to their innermost
 row or column. A reload puts all icons in their places again.
 
