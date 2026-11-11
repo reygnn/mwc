@@ -28,6 +28,9 @@ struct wlr_xwayland_surface;
 /* background, bottom, top, overlay: the layers of wlr-layer-shell. */
 #define MWC_SHELL_LAYERS 4
 
+/* Virtual desktops: a fixed number, the same on every output (desktop.c). */
+#define MWC_DESKTOPS 4
+
 /* ---- theme ------------------------------------------------------------ */
 
 struct mwc_color {
@@ -197,6 +200,8 @@ struct view {
 	struct tab_group *group; /* NULL when alone; see tabs.c */
 	struct wl_list tab_link; /* tab_group.members */
 	bool tab_hidden;         /* in a group, and not the one shown */
+	int desktop;             /* 0 to MWC_DESKTOPS - 1, see desktop.c */
+	bool off_desktop;        /* on a desktop other than the current one */
 	int tab_own_w, tab_own_h; /* the size it had before; 0: its own to choose */
 	void *deco;     /* xdg-decoration object, if any */
 	bool activated;
@@ -265,7 +270,8 @@ struct view {
 /* Not on the screen right now, whatever the reason. */
 static inline bool view_hidden(const struct view *view)
 {
-	return view->minimized || view->hidden_with_parent || view->tab_hidden;
+	return view->minimized || view->hidden_with_parent || view->tab_hidden ||
+		view->off_desktop;
 }
 
 /* Unmanaged XWayland windows: override-redirect menus, tooltips, DnD icons. */
@@ -306,6 +312,8 @@ enum menu_action {
 	ACT_TOGGLE_TILING,
 	ACT_RAISE_TILED,
 	ACT_LOWER_TILED,
+	ACT_TO_DESKTOP, /* ACT_TO_DESKTOP + n moves the window to desktop n */
+	ACT_TO_DESKTOP_LAST = ACT_TO_DESKTOP + MWC_DESKTOPS - 1,
 	ACT_RUN,      /* the item's command */
 	ACT_RELOAD,
 	ACT_QUIT,
@@ -453,6 +461,7 @@ struct server {
 
 	int cascade;
 	bool tiling;     /* tiling mode on */
+	int desktop;     /* the current one, see desktop.c */
 	long tile_front; /* tile_seq of the newest window, which leads */
 	const char *terminal;
 	struct wlr_idle_notifier_v1 *idle_notifier;
@@ -554,6 +563,8 @@ void view_set_tiled(struct view *view, bool on, bool apply);
 /* Into its cell, as far as the client's limits allow. */
 void view_apply_tile(struct view *view);
 void view_focus_next(struct view *except);
+/* The topmost window that can take the focus gets it, or nobody. */
+void view_focus_top(struct server *server);
 /* To the front of its scene layer, alone. */
 void view_raise_one(struct view *view);
 /* Puts every window into its scene layer, by type, state and focus. */
@@ -815,6 +826,31 @@ void config_reload(struct server *server);
 /* ---- testhook.c --------------------------------------------------------- */
 
 void testhook_init(struct server *server);
+
+/* ---- desktop.c ------------------------------------------------------------ */
+
+/* Panels, desktop windows, notifications and splash screens are on all of them. */
+bool view_on_all_desktops(const struct view *view);
+/* A window that maps goes to the current desktop, a dialog to its window's. */
+void desktop_view_mapped(struct view *view);
+/* Show desktop n (0-based): its windows and icons, and nothing of the others. */
+void desktop_switch(struct server *server, int n);
+/* Move a window there, with its dialogs and its tab group. */
+void view_set_desktop(struct view *view, int n);
+/* A window on another desktop asked for the focus. */
+void desktop_attention(struct view *view);
+
+/* ---- workspace.c ---------------------------------------------------------- */
+
+/* ext-workspace-v1: the desktops for panels and switching tools. */
+void workspace_init(struct server *server);
+/* The current desktop changed. */
+void workspace_changed(struct server *server);
+/* A window on desktop n wants attention; cleared when n becomes current. */
+void workspace_urgent(struct server *server, int n);
+struct wlr_output;
+/* A new output, for the workspace group's output_enter and output_leave. */
+void workspace_output_new(struct wlr_output *output);
 
 /* ---- fifo.c --------------------------------------------------------------- */
 

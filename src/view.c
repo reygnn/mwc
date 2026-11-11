@@ -310,6 +310,11 @@ void view_focus(struct view *view)
 {
 	if (!view || !view->mapped)
 		return;
+	/* Not from here: its desktop is marked, and the user goes there or not. */
+	if (view->off_desktop) {
+		desktop_attention(view);
+		return;
+	}
 	struct server *server = view->server;
 	struct wlr_seat *seat = server->seat;
 
@@ -512,6 +517,11 @@ void view_snap(struct view *view, enum snap s, double px, double py)
 void view_focus_next(struct view *except)
 {
 	focus_next(except->server, except);
+}
+
+void view_focus_top(struct server *server)
+{
+	focus_next(server, NULL);
 }
 
 void view_close(struct view *view)
@@ -742,7 +752,8 @@ static void struts_changed(struct view *view)
 
 void view_show(struct view *view, bool show)
 {
-	wlr_scene_node_set_enabled(&view->tree->node, show);
+	/* On another desktop it stays out of sight, whatever else it is. */
+	wlr_scene_node_set_enabled(&view->tree->node, show && !view->off_desktop);
 	if (view->type == VIEW_XWAYLAND)
 		wlr_xwayland_surface_set_minimized(view->xsurface, !show);
 }
@@ -785,7 +796,7 @@ void view_minimize(struct view *view)
 	}
 	icon_render(view);
 	icons_arrange(server);
-	wlr_scene_node_set_enabled(&view->icon_node->node, true);
+	wlr_scene_node_set_enabled(&view->icon_node->node, !view->off_desktop);
 	struts_changed(view);
 	/* The layout first: a shaded window may become the main one, and take the focus. */
 	tile_arrange(server);
@@ -1226,8 +1237,9 @@ void view_handle_map(struct view *view)
 	config_view_shades(view); /* the class or app_id is known by now */
 	config_view_tiling(view);
 	view->tile_seq = --view->server->tile_front; /* a new window leads the layout */
-	view_update_properties(view);
-	wlr_scene_node_set_enabled(&view->tree->node, true);
+	view_update_properties(view); /* the window type, for desktop_view_mapped() */
+	desktop_view_mapped(view);
+	wlr_scene_node_set_enabled(&view->tree->node, !view->off_desktop);
 	view_update_content_pos(view);
 	/* A prompt must not stay out of sight in a hidden tab, unless the group is an icon:
 	 * then it waits, as any dialog of a window that is an icon by now. */
@@ -1235,7 +1247,10 @@ void view_handle_map(struct view *view)
 	if (root != view && root->tab_hidden && !root->group->shown->minimized)
 		tabs_bring(root);
 	struct view *parent = view_parent(view);
-	bool hide = parent && view_hidden(parent);
+	/* Hidden with it, not for being on another desktop: it goes there too, and
+	 * shows when that one does. */
+	bool hide = parent && (parent->minimized || parent->hidden_with_parent ||
+		parent->tab_hidden);
 	view->gravity_edges = 0; /* view_place_mapped() sets it from the entry */
 	if (view->placed)
 		view_set_position(view, view->x, view->y);
@@ -1252,6 +1267,11 @@ void view_handle_map(struct view *view)
 	tile_arrange(view->server);
 	if (hide)
 		return;
+	/* A dialog of a window on another desktop: there, and that desktop is marked. */
+	if (view->off_desktop) {
+		desktop_attention(view);
+		return;
+	}
 	if (view->wtype != WT_SPLASH)
 		view_focus(view);
 	else
@@ -1284,6 +1304,7 @@ void view_handle_unmap(struct view *view)
 	view->activated = false;
 	view->minimized = false;
 	view->hidden_with_parent = false;
+	view->off_desktop = false;
 	view->tiled = false;
 	view->tile_main = false;
 	view->tile_back = false;

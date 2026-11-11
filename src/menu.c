@@ -183,6 +183,18 @@ static void add_tabs(struct menu *m, struct view *view)
 	add(m, "Detach Tab", 'D', "Super+Shift+G", ACT_TAB_DETACH, group);
 }
 
+/* Where the window goes: each other desktop, the one it is on grayed out. */
+static void add_desktops(struct menu *m, struct view *view)
+{
+	static const char *const labels[MWC_DESKTOPS] = {
+		"To Desktop 1", "To Desktop 2", "To Desktop 3", "To Desktop 4",
+	};
+	bool movable = !view_on_all_desktops(view);
+	for (int i = 0; i < MWC_DESKTOPS; i++)
+		add(m, labels[i], '1' + i, NULL, ACT_TO_DESKTOP + i,
+			movable && i != view->desktop);
+}
+
 static uint32_t now_msec(void)
 {
 	struct timespec ts;
@@ -255,6 +267,8 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 		add(m, NULL, 0, NULL, ACT_NONE, false);
 		add_tabs(m, view);
 		add(m, NULL, 0, NULL, ACT_NONE, false);
+		add_desktops(m, view);
+		add(m, NULL, 0, NULL, ACT_NONE, false);
 		add(m, "Close", 'C', "Alt+F4", ACT_CLOSE, f & FUNC_CLOSE);
 		open_at(server, x, y);
 		return;
@@ -270,6 +284,8 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 	add(m, "Lower", 'L', "Alt+F3", ACT_LOWER, true);
 	add(m, NULL, 0, NULL, ACT_NONE, false);
 	add_tabs(m, view);
+	add(m, NULL, 0, NULL, ACT_NONE, false);
+	add_desktops(m, view);
 	add(m, NULL, 0, NULL, ACT_NONE, false);
 	add(m, "Close", 'C', "Alt+F4", ACT_CLOSE, f & FUNC_CLOSE);
 	open_at(server, x, y);
@@ -502,8 +518,15 @@ void run_action(struct server *server, enum menu_action action,
 	struct view *view)
 {
 	struct wlr_cursor *c = server->cursor;
+	if (action >= ACT_TO_DESKTOP && action <= ACT_TO_DESKTOP_LAST) {
+		if (view)
+			view_set_desktop(view, action - ACT_TO_DESKTOP);
+		return;
+	}
 	switch (action) {
 	case ACT_NONE:
+	case ACT_TO_DESKTOP: /* handled above, with those in between */
+	case ACT_TO_DESKTOP_LAST:
 		break;
 	case ACT_RESTORE:
 		if (view)

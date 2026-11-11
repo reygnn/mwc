@@ -462,6 +462,7 @@ static void new_output(struct wl_listener *listener, void *data)
 	struct wlr_output *wlr_output = data;
 
 	wlr_output_init_render(wlr_output, server->allocator, server->renderer);
+	workspace_output_new(wlr_output);
 
 	/* Its name and modes are what mwmrc needs, and nowhere else to be seen. */
 	wlr_log(WLR_INFO, "new output %s", wlr_output->name);
@@ -894,6 +895,7 @@ int main(int argc, char *argv[])
 	wlr_single_pixel_buffer_manager_v1_create(server.display);
 	wlr_presentation_create(server.display, server.backend, 2);
 	fifo_init(&server);
+	workspace_init(&server);
 	wlr_screencopy_manager_v1_create(server.display);
 	/* screencopy's successor, with damage and the pointer as an image of its own: a
 	 * VNC or RDP server can send it apart, and the viewer draws it without delay. */

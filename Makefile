@@ -25,13 +25,14 @@ MWC_LIBS = $(shell $(PKG_CONFIG) --libs $(PKGS))
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
 	src/input.c src/draw.c src/wallpaper.c src/config.c src/layer.c \
 	src/hints.c src/outline.c src/snap.c src/tile.c src/tabs.c src/testhook.c \
-	src/shmalloc.c src/fifo.c
+	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c
 # Protocols mwc implements itself, not through wlroots: their glue code too.
-PROTO_CODE = build/fifo-v1-protocol.c
+PROTO_CODE = build/fifo-v1-protocol.c build/ext-workspace-v1-protocol.c
 OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)
 PROTO = build/xdg-shell-protocol.h build/wlr-layer-shell-unstable-v1-protocol.h \
 	build/wlr-output-power-management-unstable-v1-protocol.h \
-	build/ext-image-copy-capture-v1-protocol.h build/fifo-v1-protocol.h
+	build/ext-image-copy-capture-v1-protocol.h build/fifo-v1-protocol.h \
+	build/ext-workspace-v1-protocol.h
 
 all: mwc
 
@@ -56,7 +57,16 @@ build/fifo-v1-protocol.c: | build
 	$(WAYLAND_SCANNER) private-code \
 		$(WAYLAND_PROTOCOLS)/staging/fifo/fifo-v1.xml $@
 
-build/fifo-v1-protocol.o: build/fifo-v1-protocol.c
+# ext-workspace-v1, in wayland-protocols from 1.40 on; none in wlroots 0.19 either.
+build/ext-workspace-v1-protocol.h: | build
+	$(WAYLAND_SCANNER) server-header \
+		$(WAYLAND_PROTOCOLS)/staging/ext-workspace/ext-workspace-v1.xml $@
+
+build/ext-workspace-v1-protocol.c: | build
+	$(WAYLAND_SCANNER) private-code \
+		$(WAYLAND_PROTOCOLS)/staging/ext-workspace/ext-workspace-v1.xml $@
+
+build/%-protocol.o: build/%-protocol.c
 	$(CC) $(MWC_CFLAGS) $(CFLAGS) -c -o $@ $<
 
 build/wlr-layer-shell-unstable-v1-protocol.h: protocols/wlr-layer-shell-unstable-v1.xml | build
@@ -219,6 +229,15 @@ build/fifoc: tests/fifoc.c $(FIFOC_GEN)
 fifo-test: mwc build/fifoc
 	tests/fifo.sh
 
+# Lists and switches the desktops, as a pager does.
+build/workspacec: tests/workspacec.c build/ext-workspace-v1-client.h build/ext-workspace-v1-code.c
+	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
+		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/workspacec.c \
+		build/ext-workspace-v1-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
+
+desktop-test: mwc build/vinput build/xclient build/xdgc build/workspacec
+	tests/desktop.sh
+
 # What an RDP server such as wayrdp does: devices that go mid-press, fresh captures,
 # sizes per connection.
 rdp-test: mwc build/vinput build/xdgc build/outputc build/capturec build/powerc \
@@ -266,11 +285,11 @@ config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
 test: smoke input-test wallpaper-test config-test layer-test window-test \
-	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test
+	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test desktop-test
 
 clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
-	$(CAPTUREC_GEN) $(FIFOC_GEN)
-.PHONY: rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+	$(CAPTUREC_GEN) $(FIFOC_GEN) build/ext-workspace-v1-client.h build/ext-workspace-v1-code.c
+.PHONY: desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean

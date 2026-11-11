@@ -81,9 +81,9 @@ click_title() { # app
 	do_input move $(($(get "$1" x) + $(frame_w "$1") / 2)) $(($(get "$1" y) + $(get "$1" bw) + 4))
 	do_input click left
 }
-window_menu_is() { # description app expected, leaving out the entries for tabs
+window_menu_is() { # description app expected, leaving out the entries for tabs and desktops
 	do_input key alt+space
-	check "$1" "[ \"\$(global menu sensitive | tr -d TePD)\" = $3 ]"
+	check "$1" "[ \"\$(global menu sensitive | tr -d TePD1234)\" = $3 ]"
 	do_input key Escape
 }
 root_menu_is() { # description expected

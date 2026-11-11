@@ -52,7 +52,8 @@ state file only exist when `MWC_TEST_STATE` is set (the devices also with
 the user's behalf. Other protocols are always on and open to every
 client, as in most wlroots compositors: `wlr-screencopy` and `ext-image-copy-capture-v1`
 let any of them read the screen, `ext-data-control-v1` and `wlr-data-control` let any of
-them read and set the clipboard, and `wlr-layer-shell` lets any of them cover it.
+them read and set the clipboard, `wlr-layer-shell` lets any of them cover it, and
+`ext-workspace-v1` lets any of them switch the desktop.
 `wlr-output-management` is only there with `Mwm*outputManagement: true` (see Keyboard
 and monitors), and then lets any of them change the monitors' modes and places. A
 monitor that is off gives captures no frames until it is on again.
@@ -84,6 +85,9 @@ its keyboard and pointer go with a key or a button down and in the middle of a
 move, a capture starts afresh on a still desktop after a size change or the
 monitor off and on, and the windows in every state follow the sizes connections
 ask for.
+
+`make desktop-test` switches desktops the way a tool does (`tests/workspacec.c`) and
+moves windows between them.
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
@@ -359,6 +363,25 @@ Normal windows with a title bar from mwc can be tabs. Windows of a fixed size, d
 and programs drawing their own title bar can't. In the layout, windows can't be dragged,
 so grouping works through the keys and the menu there. Hidden X11 programs count as
 iconified while they are hidden.
+
+## Virtual desktops
+
+There are four desktops, the same on every monitor: switching one changes what all of
+them show. mwc binds no keys for it. A pager or switching tool does it through
+`ext-workspace-v1`, where the desktops are four workspaces with the names and ids `1` to
+`4` in one group for all outputs; the only thing it can ask for is to activate one.
+
+- A window opens on the current desktop, a dialog on its window's. A window moves with
+  "To Desktop 1" to "To Desktop 4" in its window menu, its dialogs and tab group along.
+- Panels, desktop windows, notifications and splash screens are on all desktops.
+- Icons belong to their window's desktop and only show there; each desktop has its
+  own icon slots.
+- Focus, Alt+Tab and clicks stay on the current desktop. Tiling lays out its windows;
+  those of the others keep their place for when they come back.
+- A window on another desktop that asks for the focus, or a dialog that opens for one,
+  doesn't switch: its desktop is marked urgent for the tool until it becomes current.
+- Clients aren't told: an X11 window on another desktop isn't iconified, and a
+  capture of a monitor sees the current desktop.
 
 ## Programs in the root menu
 

@@ -108,14 +108,15 @@ static int by_seq(const void *a, const void *b)
 	return (x->tile_seq > y->tile_seq) - (x->tile_seq < y->tile_seq);
 }
 
-/* The tiled windows in layout order, main window first. The caller frees it. */
+/* The tiled windows of the current desktop in layout order, main window first. The
+ * caller frees it. */
 static struct view **tiled_windows(struct server *server, int *n)
 {
 	struct view **list = calloc(wl_list_length(&server->views) + 1, sizeof(*list));
 	struct view *v;
 	*n = 0;
 	wl_list_for_each(v, &server->views, link) {
-		if (v->tiled)
+		if (v->tiled && !v->off_desktop)
 			list[(*n)++] = v;
 	}
 	qsort(list, *n, sizeof(*list), by_seq);
@@ -208,7 +209,7 @@ static struct view *plan(struct server *server, struct view **list, int n,
 	int left = a.x, right = a.x + a.width, top_edge = a.y, bottom = a.y + a.height;
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (!v->minimized || !v->icon_placed || v->icon_x < a.x ||
+		if (!v->minimized || v->off_desktop || !v->icon_placed || v->icon_x < a.x ||
 				v->icon_x >= a.x + a.width || v->icon_y < a.y ||
 				v->icon_y >= a.y + a.height)
 			continue;
@@ -304,6 +305,9 @@ void tile_arrange(struct server *server)
 		v->tile_nofit = false;
 	for (;;) {
 		wl_list_for_each(v, &server->views, link) {
+			/* Another desktop's windows keep their place in its layout. */
+			if (v->off_desktop)
+				continue;
 			bool want = server->tiling && tileable(v);
 			if (want == v->tiled)
 				continue;
@@ -347,7 +351,7 @@ bool tile_has_stack(struct server *server)
 	int n = 0;
 	struct view *v;
 	wl_list_for_each(v, &server->views, link)
-		n += v->tiled;
+		n += v->tiled && !v->off_desktop;
 	return n > 1;
 }
 
