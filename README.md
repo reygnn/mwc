@@ -115,8 +115,8 @@ Alt+F9 minimize · Alt+F10 maximize · Alt+F11 fullscreen ·
 Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit ·
 Super+arrows snap (see below) · Super+Shift+arrows push a floating window against
 that edge of the usable area (two in a row: a corner) · Super+T tiling on/off ·
-Super+Esc screen saver (see below) · Print / Shift+Print screenshot to a file / the
-clipboard (see below) · Super+G and more for tabs (see below).
+Super+Esc screen saver (see below) · Print / Shift+Print a rectangle / the screen to
+the clipboard, with Ctrl to a file (see below) · Super+G and more for tabs (see below).
 
 ## Configuration
 
