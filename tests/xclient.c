@@ -47,6 +47,12 @@
  *                         vertical or horizontal axis; says "sent N" each time
  *     focus_main=1        once mapped, give the focus from the dialog to the main window
  *     motif_later=FUNCS   once mapped, _MOTIF_WM_HINTS with only the functions set
+ *     popup=X,Y           once mapped, an override-redirect window of 120x100 at X,Y,
+ *                         as a menu opened from the keyboard; says "popup shown",
+ *                         and "popup gone" once it is unmapped again
+ *     popup_type=TYPE     its window type, as for type=; none: it wants the keyboard
+ *     popup_ms=MS         wait that long before showing it, default 800
+ *     popup_for=MS        and that long before unmapping it, default 1500
  *     decor_later=DECOR   once mapped, _MOTIF_WM_HINTS with only the decorations set;
  *                         says "decor set"
  *     decor_ms=MS         wait that long before that, default 500
@@ -104,6 +110,9 @@ struct options {
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	int decor_later, decor_ms;
 	bool has_decor_later;
+	bool has_popup;
+	int popup_x, popup_y, popup_ms, popup_for;
+	const char *popup_type;
 	const char *script, *title_later;
 	int iconify_ms;
 	bool iconify_dialog;
@@ -452,7 +461,15 @@ int main(int argc, char *argv[])
 		} else if (!strcmp(k, "decor_later")) {
 			o.decor_later = atoi(v);
 			o.has_decor_later = true;
-		} else if (!strcmp(k, "decor_ms"))
+		} else if (!strcmp(k, "popup"))
+			o.has_popup = sscanf(v, "%d,%d", &o.popup_x, &o.popup_y) == 2;
+		else if (!strcmp(k, "popup_type"))
+			o.popup_type = v;
+		else if (!strcmp(k, "popup_ms"))
+			o.popup_ms = atoi(v);
+		else if (!strcmp(k, "popup_for"))
+			o.popup_for = atoi(v);
+		else if (!strcmp(k, "decor_ms"))
 			o.decor_ms = atoi(v);
 		else if (!strcmp(k, "hints_later"))
 			sscanf(v, "%dx%d", &o.later_w, &o.later_h);
@@ -704,6 +721,29 @@ int main(int argc, char *argv[])
 			(unsigned char *)hints, 5);
 		XSync(dpy, False);
 		printf("decor set\n");
+	}
+	if (o.has_popup) {
+		XSync(dpy, False);
+		usleep((o.popup_ms ? o.popup_ms : 800) * 1000);
+		XSetWindowAttributes a = { .override_redirect = True,
+			.background_pixel = 0x00ff00 };
+		Window popup = XCreateWindow(dpy, DefaultRootWindow(dpy), o.popup_x,
+			o.popup_y, 120, 100, 0, CopyFromParent, InputOutput, CopyFromParent,
+			CWOverrideRedirect | CWBackPixel, &a);
+		if (o.popup_type) {
+			char name[64];
+			snprintf(name, sizeof(name), "_NET_WM_WINDOW_TYPE_%s", o.popup_type);
+			for (char *p = name + 20; *p; p++)
+				*p = *p >= 'a' && *p <= 'z' ? *p - 32 : *p;
+			set_atom_list(popup, "_NET_WM_WINDOW_TYPE", name);
+		}
+		XMapRaised(dpy, popup);
+		XSync(dpy, False);
+		printf("popup shown\n");
+		usleep((o.popup_for ? o.popup_for : 1500) * 1000);
+		XUnmapWindow(dpy, popup);
+		XSync(dpy, False);
+		printf("popup gone\n");
 	}
 	if (o.later_w) {
 		XSync(dpy, False);

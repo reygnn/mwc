@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
@@ -56,6 +57,26 @@ static int unplug_output(int signal, void *data)
 	}
 	wlr_output_destroy(target->wlr_output);
 	return 0;
+}
+
+/* Who a surface belongs to, for the seat line: a window's app, an X11
+ * override-redirect window, something else (a layer surface, a popup), or nobody. */
+static const char *surface_owner(struct server *server, struct wlr_surface *surface)
+{
+	if (!surface)
+		return "none";
+	surface = wlr_surface_get_root_surface(surface);
+	struct view *v;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->mapped && view_surface(v) == surface)
+			return view_app_id(v);
+	}
+	struct unmanaged *um;
+	wl_list_for_each(um, &server->unmanaged, link) {
+		if (um->xsurface->surface == surface)
+			return "unmanaged";
+	}
+	return "other";
 }
 
 /* One line per window, front to back. Written to a temporary file first, so
@@ -148,6 +169,9 @@ static int dump_state(int signal, void *data)
 		theme.title_height);
 	fprintf(f, "cursor x=%d y=%d mode=%d\n", (int)server->cursor->x,
 		(int)server->cursor->y, server->cursor_mode);
+	fprintf(f, "seat pointer=%s keyboard=%s\n",
+		surface_owner(server, server->seat->pointer_state.focused_surface),
+		surface_owner(server, server->seat->keyboard_state.focused_surface));
 	fclose(f);
 	if (rename(tmp, state_path) != 0)
 		wlr_log_errno(WLR_ERROR, "cannot rename %s", tmp);

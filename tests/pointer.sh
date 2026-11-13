@@ -365,6 +365,30 @@ do_input up left
 saw "only the real release comes through" pull '^release menu 215,'
 stop pull
 
+# ---- override-redirect windows coming and going under a pointer that doesn't move ----------
+
+x11 orp pos=100,100 size=300x200 popup=150,150 popup_type=menu popup_ms=2000 popup_for=2000
+do_input move 200 200
+check "the pointer is over orp" "[ \"\$(global seat pointer)\" = orp ]"
+saw "a menu opens under it" orp '^popup shown'
+check "the menu has the pointer at once, without a move" "[ \"\$(global seat pointer)\" = unmanaged ]"
+check "a menu doesn't take the keyboard" "[ \"\$(global seat keyboard)\" = orp ]"
+saw "the menu closes" orp '^popup gone'
+check "the window below has the pointer again, without a move" \
+	"[ \"\$(global seat pointer)\" = orp ]"
+stop orp
+
+# One that wants the keyboard, with no window to give it back to when it goes: Xwayland
+# destroys the surface of a window it unmaps, so the keyboard isn't left on it.
+x11 ork iconic=1 popup=600,300 popup_ms=1500 popup_for=1500
+check "ork starts as an icon, no window has the focus" "[ \"\$(global focus any)\" = 0 ]"
+saw "a prompt opens" ork '^popup shown'
+check "it has the keyboard" "[ \"\$(global seat keyboard)\" = unmanaged ]"
+saw "the prompt closes" ork '^popup gone'
+check "with nobody to hand it back to, the keyboard goes to nobody" \
+	"[ \"\$(global seat keyboard)\" = none ]"
+stop ork
+
 # ---- keys that went to a binding ----------------------------------------------------------------
 
 client K log

@@ -533,6 +533,9 @@ static void um_map(struct wl_listener *listener, void *data)
 	if (wlr_xwayland_surface_override_redirect_wants_focus(xs) &&
 			!um->server->exclusive_layer)
 		input_keyboard_enter(um->server, xs->surface);
+	/* A menu opening under a pointer that doesn't move: it is what the pointer is
+	 * over now, for the wheel and the client's own highlight and cursor. */
+	input_pointer_changed(um->server);
 }
 
 static void um_unmap(struct wl_listener *listener, void *data)
@@ -542,7 +545,8 @@ static void um_unmap(struct wl_listener *listener, void *data)
 	wl_list_remove(&um->set_geometry.link);
 	wlr_scene_node_destroy(&um->tree->node);
 	um->tree = NULL;
-	/* Hand the keyboard back to the focused window. */
+	/* Hand the keyboard back to the focused window. Without one it goes to nobody:
+	 * Xwayland destroys the surface of a window it unmaps, which the seat lets go. */
 	if (seat->keyboard_state.focused_surface == um->xsurface->surface &&
 			!layer_keyboard_back(um->server)) {
 		struct view *v;
@@ -554,6 +558,8 @@ static void um_unmap(struct wl_listener *listener, void *data)
 			}
 		}
 	}
+	/* And the pointer to what was below it. */
+	input_pointer_changed(um->server);
 }
 
 static void um_associate(struct wl_listener *listener, void *data)
