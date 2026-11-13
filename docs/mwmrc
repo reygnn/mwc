@@ -17,8 +17,8 @@ Mwm*rootBackground:                    #388E8E
 Mwm*terminal:                          mwt
 Mwm*mwt*activeBackground:              #2e5e3e
 
-! Tiling: only mwt tiles, everything else floats.
-Mwm*TileOnly:                          mwt
+! Tiling: only these tile, everything else floats.
+Mwm*TileOnly:                          mwt, indigo, dracula, amber, paper
 
 ! Firefox: chocolate brown.
 ! Navigator is its WM_CLASS under X11. Natively on Wayland it goes by its app_id
