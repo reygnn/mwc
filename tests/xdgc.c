@@ -20,6 +20,10 @@
  *     grow=WxH     after mapping, take that size of its own accord; says "grown"
  *     grow_ms=MS   wait that long before, default 1000
  *     dialog=NAME  also open a child toplevel with this app_id
+ *     clear=1      draw nothing (fully transparent) and take no clicks: an empty
+ *                  input region
+ *     viewport=1   a 1x1 buffer, stretched to the window's size by wp_viewporter:
+ *                  a window of any size for next to no memory
  */
 #define _GNU_SOURCE
 #include <stdbool.h>
@@ -32,6 +36,7 @@
 #include <unistd.h>
 #include <wayland-client.h>
 #include "server-decoration-client.h"
+#include "viewporter-client.h"
 #include "xdg-decoration-unstable-v1-client.h"
 #include "xdg-shell-client.h"
 
@@ -48,6 +53,8 @@ static bool log_states, client_side;
 static const char *late_frame, *pre_late;
 static bool early_frame, unparent;
 static struct org_kde_kwin_server_decoration_manager *kde_manager;
+static struct wp_viewporter *viewporter;
+static bool use_viewport, clear;
 
 struct window {
 	struct wl_surface *surface;
@@ -56,6 +63,7 @@ struct window {
 	int w, h;
 	int natural_w, natural_h; /* what it takes when the choice is its own */
 	bool framed;
+	struct wp_viewport *viewport;
 };
 
 static struct wl_display *the_display;
@@ -95,7 +103,12 @@ static void wait_dispatching(struct wl_display *display, int ms)
 
 static void draw(struct window *win)
 {
-	size_t size = win->w * win->h * 4;
+	int bw = win->w, bh = win->h;
+	if (win->viewport) {
+		wp_viewport_set_destination(win->viewport, win->w, win->h);
+		bw = bh = 1;
+	}
+	size_t size = (size_t)bw * bh * 4;
 	int fd = memfd_create("xdgc", MFD_CLOEXEC);
 	if (fd < 0 || ftruncate(fd, size) != 0) {
 		perror("xdgc: buffer");
@@ -103,15 +116,15 @@ static void draw(struct window *win)
 	}
 	uint32_t *px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	for (size_t i = 0; i < size / 4; i++)
-		px[i] = 0xff808080;
+		px[i] = clear ? 0 : 0xff808080;
 	munmap(px, size);
 	struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
-	struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0, win->w, win->h,
-		win->w * 4, WL_SHM_FORMAT_ARGB8888);
+	struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0, bw, bh,
+		bw * 4, WL_SHM_FORMAT_ARGB8888);
 	wl_shm_pool_destroy(pool);
 	close(fd);
 	wl_surface_attach(win->surface, buffer, 0, 0);
-	wl_surface_damage_buffer(win->surface, 0, 0, win->w, win->h);
+	wl_surface_damage_buffer(win->surface, 0, 0, bw, bh);
 	wl_surface_commit(win->surface);
 }
 
@@ -207,6 +220,8 @@ static void registry_global(void *data, struct wl_registry *registry,
 			org_kde_kwin_server_decoration_manager_interface.name) == 0) {
 		kde_manager = wl_registry_bind(registry, name,
 			&org_kde_kwin_server_decoration_manager_interface, 1);
+	} else if (strcmp(interface, wp_viewporter_interface.name) == 0) {
+		viewporter = wl_registry_bind(registry, name, &wp_viewporter_interface, 1);
 	}
 }
 
@@ -227,6 +242,13 @@ static struct window *open_window(const char *app, struct window *parent,
 	win->w = win->natural_w = w;
 	win->h = win->natural_h = h;
 	win->surface = wl_compositor_create_surface(compositor);
+	if (use_viewport)
+		win->viewport = wp_viewporter_get_viewport(viewporter, win->surface);
+	if (clear) {
+		struct wl_region *none = wl_compositor_create_region(compositor);
+		wl_surface_set_input_region(win->surface, none);
+		wl_region_destroy(none);
+	}
 	if (early_frame && limits) {
 		struct org_kde_kwin_server_decoration *deco =
 			org_kde_kwin_server_decoration_manager_create(kde_manager, win->surface);
@@ -298,6 +320,10 @@ int main(int argc, char *argv[])
 			client_side = atoi(v);
 		else if (!strcmp(argv[i], "states"))
 			log_states = atoi(v);
+		else if (!strcmp(argv[i], "clear"))
+			clear = atoi(v);
+		else if (!strcmp(argv[i], "viewport"))
+			use_viewport = atoi(v);
 		else if (!strcmp(argv[i], "late_app"))
 			late_app = v;
 		else if (!strcmp(argv[i], "grow"))

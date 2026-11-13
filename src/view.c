@@ -1159,12 +1159,11 @@ struct view *view_at(struct server *server, double lx, double ly,
 		*surface = NULL;
 		return view;
 	}
-	if (node == &view->frame_node->node) {
-		*part = frame_hit(view, (int)(lx - view->x),
-			(int)(ly - view->y), edges);
-	} else {
-		*part = PART_CLIENT;
-	}
+	bool frame = node == &view->frame_fill->node;
+	for (int i = 0; i < 4; i++)
+		frame |= node == &view->frame_nodes[i]->node;
+	*part = frame ? frame_hit(view, (int)(lx - view->x), (int)(ly - view->y), edges) :
+		PART_CLIENT;
 	return view;
 }
 
@@ -1175,7 +1174,11 @@ void view_init_common(struct view *view)
 	struct server *server = view->server;
 	view->tree = wlr_scene_tree_create(server->layer_views);
 	view->tree->node.data = view;
-	view->frame_node = wlr_scene_buffer_create(view->tree, NULL);
+	view->frame_fill = wlr_scene_rect_create(view->tree, 0, 0,
+		(const float[4]){ 0, 0, 0, 1 });
+	wlr_scene_node_set_enabled(&view->frame_fill->node, false);
+	for (int i = 0; i < 4; i++)
+		view->frame_nodes[i] = wlr_scene_buffer_create(view->tree, NULL);
 	view->icon_node = wlr_scene_buffer_create(server->layer_icons, NULL);
 	view->icon_node->node.data = view;
 	wlr_scene_node_set_enabled(&view->icon_node->node, false);

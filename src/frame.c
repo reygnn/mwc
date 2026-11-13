@@ -291,26 +291,15 @@ static void draw_button(cairo_t *cr, struct view *view, enum frame_part part,
 	}
 }
 
-void frame_render(struct view *view)
+/* The whole W x H frame, in frame coordinates: each strip draws all of it, and cairo
+ * keeps what falls on the strip. The title bar is only on the top one. */
+static void draw_frame(cairo_t *cr, struct view *view, int W, int H, bool title)
 {
-	const int B = frame_border(view), T = frame_title(view);
-	if (!B && !T) {
-		/* The client covers the whole window. */
-		wlr_scene_node_set_enabled(&view->frame_node->node, false);
-		return;
-	}
-
+	const int B = frame_border(view), T = title ? frame_title(view) : 0;
 	const int bv = theme.bevel < B ? theme.bevel : B;
 	const bool full = B == theme.border;
-	const int W = view->width + 2 * B;
-	const int H = frame_height(view);
 	const struct mwc_shade *s = view->activated ?
 		&view->shade_active : &view->shade_inactive;
-
-	struct cairo_buffer *buf = cairo_buffer_create(W, H);
-	if (!buf)
-		return;
-	cairo_t *cr = buf->cr;
 
 	set_source(cr, s->bg);
 	cairo_paint(cr);
@@ -362,10 +351,49 @@ void frame_render(struct view *view)
 		if (tl.max_x >= 0)
 			draw_button(cr, view, PART_MAXIMIZE_BUTTON, tl.max_x, B, T, s);
 	}
+}
 
-	wlr_scene_buffer_set_buffer(view->frame_node, &buf->base);
-	cairo_buffer_drop(buf);
-	wlr_scene_node_set_enabled(&view->frame_node->node, true);
+void frame_render(struct view *view)
+{
+	const int B = frame_border(view), T = frame_title(view);
+	const int W = view->width + 2 * B, H = frame_height(view);
+	/* Top with the title bar, bottom, left, right; the sides between the two. A
+	 * shaded window has no sides, and one without a frame no strips at all. */
+	const struct wlr_box strips[4] = {
+		{ 0, 0, W, B + T },
+		{ 0, H - B, W, B },
+		{ 0, B + T, B, H - 2 * B - T },
+		{ W - B, B + T, B, H - 2 * B - T },
+	};
+	for (int i = 0; i < 4; i++) {
+		struct wlr_scene_buffer *node = view->frame_nodes[i];
+		const struct wlr_box *r = &strips[i];
+		struct cairo_buffer *buf = r->width > 0 && r->height > 0 ?
+			cairo_buffer_create(r->width, r->height) : NULL;
+		if (!buf) {
+			wlr_scene_node_set_enabled(&node->node, false);
+			continue;
+		}
+		cairo_translate(buf->cr, -r->x, -r->y);
+		draw_frame(buf->cr, view, W, H, i == 0);
+		wlr_scene_buffer_set_buffer(node, &buf->base);
+		cairo_buffer_drop(buf);
+		wlr_scene_node_set_position(&node->node, r->x, r->y);
+		wlr_scene_node_set_enabled(&node->node, true);
+	}
+	/* Between the strips, behind the client. */
+	const int fw = W - 2 * B, fh = H - 2 * B - T;
+	struct wlr_scene_rect *fill = view->frame_fill;
+	if ((!B && !T) || fw <= 0 || fh <= 0) {
+		wlr_scene_node_set_enabled(&fill->node, false);
+		return;
+	}
+	const struct mwc_color bg = (view->activated ?
+		&view->shade_active : &view->shade_inactive)->bg;
+	wlr_scene_rect_set_color(fill, (const float[4]){ bg.r, bg.g, bg.b, 1 });
+	wlr_scene_rect_set_size(fill, fw, fh);
+	wlr_scene_node_set_position(&fill->node, B, B + T);
+	wlr_scene_node_set_enabled(&fill->node, true);
 }
 
 enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges)

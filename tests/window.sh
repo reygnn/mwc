@@ -831,6 +831,30 @@ NY0=$((NY + NB / 2))
 echo "ok: a narrow window's corners take a third each, with side between them"
 stop narrow
 
+# Behind the client lies the frame's colour, as the frame window under an X11 client:
+# it shows through what the client leaves transparent and takes the clicks outside its
+# input region.
+wayland clear size=300x200 clear=1
+check "clear has the focus" "[ \"\$(get clear active)\" = 1 ]"
+wayland other size=100x80
+check "other takes it" "[ \"\$(get other active)\" = 1 ] && [ \"\$(get clear active)\" = 0 ]"
+drag $(($(get other x) + 50)) $(($(get other y) + $(get other bw) + 4)) 1000 500
+sleep 0.5
+refresh
+QX=$(get clear x) QY=$(get clear y) QB=$(get clear bw) QT=$(get clear th)
+MX=$((QX + QB + $(get clear w) / 2)) MY=$((QY + QB + QT + $(get clear h) / 2))
+WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/clear.png" || fail "a screenshot"
+qpx() { build/pngtool pixel "$SMOKE_DIR/clear.png" "$1" "$2"; }
+[ "$(qpx $MX $MY)" = "$(qpx $((QX + QB / 2)) $MY)" ] ||
+	fail "a transparent client shows $(qpx $MX $MY), not its frame's $(qpx $((QX + QB / 2)) $MY)"
+echo "ok: a transparent client shows its frame's colour"
+do_input move $MX $MY
+do_input click left
+check "a click where it takes none brings it to the front" \
+	"[ \"\$(get clear active)\" = 1 ] && [ \"\$(global menu open)\" = 0 ]"
+stop other
+stop clear
+
 stop_vinput
 stop_mwc
 echo "PASS: window"

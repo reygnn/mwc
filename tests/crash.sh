@@ -276,6 +276,27 @@ wait_for "with the work area" grep -q 'workarea 0 0 1280 720' "$SMOKE_DIR/again.
 stop again
 finish
 
+# ---- a huge window ----------------------------------------------------------------------------
+# Through wp_viewporter a 1x1 buffer makes a window of any size for next to no memory.
+# Its frame costs its border, not its area: one buffer for the whole frame would be
+# 16000 x 16000 x 4 bytes, 1 GB.
+
+begin
+wayland whuge size=16000x16000 viewport=1
+check "a 16000x16000 window is mapped, with its frame" \
+	"[ \"\$(get whuge w)\" = 16000 ] && [ \"\$(get whuge h)\" = 16000 ] && [ \"\$(get whuge frame)\" = 1 ]"
+do_input key alt+Tab
+do_input key alt+Tab
+sleep 0.5
+alive "a 16000x16000 window"
+peak=$(awk '/^VmHWM:/ { print $2 }' /proc/$pid/status)
+[ "$peak" -lt 1048576 ] || fail "mwc peaked at $peak kB with a huge window"
+echo "ok: mwc stays below 1 GB with it ($peak kB)"
+grep -q 'cannot create a' "$LOG" && fail "a frame buffer was too large"
+echo "ok: every frame buffer could be made"
+stop whuge
+finish
+
 # ---- a keymap that doesn't exist --------------------------------------------------------------
 
 export XKB_DEFAULT_LAYOUT=no-such-layout

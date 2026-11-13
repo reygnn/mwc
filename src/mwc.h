@@ -182,7 +182,14 @@ struct view {
 
 	struct wlr_scene_tree *tree;         /* whole window incl. frame */
 	struct wlr_scene_tree *content_tree; /* the client's surfaces */
-	struct wlr_scene_buffer *frame_node;
+	/* The frame in four strips around the client: top (border and title bar),
+	 * bottom, left, right. One buffer for the whole window would mostly be covered
+	 * by the client, and cost its full size on every redraw. */
+	struct wlr_scene_buffer *frame_nodes[4];
+	/* The frame's colour behind the client, a plain rectangle that costs no memory:
+	 * it shows through what the client leaves transparent, and takes the clicks
+	 * outside its input region, as the frame window under an X11 client does. */
+	struct wlr_scene_rect *frame_fill;
 	struct wlr_scene_buffer *icon_node;  /* shown while minimized */
 
 	/* Frame geometry: x/y is the outer top-left corner in layout coords,

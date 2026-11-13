@@ -139,6 +139,14 @@ build/xdg-shell-code.c: | build
 	$(WAYLAND_SCANNER) private-code \
 		$(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
 
+build/viewporter-client.h: | build
+	$(WAYLAND_SCANNER) client-header \
+		$(WAYLAND_PROTOCOLS)/stable/viewporter/viewporter.xml $@
+
+build/viewporter-code.c: | build
+	$(WAYLAND_SCANNER) private-code \
+		$(WAYLAND_PROTOCOLS)/stable/viewporter/viewporter.xml $@
+
 build/layerc: tests/layerc.c $(LAYERC_GEN)
 	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/layerc.c \
@@ -161,13 +169,14 @@ build/xdg-decoration-unstable-v1-code.c: | build
 XDGC_GEN = build/xdg-decoration-unstable-v1-client.h \
 	build/xdg-decoration-unstable-v1-code.c build/xdg-shell-client.h \
 	build/xdg-shell-code.c build/server-decoration-client.h \
-	build/server-decoration-code.c
+	build/server-decoration-code.c build/viewporter-client.h \
+	build/viewporter-code.c
 
 build/xdgc: tests/xdgc.c $(XDGC_GEN)
 	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/xdgc.c \
 		build/xdg-decoration-unstable-v1-code.c build/xdg-shell-code.c \
-		build/server-decoration-code.c \
+		build/server-decoration-code.c build/viewporter-code.c \
 		$(shell $(PKG_CONFIG) --libs wayland-client)
 
 build/badclient: tests/badclient.c build/xdg-shell-client.h build/xdg-shell-code.c
