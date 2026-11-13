@@ -441,4 +441,34 @@ stop b
 finish
 unset WLR_HEADLESS_OUTPUTS
 
+# A shaded stack window that loses its title bar has nothing left to roll up to,
+# nor a button to unroll it: it opens again. One keeps a border, one has no frame.
+printf 'Mwm*tiling: true\n' >"$RC"
+begin
+x11 nb size=300x200 decor_later=2 decor_ms=5000
+x11 nf size=300x200 decor_later=0 decor_ms=5000
+x11 nm size=300x200
+check "nm is the main window" "[ \"\$(get nm tile_main)\" = 1 ]"
+button nb min
+button nf min
+check "both stack windows are shaded" \
+	"[ \"\$(get nb shaded)\" = 1 ] && [ \"\$(get nf shaded)\" = 1 ] && \
+	 [ \"\$(get nb th)\" -gt 0 ] && [ \"\$(get nf th)\" -gt 0 ]"
+wait_for "nb dropped its title bar" grep -q "decor set" "$SMOKE_DIR/nb.events"
+wait_for "nf dropped its frame" grep -q "decor set" "$SMOKE_DIR/nf.events"
+check "with only a border left, it is open again" \
+	"[ \"\$(get nb th)\" = 0 ] && [ \"\$(get nb bw)\" -gt 0 ] && [ \"\$(get nb shaded)\" = 0 ]"
+check "without any frame too" \
+	"[ \"\$(get nf th)\" = 0 ] && [ \"\$(get nf bw)\" = 0 ] && [ \"\$(get nf shaded)\" = 0 ]"
+check "and they share the column" \
+	"[ \$((\$(frame_h nb) + \$(frame_h nf) + 8)) = $FULL_H ] && \
+	 [ \"\$(frame_h nb)\" -gt 100 ] && [ \"\$(frame_h nf)\" -gt 100 ]"
+check "each frame is its cell, not more" \
+	"[ \$((\$(get nb h) + 2 * \$(get nb bw))) = \$(frame_h nb) ] && \
+	 [ \"\$(get nf h)\" = \$(frame_h nf) ]"
+stop nm
+stop nf
+stop nb
+finish
+
 echo "PASS: tile"

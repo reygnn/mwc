@@ -229,9 +229,11 @@ static struct view *plan(struct server *server, struct view **list, int n,
 	a.height = bottom - top_edge > min ? bottom - top_edge : min;
 	int top = a.y + TILE_GAP, h = a.height - 2 * TILE_GAP;
 	/* What the layout rolled up for lack of room in an earlier round gets another
-	 * chance, the room may be there now. */
+	 * chance, the room may be there now. One that has lost its title bar since has
+	 * nothing left to roll up to, nor a button to unroll it: it opens again. */
 	for (int i = 0; i < n; i++) {
-		if (list[i]->auto_shaded) {
+		if (list[i]->auto_shaded ||
+				(list[i]->shaded && !tile_can_shade(list[i]))) {
 			list[i]->shaded = false;
 			list[i]->auto_shaded = false;
 		}

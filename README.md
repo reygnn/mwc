@@ -325,12 +325,13 @@ buttons do this instead:
 | Minimize | goes into the stack; the top stack window takes its place (nothing while it is alone) | shades: rolls up to its title bar |
 | Maximize | nothing                          | becomes the main window        |
 
-A click on a shaded window, focusing it (Alt+Tab) or Restore (Alt+F5) unrolls it.
-When the stack runs out of room, its lower windows are shaded, and when even that is
-not enough the oldest become icons. The layout leaves the icons' row free, or their
-column (see `iconPlacement`). Dialogs, windows that cannot be resized, windows too
-large for their place, fullscreen and minimized windows float as usual; a window that
-leaves fullscreen joins the layout. The layout covers the first monitor.
+A click on a shaded window, focusing it (Alt+Tab) or Restore (Alt+F5) unrolls it,
+and so does losing its title bar. When the stack runs out of room, its lower windows
+are shaded, and when even that is not enough the oldest become icons. The layout
+leaves the icons' row free, or their column (see `iconPlacement`). Dialogs, windows
+that cannot be resized, windows too large for their place, fullscreen and minimized
+windows float as usual; a window that leaves fullscreen joins the layout. The layout
+covers the first monitor.
 
 `Mwm*DoNotTile` in mwmrc keeps the listed programs out of the layout: they float
 above or between the tiled windows. `Mwm*TileOnly` is the reverse: only the listed

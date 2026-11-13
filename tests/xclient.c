@@ -47,6 +47,9 @@
  *                         vertical or horizontal axis; says "sent N" each time
  *     focus_main=1        once mapped, give the focus from the dialog to the main window
  *     motif_later=FUNCS   once mapped, _MOTIF_WM_HINTS with only the functions set
+ *     decor_later=DECOR   once mapped, _MOTIF_WM_HINTS with only the decorations set;
+ *                         says "decor set"
+ *     decor_ms=MS         wait that long before that, default 500
  *     hints_later=WxH     once mapped, the minimum and maximum size become this
  *     hints_ms=MS         wait that long before that, default 800
  *     title_later=TEXT    2 s after mapping, a new WM_NAME
@@ -99,6 +102,8 @@ struct options {
 	bool no_input, workarea, clipboard, move_press, pulldown;
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
+	int decor_later, decor_ms;
+	bool has_decor_later;
 	const char *script, *title_later;
 	int iconify_ms;
 	bool iconify_dialog;
@@ -444,7 +449,12 @@ int main(int argc, char *argv[])
 		else if (!strcmp(k, "motif_later")) {
 			o.motif_later = atoi(v);
 			o.has_motif_later = true;
-		} else if (!strcmp(k, "hints_later"))
+		} else if (!strcmp(k, "decor_later")) {
+			o.decor_later = atoi(v);
+			o.has_decor_later = true;
+		} else if (!strcmp(k, "decor_ms"))
+			o.decor_ms = atoi(v);
+		else if (!strcmp(k, "hints_later"))
 			sscanf(v, "%dx%d", &o.later_w, &o.later_h);
 		else if (!strcmp(k, "latin1_title"))
 			o.latin1_title = atoi(v);
@@ -684,6 +694,16 @@ int main(int argc, char *argv[])
 			(unsigned char *)hints, 5);
 		XSync(dpy, False);
 		printf("motif set\n");
+	}
+	if (o.has_decor_later) {
+		XSync(dpy, False);
+		usleep((o.decor_ms ? o.decor_ms : 500) * 1000);
+		long hints[5] = { 2 /* decorations only */, 0, o.decor_later, 0, 0 };
+		Atom m = XInternAtom(dpy, "_MOTIF_WM_HINTS", False);
+		XChangeProperty(dpy, main_win, m, m, 32, PropModeReplace,
+			(unsigned char *)hints, 5);
+		XSync(dpy, False);
+		printf("decor set\n");
 	}
 	if (o.later_w) {
 		XSync(dpy, False);
