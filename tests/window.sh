@@ -482,6 +482,8 @@ Mwm*gxgrow*geometry:    -0-0
 Mwm*gwleft*geometry:    +20+30
 Mwm*gwmoved*geometry:   -0-0
 Mwm*gwsized*geometry:   -0-0
+Mwm*gwframe*geometry:   -0-0
+Mwm*gwfleft*geometry:   +20+30
 EOF
 kill -HUP "$pid"
 settle
@@ -619,6 +621,24 @@ wait_for "gwleft has grown" grep -q grown "$SMOKE_DIR/gwleft.events"
 check "one placed at +20+30 keeps its top-left corner" \
 	"[ \"\$(outer_w gwleft)\" -gt 400 ] && [ \"\$(get gwleft x)\" = 20 ] && [ \"\$(get gwleft y)\" = 30 ]"
 stop gwleft
+
+# A frame asked for only once the window is shown, as GTK3 does.
+wayland gwframe late_frame=kde
+mapped gwframe
+check "it appears without one" "[ \"\$(title gwframe)\" = 0 ]"
+check "gwframe has its frame" "[ \"\$(title gwframe)\" -gt 0 ]"
+settle
+check "a frame that comes late keeps a window placed at -0-0 in the corner" \
+	"[ \"\$(right gwframe)\" = 1280 ] && [ \"\$(bottom gwframe)\" = 720 ]"
+stop gwframe
+
+wayland gwfleft late_frame=kde
+mapped gwfleft
+check "gwfleft has its frame" "[ \"\$(title gwfleft)\" -gt 0 ]"
+settle
+check "and one at +20+30 at its top-left corner" \
+	"[ \"\$(get gwfleft x)\" = 20 ] && [ \"\$(get gwfleft y)\" = 30 ]"
+stop gwfleft
 
 wayland gwmoved grow=400x300 grow_ms=3000
 mapped gwmoved

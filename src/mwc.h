@@ -238,6 +238,7 @@ struct view {
 	 * keeps the edge when it changes size by itself. Over once the user moves or
 	 * resizes it, or it joins a group. */
 	uint32_t gravity_edges;
+	int gravity_extra_w, gravity_extra_h; /* the frame's size it was placed with */
 	int requested_w, requested_h; /* xdg: the client's size once it has caught up */
 	int icon_x, icon_y;
 	bool icon_placed;

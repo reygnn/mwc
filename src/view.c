@@ -939,11 +939,37 @@ void views_layout_changed(struct server *server)
 	input_pointer_changed(server);
 }
 
+/* Placed from the right or bottom edge by its entry, a window keeps that edge when its
+ * frame grows or shrinks, as when it changes its size by itself: a program may ask for
+ * a frame only once it is shown, or the title bar grows with the font. */
+static void view_frame_gravity(struct view *view)
+{
+	/* Fullscreen, or with a size mwc decides, it has no edge to keep: that frame
+	 * size doesn't count for later. */
+	if (!view->gravity_edges || !view_left_alone(view))
+		return;
+	int ew = frame_extra_w(view), eh = frame_extra_h(view);
+	int dw = ew - view->gravity_extra_w, dh = eh - view->gravity_extra_h;
+	view->gravity_extra_w = ew;
+	view->gravity_extra_h = eh;
+	if (!dw && !dh)
+		return;
+	int x, y;
+	view_gravity_place(view, view->width, view->height, view->width + dw,
+		view->height + dh, &x, &y);
+	if (x == view->x && y == view->y)
+		return;
+	view->x = x;
+	view->y = y;
+	wlr_scene_node_set_position(&view->tree->node, x, y);
+}
+
 void view_frame_changed(struct view *view)
 {
 	/* The client keeps its size and the frame around it changes, except
 	 * where the frame's size is fixed. */
 	view_update_content_pos(view);
+	view_frame_gravity(view);
 	if ((view->maximized || view->snap != SNAP_NONE) && !view->fullscreen &&
 			!view->tiled)
 		view_refit(view);
@@ -1221,6 +1247,8 @@ static void view_place_mapped(struct view *view)
 	if (!pos.at_pointer)
 		view->gravity_edges = (pos.from_right ? WLR_EDGE_RIGHT : 0) |
 			(pos.from_bottom ? WLR_EDGE_BOTTOM : 0);
+	view->gravity_extra_w = frame_extra_w(view);
+	view->gravity_extra_h = frame_extra_h(view);
 	struct wlr_box a = output_usable_area(view->server, view->server->cursor->x,
 		view->server->cursor->y);
 	int w = view->width + frame_extra_w(view);
@@ -1242,6 +1270,9 @@ static void view_place_mapped(struct view *view)
 void view_handle_map(struct view *view)
 {
 	view->mapped = true;
+	/* view_place_mapped() sets it from the entry; until then a frame that changes
+	 * moves nothing. */
+	view->gravity_edges = 0;
 	config_view_shades(view); /* the class or app_id is known by now */
 	config_view_tiling(view);
 	view->tile_seq = --view->server->tile_front; /* a new window leads the layout */
@@ -1259,7 +1290,6 @@ void view_handle_map(struct view *view)
 	/* Hidden with it, not for being on another desktop: it goes there too, and
 	 * shows when that one does. */
 	bool hide = parent && view_hidden_by_state(parent);
-	view->gravity_edges = 0; /* view_place_mapped() sets it from the entry */
 	if (view->placed)
 		view_set_position(view, view->x, view->y);
 	else if (!view->maximized && !view->fullscreen && view->snap == SNAP_NONE)
