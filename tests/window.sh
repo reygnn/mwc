@@ -484,6 +484,8 @@ Mwm*gwmoved*geometry:   -0-0
 Mwm*gwsized*geometry:   -0-0
 Mwm*gwframe*geometry:   -0-0
 Mwm*gwfleft*geometry:   +20+30
+Mwm*gwfont*geometry:    -0-0
+Mwm*gxfont*geometry:    -0-0
 EOF
 kill -HUP "$pid"
 settle
@@ -640,6 +642,30 @@ check "and one at +20+30 at its top-left corner" \
 	"[ \"\$(get gwfleft x)\" = 20 ] && [ \"\$(get gwfleft y)\" = 30 ]"
 stop gwfleft
 
+# A reload with a larger font: the title bar grows, the corner stays.
+wayland gwfont
+x11 gxfont
+mapped gwfont
+mapped gxfont
+check "both are in the corner" \
+	"[ \"\$(right gwfont)\" = 1280 ] && [ \"\$(bottom gwfont)\" = 720 ] && \
+	 [ \"\$(right gxfont)\" = 1280 ] && [ \"\$(bottom gxfont)\" = 720 ]"
+old_title=$(title gwfont)
+echo 'Mwm*fontList:  Sans Bold 30' >>"$RC"
+kill -HUP "$pid"
+check "the title bar has grown" "[ \"\$(title gwfont)\" -gt $old_title ]"
+check "a reload with a taller title bar keeps a Wayland window in its corner" \
+	"[ \"\$(right gwfont)\" = 1280 ] && [ \"\$(bottom gwfont)\" = 720 ]"
+check "and an X11 window" \
+	"[ \"\$(right gxfont)\" = 1280 ] && [ \"\$(bottom gxfont)\" = 720 ]"
+sed -i '/^Mwm\*fontList:/d' "$RC"
+kill -HUP "$pid"
+check "the font is back" "[ \"\$(title gwfont)\" = $old_title ]"
+check "and both are still in the corner" \
+	"[ \"\$(bottom gwfont)\" = 720 ] && [ \"\$(bottom gxfont)\" = 720 ]"
+stop gwfont
+stop gxfont
+
 wayland gwmoved grow=400x300 grow_ms=3000
 mapped gwmoved
 drag $(($(get gwmoved x) + 100)) $(($(get gwmoved y) + 12)) 500 300
@@ -722,9 +748,9 @@ x11 gsized
 wayland ghalf
 mapped gsized
 mapped ghalf
-# Loaded twice by now, and the window asking adds nothing.
+# Loaded four times by now (twice for the font), and the window asking adds nothing.
 check "a size in the value is reported once per load" \
-	"[ \"\$(grep -c 'mwmrc:7: expected a position' \"$LOG\")\" = 2 ]"
+	"[ \"\$(grep -c 'mwmrc:7: expected a position' \"$LOG\")\" = 4 ]"
 check "half a position too" "grep -q 'mwmrc:8: expected a position' \"$LOG\""
 check "and such a window cascades as usual" "[ \"\$(right gsized)\" != 1280 ]"
 stop gsized
