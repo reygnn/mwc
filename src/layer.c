@@ -143,6 +143,7 @@ void layer_arrange(struct output *output)
 	arrange_pass(output, &full, &usable, true);
 	arrange_pass(output, &full, &usable, false);
 	apply_struts(output, &usable);
+	dock_reserve(output, &usable);
 	/* A panel may reserve more than there is, or all but a sliver. Then there is no
 	 * use in believing it: windows would have nowhere to go. X11 struts keep the same
 	 * room, see apply_struts(). */
@@ -452,6 +453,7 @@ static void new_layer_surface(struct wl_listener *listener, void *data)
 
 void layer_output_gone(struct output *output)
 {
+	dock_output_gone(output);
 	if (output->arrange_timer)
 		wl_event_source_remove(output->arrange_timer);
 	output->arrange_timer = NULL;

@@ -29,6 +29,8 @@
  *   Mwm*foot*activeBackground:     gold
  *   Mwm*pulseControl*geometry:     -0-0       where its windows appear, per client
  *   Mwm*deskControl*allDesktops:   true       its windows are on every desktop
+ *   Mwm*deskControl*dock:          true       in the dock, see dock.c
+ *   Mwm*dockPlacement:             right bottom  where the dock is, as iconPlacement
  *   Mwm*iconPlacement:             top right  icons from the top right corner down
  *   Mwm*iconPlacement:             center right  a column centred on the right edge
  *   Mwm*useIconBox:                true       icons in a box, see iconbox.c
@@ -79,6 +81,8 @@ static int n_root_items;
 
 static struct config_icon_placement icon_placement = { .horizontal = true,
 	.from_bottom = true };
+static struct config_icon_placement dock_placement = { .horizontal = true,
+	.from_right = true, .from_bottom = true };
 
 static char *trim(char *s)
 {
@@ -318,28 +322,44 @@ static bool parse_icon_placement(const char *value,
 	return ok && have_h && have_v;
 }
 
-static void load_icon_placement(void)
+/* iconPlacement or dockPlacement: the last global line, or the default. */
+static void load_placement(const char *resource, struct config_icon_placement def,
+	struct config_icon_placement *out)
 {
-	icon_placement = (struct config_icon_placement){ .horizontal = true,
-		.from_bottom = true };
+	*out = def;
 	const struct rule *r = NULL;
 	for (int i = 0; i < n_rules; i++) {
-		if (!rules[i].client && !strcasecmp(rules[i].resource, "iconPlacement"))
+		if (!rules[i].client && !strcasecmp(rules[i].resource, resource))
 			r = &rules[i];
 	}
 	struct config_icon_placement p;
 	if (!r)
 		return;
 	if (parse_icon_placement(r->value, &p))
-		icon_placement = p;
+		*out = p;
 	else
-		wlr_log(WLR_ERROR, "%s:%d: expected an iconPlacement like \"left bottom\", "
-			"\"top right\" or \"center right\", not \"%s\"", path, r->line, r->value);
+		wlr_log(WLR_ERROR, "%s:%d: %s: expected a placement like \"left bottom\", "
+			"\"top right\" or \"center right\", not \"%s\"", path, r->line,
+			resource, r->value);
+}
+
+static void load_icon_placement(void)
+{
+	load_placement("iconPlacement", (struct config_icon_placement){
+		.horizontal = true, .from_bottom = true }, &icon_placement);
+	load_placement("dockPlacement", (struct config_icon_placement){
+		.horizontal = true, .from_right = true, .from_bottom = true },
+		&dock_placement);
 }
 
 const struct config_icon_placement *config_icon_placement(void)
 {
 	return &icon_placement;
+}
+
+const struct config_icon_placement *config_dock_placement(void)
+{
+	return &dock_placement;
 }
 
 void config_expand_home(const char *value, char *out, size_t size)
@@ -509,6 +529,18 @@ static bool rule_color(const struct rule *r, struct mwc_color *out)
 	return false;
 }
 
+int config_view_dock(struct view *view)
+{
+	/* Its dialogs stay with it, outside. */
+	if (view->wtype != WT_NORMAL || view_parent(view))
+		return -1;
+	const char *name = view_app_id(view), *class = name;
+	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
+		name = view->xsurface->instance;
+	const struct rule *r = client_rule(name, class, "dock");
+	return r && config_bool("dock", r->value) == 1 ? (int)(r - rules) : -1;
+}
+
 bool config_view_all_desktops(struct view *view)
 {
 	const char *name = view_app_id(view), *class = name;
@@ -532,7 +564,9 @@ bool config_view_position(struct view *view, struct config_position *out)
 
 void config_view_tiling(struct view *view)
 {
-	view->no_tile = false;
+	view->no_tile = view_docked(view);
+	if (view->no_tile)
+		return;
 	if (tile_filter == FILTER_NONE)
 		return;
 	const char *name = view_app_id(view), *class = name;
@@ -592,6 +626,12 @@ void config_reload(struct server *server)
 	wlr_log(WLR_INFO, "reloading the configuration");
 	menu_close(server);
 	config_load();
+	/* Before anything rearranges the dock: a window leaving it stays where it is. */
+	struct view *view;
+	wl_list_for_each(view, &server->views, link) {
+		if (view->mapped)
+			view->dock_order = config_view_dock(view);
+	}
 	theme_init();
 	iconbox_config_changed(server);
 	wallpaper_init(server);
@@ -606,7 +646,6 @@ void config_reload(struct server *server)
 			!theme.root_none);
 		wallpaper_place(output, true);
 	}
-	struct view *view;
 	wl_list_for_each(view, &server->views, link) {
 		view_theme_changed(view);
 		if (view->mapped)
@@ -618,4 +657,5 @@ void config_reload(struct server *server)
 		view->icon_placed = false;
 	icons_arrange(server);
 	tile_config_changed(server);
+	dock_config_changed(server);
 }

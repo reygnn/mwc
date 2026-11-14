@@ -216,6 +216,8 @@ static void view_apply_size(struct view *view, int w, int h, bool own)
 	view->height = h;
 	view_update_content_pos(view);
 	frame_render(view);
+	if (view_docked(view) && view->mapped)
+		dock_arrange(view->server);
 }
 
 /* Scene layers windows can be in, bottom to top. */
@@ -240,7 +242,7 @@ static enum view_layer own_layer(struct view *view, struct view *focus)
 	if (x11 && view->xsurface->below)
 		return VL_BELOW;
 	if ((x11 && view->xsurface->above) || view->wtype == WT_DOCK ||
-			view->wtype == WT_NOTIFICATION)
+			view->wtype == WT_NOTIFICATION || view_docked(view))
 		return VL_ABOVE;
 	return VL_NORMAL;
 }
@@ -388,18 +390,24 @@ void view_focus(struct view *view)
 	input_pointer_changed(server);
 }
 
+/* Docked windows get the focus by a click only. */
+static bool in_turn(struct view *view)
+{
+	return view_focusable(view) && !view_docked(view);
+}
+
 /* Give the focus to the topmost remaining window, or to nobody. A shaded window
  * only gets it when asked for by name. */
 static void focus_next(struct server *server, struct view *except)
 {
 	/* Prefer the window a dialog belongs to. */
 	struct view *v = except ? view_parent(except) : NULL;
-	if (v && v != except && view_focusable(v) && !v->shaded) {
+	if (v && v != except && in_turn(v) && !v->shaded) {
 		view_focus(v);
 		return;
 	}
 	wl_list_for_each(v, &server->views, link) {
-		if (v != except && view_focusable(v) && !v->shaded) {
+		if (v != except && in_turn(v) && !v->shaded) {
 			view_focus(v);
 			return;
 		}
@@ -583,7 +591,7 @@ static bool view_has_successor(struct view *view)
 {
 	struct view *v;
 	wl_list_for_each(v, &view->server->views, link) {
-		if (v != view && view_focusable(v) && !v->shaded &&
+		if (v != view && in_turn(v) && !v->shaded &&
 				view_transient_root(v) != view_transient_root(view))
 			return true;
 	}
@@ -755,6 +763,8 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 /* asked_output: on the output the client named with its request, if any. */
 static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output)
 {
+	if (view_docked(view))
+		fullscreen = false; /* its place is the dock */
 	if (!view_configurable(view)) {
 		view->fullscreen = fullscreen;
 		view->decorated = view->ssd && !fullscreen;
@@ -850,7 +860,7 @@ void view_parent_changed(struct view *view)
 
 void view_minimize(struct view *view)
 {
-	if (view->minimized || !view->mapped || view->tab_hidden)
+	if (view->minimized || !view->mapped || view->tab_hidden || view_docked(view))
 		return;
 	struct server *server = view->server;
 	grab_give_way(view);
@@ -1023,6 +1033,7 @@ void views_layout_changed(struct server *server)
 			view_set_position(v, a.x + 32, a.y + 32);
 		}
 	}
+	dock_arrange(server);
 	icons_arrange(server);
 	tile_arrange(server);
 	input_pointer_changed(server);
@@ -1069,6 +1080,8 @@ void view_frame_changed(struct view *view)
 	/* In the layout, the cell stays and the client has to make room. */
 	if (view->tiled)
 		tile_arrange(view->server);
+	if (view_docked(view) && view->mapped)
+		dock_arrange(view->server);
 }
 
 void view_theme_changed(struct view *view)
@@ -1087,7 +1100,7 @@ void view_cycle(struct server *server, bool backwards)
 {
 	struct view *top = NULL, *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (view_focusable(v)) {
+		if (in_turn(v)) {
 			top = v;
 			break;
 		}
@@ -1122,7 +1135,7 @@ void view_cycle(struct server *server, bool backwards)
 		view_lower_one(root);
 		struct view *next = NULL;
 		wl_list_for_each(v, &server->views, link) {
-			if (v != root && view_focusable(v) && !v->shaded) {
+			if (v != root && in_turn(v) && !v->shaded) {
 				next = v;
 				break;
 			}
@@ -1135,7 +1148,7 @@ void view_cycle(struct server *server, bool backwards)
 		return;
 	}
 	wl_list_for_each_reverse(v, &server->views, link) {
-		if (view_focusable(v)) {
+		if (in_turn(v)) {
 			if (iconbox_cycle_takes(v, false))
 				iconbox_focus(server);
 			else
@@ -1303,6 +1316,7 @@ void view_init_common(struct view *view)
 	view->shade_inactive = theme.inactive;
 	view->decor = DECOR_ALL;
 	view->funcs = FUNC_ALL;
+	view->dock_order = -1;
 }
 
 /* Keep at least the title bar reachable. */
@@ -1392,9 +1406,12 @@ void view_handle_map(struct view *view)
 	 * moves nothing. */
 	view->gravity_edges = 0;
 	config_view_shades(view); /* the class or app_id is known by now */
-	config_view_tiling(view);
 	view->tile_seq = --view->server->tile_front; /* a new window leads the layout */
 	view_update_properties(view); /* the window type, for desktop_view_mapped() */
+	view->dock_order = config_view_dock(view); /* needs the type */
+	if (view_docked(view))
+		view_update_decorations(view); /* its functions */
+	config_view_tiling(view);
 	view->all_desktops = config_view_all_desktops(view);
 	desktop_view_mapped(view);
 	wlr_scene_node_set_enabled(&view->tree->node, !view->off_desktop);
@@ -1408,7 +1425,9 @@ void view_handle_map(struct view *view)
 	/* Hidden with it, not for being on another desktop: it goes there too, and
 	 * shows when that one does. */
 	bool hide = parent && view_hidden_by_state(parent);
-	if (view->placed)
+	if (view_docked(view))
+		dock_arrange(view->server);
+	else if (view->placed)
 		view_set_position(view, view->x, view->y);
 	else if (!view->maximized && !view->fullscreen && view->snap == SNAP_NONE)
 		view_place_mapped(view);
@@ -1428,7 +1447,7 @@ void view_handle_map(struct view *view)
 		desktop_attention(view);
 		return;
 	}
-	if (view->wtype != WT_SPLASH)
+	if (view->wtype != WT_SPLASH && !view_docked(view))
 		view_focus(view);
 	else
 		view_raise(view);
@@ -1472,6 +1491,8 @@ void view_handle_unmap(struct view *view)
 	wlr_scene_node_set_enabled(&view->icon_node->node, false);
 	if (was_icon)
 		icons_arrange(server); /* centred ones close up */
+	if (view_docked(view))
+		dock_arrange(server); /* the others close up */
 	struts_changed(view);
 	/* The layout first: a shaded window may become the main one, and take the focus. */
 	tile_arrange(server);

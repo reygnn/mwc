@@ -139,6 +139,7 @@ static int dump_state(int signal, void *data)
 		unmanaged += um->tree != NULL;
 	fprintf(f, "unmanaged count=%d\n", unmanaged);
 	iconbox_state(f);
+	dock_state(f);
 	struct output *each;
 	wl_list_for_each(each, &server->outputs, link) {
 		struct wlr_box b;

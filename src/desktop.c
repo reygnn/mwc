@@ -27,8 +27,9 @@
 
 static bool by_rule(const struct view *view)
 {
-	return view->all_desktops || view->wtype == WT_DOCK || view->wtype == WT_DESKTOP ||
-		view->wtype == WT_NOTIFICATION || view->wtype == WT_SPLASH;
+	return view->all_desktops || view_docked(view) || view->wtype == WT_DOCK ||
+		view->wtype == WT_DESKTOP || view->wtype == WT_NOTIFICATION ||
+		view->wtype == WT_SPLASH;
 }
 
 static bool everywhere(const struct view *view)

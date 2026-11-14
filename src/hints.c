@@ -195,6 +195,8 @@ void view_update_decorations(struct view *view)
 		d &= motif_mask(view->motif_decor, DECOR_ALL);
 	if (view_fixed(view))
 		f &= ~(FUNC_RESIZE | FUNC_MAXIMIZE);
+	if (view_docked(view))
+		f &= ~(FUNC_MOVE | FUNC_RESIZE | FUNC_MINIMIZE | FUNC_MAXIMIZE);
 
 	/* Decorations follow the functions they trigger. */
 	if (!(f & FUNC_RESIZE) && (d & DECOR_RESIZEH))

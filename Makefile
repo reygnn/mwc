@@ -25,7 +25,8 @@ MWC_LIBS = $(shell $(PKG_CONFIG) --libs $(PKGS))
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
 	src/input.c src/draw.c src/wallpaper.c src/config.c src/layer.c \
 	src/hints.c src/outline.c src/snap.c src/tile.c src/tabs.c src/testhook.c \
-	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c src/iconbox.c
+	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c src/iconbox.c \
+	src/dock.c
 # Protocols mwc implements itself, not through wlroots: their glue code too.
 PROTO_CODE = build/fifo-v1-protocol.c build/ext-workspace-v1-protocol.c
 OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)
@@ -141,7 +142,7 @@ analyze: $(PROTO) build/logo.h
 # and state, whose clients act on timers of their own.
 VALGRIND_TESTS = smoke input-test wallpaper-test config-test window-test snap-test \
 	outputs-test tile-test crash-test pointer-test misc-test session-test \
-	tabs-test desktop-test iconbox-test
+	tabs-test desktop-test iconbox-test dock-test
 
 valgrind: mwc
 	MWC=tests/valgrind-mwc MWC_VALGRIND=1 MWC_TIMEOUT=90 $(MAKE) $(VALGRIND_TESTS)
@@ -393,6 +394,9 @@ window-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 iconbox-test: mwc build/vinput build/pngtool build/xdgc build/workspacec build/layerc
 	tests/iconbox.sh
 
+dock-test: mwc build/vinput build/xclient build/xdgc
+	tests/dock.sh
+
 layer-test: mwc build/vinput build/pngtool build/layerc build/xdgc
 	tests/layer.sh
 
@@ -400,7 +404,7 @@ config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
 test: smoke input-test wallpaper-test config-test layer-test window-test \
-	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test desktop-test iconbox-test
+	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test desktop-test iconbox-test dock-test
 
 clean:
 	rm -rf build mwc
@@ -408,4 +412,4 @@ clean:
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN) $(IDLEC_GEN) build/ext-workspace-v1-client.h \
 	build/ext-workspace-v1-code.c
-.PHONY: analyze valgrind check fuzz fuzz-replay iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: analyze valgrind check fuzz fuzz-replay dock-test iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean

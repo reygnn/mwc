@@ -209,6 +209,7 @@ struct view {
 	bool attention;          /* see desktop_attention() */
 	bool all_desktops;       /* Mwm*NAME*allDesktops, read at map */
 	bool sticky;             /* "On All Desktops" */
+	int dock_order;          /* Mwm*NAME*dock: its mwmrc line; -1: not docked */
 	int tab_own_w, tab_own_h; /* before joining; 0: its own choice */
 	void *deco;              /* xdg-decoration, or NULL */
 	bool activated;
@@ -284,6 +285,11 @@ struct view {
 static inline bool view_hidden_by_state(const struct view *view)
 {
 	return view->minimized || view->hidden_with_parent || view->tab_hidden;
+}
+
+static inline bool view_docked(const struct view *view)
+{
+	return view->dock_order >= 0;
 }
 
 static inline bool view_hidden(const struct view *view)
@@ -822,6 +828,11 @@ struct config_icon_placement {
 	bool tight;
 };
 const struct config_icon_placement *config_icon_placement(void);
+/* Mwm*dockPlacement, iconPlacement's syntax; default "right bottom". */
+const struct config_icon_placement *config_dock_placement(void);
+/* Mwm*NAME*dock, for normal top-level windows: its line's place in mwmrc, the dock's
+ * order; -1: not docked. */
+int config_view_dock(struct view *view);
 /* Reload and SIGHUP: mwmrc applied to what runs; no re-exec. */
 void config_reload(struct server *server);
 
@@ -891,6 +902,20 @@ void iconbox_icon_pressed(struct view *view);
 /* The box or its logo; false: none. */
 bool iconbox_rect(struct wlr_box *out);
 void iconbox_state(FILE *f);
+
+/* ---- dock.c -------------------------------------------------------------- */
+
+void dock_init(struct server *server);
+/* When a docked window comes, goes or changes size, or the outputs change. */
+void dock_arrange(struct server *server);
+/* From layer_arrange(): takes the dock's strip off the usable area. */
+void dock_reserve(struct output *output, struct wlr_box *usable);
+/* After a reload has set view.dock_order anew. */
+void dock_config_changed(struct server *server);
+/* Until the next dock_arrange(). */
+void dock_output_gone(struct output *output);
+bool dock_rect(struct wlr_box *out); /* false: empty */
+void dock_state(FILE *f);
 
 /* ---- fifo.c --------------------------------------------------------------- */
 

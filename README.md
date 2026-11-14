@@ -122,6 +122,7 @@ Global resources:
 | `DoNotTile`, `TileOnly` | programs that never tile, or the only ones that do |
 | `iconPlacement` | where icons go, see Icons |
 | `useIconBox`, `iconBoxSize` | the icon box, see Icons |
+| `dockPlacement` | where the dock goes, see Dock |
 | `keyboardLayout`, `keyboardVariant`, `keyboardOptions`, `keyboardModel` | see Keyboard and monitors |
 | `outputManagement` | `true`: offer wlr-output-management, see Keyboard and monitors |
 
@@ -132,6 +133,7 @@ Per program:
 | `activeBackground`, `background` | its frame colours; unfocused it defaults to a paler shade of its own |
 | `geometry` | where its windows appear, see below |
 | `allDesktops` | `true`: its windows are on every desktop |
+| `dock` | `true`: its windows go into the dock, see Dock |
 
 Per monitor, by name: `outputMode`, `outputScale`, `outputPosition`,
 `outputTransform`, see Keyboard and monitors.
@@ -286,6 +288,25 @@ its own box.
 
     Mwm*useIconBox:   true
     Mwm*iconBoxSize:  8
+
+
+## Dock
+
+`dock` puts the windows of small tools side by side in one frame at the edge of the
+first monitor, in the order of their lines in the file. `dockPlacement` takes the
+words of `iconPlacement`; the default `right bottom` starts in the bottom right corner
+and grows to the left. Tools of different heights line up along the monitor's edge.
+The dock follows when a tool comes, goes or changes its size, and its strip is kept
+free like a panel's. Docked windows keep their frames, are on every desktop and stay
+above other windows. They cannot be moved, resized, minimized or maximized; Alt+Tab
+passes them by, a click gives them the keyboard. Their dialogs open outside.
+
+    Mwm*deskControl*dock:   true
+    Mwm*pulseControl*dock:  true
+    Mwm*dockPlacement:      right bottom
+
+A reload takes effect at once: a window that loses its entry stays where it is as a
+normal window, and the others close up.
 
 
 ## Root menu

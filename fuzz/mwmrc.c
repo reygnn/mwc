@@ -46,6 +46,7 @@ void iconbox_config_changed(struct server *server) {}
 void desktop_config_changed(struct server *server) {}
 void icons_arrange(struct server *server) {}
 void tile_config_changed(struct server *server) {}
+void dock_config_changed(struct server *server) {}
 void wlr_scene_node_set_enabled(struct wlr_scene_node *node, bool enabled) {}
 void wlr_scene_rect_set_color(struct wlr_scene_rect *rect, const float color[4]) {}
 

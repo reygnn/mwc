@@ -407,7 +407,7 @@ kill -HUP "$pid"
 wait_for "center twice is reported" grep -q 'not "center center"' "$LOG"
 echo "Mwm*iconPlacement: left right" >>"$RC"
 kill -HUP "$pid"
-wait_for "a wrong iconPlacement is reported" grep -q 'expected an iconPlacement' "$LOG"
+wait_for "a wrong iconPlacement is reported" grep -q 'iconPlacement: expected a placement' "$LOG"
 icons_at "and the default is used" 8,640 88,640
 echo "Mwm*iconPlacement: top right" >>"$RC"
 kill -HUP "$pid"

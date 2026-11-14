@@ -84,9 +84,16 @@ for X11, and a capture of a monitor sees the current desktop only.
 
 ## The first monitor
 
-The tiling layout and the icon box use the first monitor only. In tiling mode every
+The tiling layout, the icon box and the dock use the first monitor only. In tiling mode every
 window that tiles is laid out there, also one opened on another monitor; the others
 keep only floating windows.
+
+
+## Dock
+
+The dock sits at the monitor's edge. With the icon box in the same corner, or a panel
+at the same edge, they overlap; mwc moves neither out of the other's way. A docked tool
+larger than the monitor sticks out of it.
 
 
 ## Placement by geometry

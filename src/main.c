@@ -989,6 +989,7 @@ int main(int argc, char *argv[])
 	server.layer_below = wlr_scene_tree_create(root);
 	server.layer_views = wlr_scene_tree_create(root);
 	server.layer_shell[2] = wlr_scene_tree_create(root);
+	dock_init(&server);
 	server.layer_fullscreen = wlr_scene_tree_create(root);
 	server.layer_unmanaged = wlr_scene_tree_create(root);
 	server.layer_shell[3] = wlr_scene_tree_create(root);

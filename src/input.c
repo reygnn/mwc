@@ -675,6 +675,11 @@ static bool handle_press(struct server *server, uint32_t button,
 			return true;
 	}
 
+	/* Between the docked windows: nothing to do there, and not the desktop. */
+	struct wlr_box dock;
+	if (!view && !surface && dock_rect(&dock) && wlr_box_contains_point(&dock, cx, cy))
+		return true;
+
 	if (!view) {
 		/* A panel or an X11 popup menu: not ours to handle. */
 		if (surface) {
