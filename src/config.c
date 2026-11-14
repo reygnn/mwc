@@ -1,6 +1,7 @@
 /*
- * ~/.config/mwc/mwmrc: Motif-style resource lines for colours, font and
- * wallpaper. Same syntax as mwm-x11's file, so one can be copied to the other.
+ * ~/.config/mwc/mwmrc: Motif-style resource lines for the look, the programs mwc
+ * starts, the keyboard and monitors, tiling and icons. Same syntax as mwm-x11's
+ * file, so one can be copied to the other.
  *
  *   Mwm*activeBackground:          #7387ad    focused frames
  *   Mwm*background:                #aeb2c3    other frames, menus, icons
@@ -9,6 +10,10 @@
  *   Mwm*rootBackground:            #5b7792
  *   Mwm*wallpaper:                 ~/pictures/desk.png
  *   Mwm*terminal:                  mwt        for New Window and Super+Return
+ *   Mwm*runDialog:                 mrun       the middle button on the desktop
+ *   Mwm*screenSaver:               displayOff --stars   Super+Esc
+ *   Mwm*clipboardRectangleScreenshot, clipboardScreenshot, rectangleScreenshot,
+ *     screenshot:                  screenShot -c -r     Print with Shift and Ctrl
  *   Mwm*rootMenuItem:              Files: mfm   a program in the root menu, repeatable
  *   Mwm*moveOpaque:                true       drag windows, not an outline
  *   Mwm*keyboardLayout:            de         also keyboardVariant, keyboardOptions,
@@ -20,7 +25,7 @@
  *   Mwm*tileMainWidth:             60         the main window's share, in %
  *   Mwm*DoNotTile:                 Navigator  Firefox floats in tiling mode
  *   Mwm*TileOnly:                  XTerm, mfm only these tile
- *   Mwm*XTerm*activeBackground:    #8a0303    per client
+ *   Mwm*XTerm*activeBackground:    #8a0303    per client, also background
  *   Mwm*foot*activeBackground:     gold
  *   Mwm*pulseControl*geometry:     -0-0       where its windows appear, per client
  *   Mwm*deskControl*allDesktops:   true       its windows are on every desktop

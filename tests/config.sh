@@ -281,16 +281,14 @@ rm -f "$SMOKE_DIR"/ran-*
 cat >"$RC" <<EOF
 Mwm*rootMenuItem:   Zebra: touch "$SMOKE_DIR/ran-zebra"
 EOF
-kill -HUP "$pid"
-sleep 0.3
+reload_mwc
 root_menu_open
 check "a reload changes the items" "[ \"\$(global menu sensitive | cut -c1-2)\" = ZN ]"
 WITH=$(global menu items)
 do_input key z
 wait_for "which run" ran zebra
 rm "$RC"
-kill -HUP "$pid"
-sleep 0.3
+reload_mwc
 root_menu_open
 check "without any, the menu is as before" "[ \"\$(global menu sensitive | cut -c1)\" = N ]"
 [ "$WITH" = $(($(global menu items) + 2)) ] || fail "there is no separator below the items"

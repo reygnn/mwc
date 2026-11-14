@@ -256,14 +256,8 @@ switch_to 1
 # ---- a program on every desktop: Mwm*NAME*allDesktops -------------------------------------
 
 RC=$XDG_CONFIG_HOME/mwc/mwmrc
-reload() {
-	local n
-	n=$(grep -c 'reloading the configuration' "$LOG")
-	kill -HUP "$pid"
-	wait_for "the reload" eval "[ \$(grep -c 'reloading the configuration' \"$LOG\") -gt $n ]"
-}
 printf 'Mwm*outputManagement: true\nMwm*everywhere*allDesktops: true\n' >"$RC"
-reload
+reload_mwc
 wayland everywhere size=200x100
 switch_to 2
 check "with allDesktops it stays in sight on desktop 2" "[ \"\$(get everywhere visible)\" = 1 ]"
@@ -277,7 +271,7 @@ check "its window menu is open" "[ \"\$(global menu open)\" = 1 ]"
 echo "ok: and offers no desktop to move to"
 do_input key Escape
 echo 'Mwm*outputManagement: true' >"$RC"
-reload
+reload_mwc
 check "without the entry it stays where it is in sight" \
 	"[ \"\$(get everywhere desktop)\" = 2 ] && [ \"\$(get everywhere visible)\" = 1 ]"
 switch_to 1

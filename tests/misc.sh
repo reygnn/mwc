@@ -50,6 +50,7 @@ Mwm*clipboardScreenshot:          touch $SMOKE_DIR/shot-clip
 Mwm*clipboardRectangleScreenshot: touch $SMOKE_DIR/shot-clip-rect
 Mwm*screenshot:                   touch $SMOKE_DIR/shot-file
 Mwm*rectangleScreenshot:          touch $SMOKE_DIR/shot-file-rect
+Mwm*screenSaver:                  touch $SMOKE_DIR/saver
 MWMRC
 # shot <keys> <file> <entry> <n>: the keys run that entry and nothing else, n so far.
 shot() {
@@ -64,6 +65,8 @@ shot Print shot-clip-rect clipboardRectangleScreenshot 1
 shot shift+Print shot-clip clipboardScreenshot 2
 shot ctrl+Print shot-file-rect rectangleScreenshot 3
 shot ctrl+shift+Print shot-file screenshot 4
+do_input key super+Escape
+wait_for "Super+Esc runs Mwm*screenSaver" test -e "$SMOKE_DIR/saver"
 finish
 rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 
@@ -86,8 +89,7 @@ begin
 do_input key super+Return
 wait_for "Mwm*terminal" test -e "$SMOKE_DIR/from-file-1"
 echo "Mwm*terminal: touch $SMOKE_DIR/from-file-2" >"$XDG_CONFIG_HOME/mwc/mwmrc"
-kill -HUP "$pid"
-sleep 0.5
+reload_mwc
 do_input key super+Return
 wait_for "a reload takes up a new one" test -e "$SMOKE_DIR/from-file-2"
 finish
@@ -254,8 +256,7 @@ wait "$MIDWIN" 2>/dev/null
 check "the window is gone" '[ -z "$(get midwin w)" ]'
 
 printf 'Mwm*runDialog: touch %s/ran-other\n' "$SMOKE_DIR" >"$XDG_CONFIG_HOME/mwc/mwmrc"
-kill -HUP "$pid"
-sleep 0.5
+reload_mwc
 do_input move 1200 700
 do_input click middle
 wait_for "Mwm*runDialog is what it runs" test -e "$SMOKE_DIR/ran-other"

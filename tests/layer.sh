@@ -126,9 +126,10 @@ do_input key alt+F11
 check "foot is fullscreen, over the whole output" \
 	"[ \"\$(get foot full)\" = 1 ] && [ \"\$(get foot y)\" = 0 ] && [ \"\$(get foot h)\" = 720 ]"
 sleep 0.2
-WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/shot.png"
-[ "$(build/pngtool pixel "$SMOKE_DIR/shot.png" 640 10)" != "$PANEL" ] ||
-	fail "a focused fullscreen window should cover the panel"
+WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/shot.png" || fail "a screenshot"
+got=$(build/pngtool pixel "$SMOKE_DIR/shot.png" 640 10)
+[ -n "$got" ] && [ "$got" != "$PANEL" ] ||
+	fail "a focused fullscreen window should cover the panel, not show ${got:-nothing}"
 echo "ok: a focused fullscreen window covers the panel"
 do_input key alt+Tab
 check "xterm has the focus" "[ \"\$(get XTerm active)\" = 1 ] && [ \"\$(get foot full)\" = 1 ]"
@@ -196,9 +197,10 @@ for layer in bottom background; do
 	layerc_start under layer=$layer anchor=bottom,left size=120x40 color=aa0000 popup=00aa00
 	wait_for "the popup of a panel in the $layer layer" has_event under popup-configured
 	pixel_is "it is drawn above the windows, in the right place" 50 650 00aa00
-	WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/under.png"
-	[ "$(build/pngtool pixel "$SMOKE_DIR/under.png" 50 700)" != aa0000 ] ||
-		fail "the panel itself should stay below the windows"
+	WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/under.png" || fail "a screenshot"
+	got=$(build/pngtool pixel "$SMOKE_DIR/under.png" 50 700)
+	[ -n "$got" ] && [ "$got" != aa0000 ] ||
+		fail "the panel itself should stay below the windows, not show ${got:-nothing}"
 	echo "ok: and the panel itself stays below them"
 	layerc_stop under
 done

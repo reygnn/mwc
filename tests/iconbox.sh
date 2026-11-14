@@ -98,6 +98,18 @@ do_input wheel 1
 check "not past the end" "[ \"\$(box scroll)\" = 1 ]"
 do_input wheel -1
 check "and back" "[ \"\$(box scroll)\" = 0 ]"
+# The scroll bar along the bottom: an arrow at each end, the trough between.
+SB=15
+refresh
+SBY=$(($(box y) + $(box h) - B - SB / 2))
+click_at $(($(box x) + $(box w) - B - SB / 2)) $SBY
+check "its right arrow scrolls on" "[ \"\$(box scroll)\" = 1 ]"
+click_at $(($(box x) + B + SB / 2)) $SBY
+check "its left arrow back" "[ \"\$(box scroll)\" = 0 ]"
+click_at $(($(box x) + $(box w) - B - SB - 6)) $SBY
+check "a click in the trough beyond the slider scrolls a page" "[ \"\$(box scroll)\" = 1 ]"
+click_at $(($(box x) + B + SB + 6)) $SBY
+check "and before it, back" "[ \"\$(box scroll)\" = 0 ]"
 
 # ---- the keyboard -------------------------------------------------------------------
 
@@ -131,6 +143,37 @@ do_input key alt+Tab
 check "Alt+Tab reaches the box" "[ \"\$(box focused)\" = 1 ] && [ \"\$(get two active)\" = 0 ]"
 do_input key alt+Tab
 check "and goes on to the window" "[ \"\$(box focused)\" = 0 ] && [ \"\$(get two active)\" = 1 ]"
+
+# With more windows, the box has its place among them: Alt+Tab brings the bottom one to
+# the front, the box included, and goes round.
+for app in pp qq; do
+	wayland $app size=200x150
+	mapped $app
+done
+check "the newest has the focus" "[ \"\$(get qq active)\" = 1 ]"
+focused_one() {
+	if [ "$(box focused)" = 1 ]; then echo box; return; fi
+	local a
+	for a in two pp qq; do [ "$(get $a active)" = 1 ] && echo $a; done
+}
+order=
+for i in 1 2 3 4 5; do
+	do_input key alt+Tab
+	refresh
+	order="$order $(focused_one)"
+done
+# The box was focused before the three windows came up, so it is the bottom one.
+[ "$order" = " box two pp qq box" ] || fail "Alt+Tab went$order, expected box two pp qq box"
+echo "ok: Alt+Tab goes round the windows and the box:$order"
+do_input key alt+shift+Tab
+check "Alt+Shift+Tab sends it to the back, the top window gets the focus" \
+	"[ \"\$(box focused)\" = 0 ] && [ \"\$(get qq active)\" = 1 ]"
+for app in pp qq; do
+	var="PID_$app"
+	kill "${!var}"
+	wait "${!var}" 2>/dev/null
+done
+check "the extra windows are gone" "[ -z \"\$(get qq x)\" ] && [ -z \"\$(get pp x)\" ]"
 
 # ---- maximize and minimize ------------------------------------------------------------
 
@@ -230,6 +273,19 @@ refresh
 click_at $(title_bar)
 click_at $(title_bar)
 check "its title bar takes a double click" "[ \"\$(box max)\" = 1 ]"
+do_input key Up
+check "in a column, Up chooses the icon above" "[ \"\$(box sel)\" = 0 ]"
+do_input key Down
+check "and Down the one below" "[ \"\$(box sel)\" = 1 ]"
+# A double click on an icon in the box brings its window back, as on the desktop.
+for app in one two three four; do
+	[ "$(get $app min)" = 1 ] && [ "$(get $app icon_shown)" = 1 ] && break
+done
+do_input move $(($(get $app icon_x) + 30)) $(($(get $app icon_y) + 30))
+do_input click left
+do_input click left
+check "a double click on an icon restores its window" \
+	"[ \"\$(get $app min)\" = 0 ] && [ \"\$(box n)\" = 1 ]"
 
 # ---- the box has the keyboard when its last icon goes ------------------------------------
 

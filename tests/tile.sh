@@ -315,8 +315,7 @@ do_input key super+t
 do_input key super+t
 stop c
 echo 'Mwm*DoNotTile: floaty' >"$RC"
-kill -HUP "$pid"
-sleep 0.1
+reload_mwc
 x11 tiled1 size=300x200 color=0000ff
 x11 floaty pos=600,100 size=300x200 color=00ff00
 check "DoNotTile floats" "[ \"\$(get floaty tiled)\" = 0 ] && [ \"\$(get tiled1 tiled)\" = 1 ]"
@@ -359,6 +358,30 @@ check "Wayland: a maximum size stays at the right edge" \
 stop wlim
 stop wa
 stop wb
+do_input key super+t
+finish
+
+# ---- a round that changes nothing for a window ---------------------------------------------
+
+# A window already in its cell at the size last asked of it gets no configure when the
+# layout is worked out again, here for a floating window coming and going.
+begin
+do_input key super+t
+wayland ta states=1
+wayland tb states=1
+check "both are tiled" "[ \"\$(get ta tiled)\" = 1 ] && [ \"\$(get tb tiled)\" = 1 ]"
+settle
+before=$(grep -c '^configure' "$SMOKE_DIR/ta.events")
+wayland fixed size=200x100 min=200x100 max=200x100
+check "a window that can't be resized floats" "[ \"\$(get fixed tiled)\" = 0 ]"
+stop fixed
+settle
+after=$(grep -c '^configure' "$SMOKE_DIR/ta.events")
+[ "$after" = "$before" ] ||
+	fail "the tiled window got $((after - before)) configures for a layout that didn't change"
+echo "ok: the tiled window gets no configure while its cell stays the same"
+stop ta
+stop tb
 do_input key super+t
 finish
 

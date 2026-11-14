@@ -186,8 +186,7 @@ frame_is "so Alt+F5 has nothing to restore" win 8 8 528 704
 # With opaque dragging the window has already moved when it is dropped.
 mkdir -p "$XDG_CONFIG_HOME/mwc"
 echo 'Mwm*moveOpaque: true' >"$XDG_CONFIG_HOME/mwc/mwmrc"
-kill -HUP "$pid"
-sleep 0.2
+reload_mwc
 stop win
 x11 opaque pos=100,100 size=300x200
 drag_to opaque 0 360
@@ -202,8 +201,7 @@ check "and nothing is snapped" "[ \"\$(get opaque snap)\" = 0 ] && [ \"\$(global
 do_input up left
 stop opaque
 rm "$XDG_CONFIG_HOME/mwc/mwmrc"
-kill -HUP "$pid"
-sleep 0.2
+reload_mwc
 
 # ---- Super+arrows ----------------------------------------------------------------
 

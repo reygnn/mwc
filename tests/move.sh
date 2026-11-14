@@ -293,8 +293,7 @@ kill -0 "$pid" || fail "mwc died"
 # ---- opaque dragging --------------------------------------------------------------
 
 echo 'Mwm*moveOpaque: true' >"$RC"
-kill -HUP "$pid"
-sleep 0.2
+reload_mwc
 
 x11 opaque pos=100,100 size=300x200
 settle

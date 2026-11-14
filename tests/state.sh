@@ -353,8 +353,7 @@ stop far
 echo 'Mwm*renamed*activeBackground: #00aa00' >"$SMOKE_DIR/rc"
 mkdir -p "$XDG_CONFIG_HOME/mwc"
 cp "$SMOKE_DIR/rc" "$XDG_CONFIG_HOME/mwc/mwmrc"
-kill -HUP "$pid"
-sleep 0.1
+reload_mwc
 wayland changer late_app=renamed size=300x200
 check "the new app_id is known" "[ -n \"\$(get renamed x)\" ]"
 refresh

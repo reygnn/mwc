@@ -120,6 +120,14 @@ pixel_is() {
 	fail "$what: pixel $x,$y is ${got:-unreadable}, expected $want"
 }
 
+# reload_mwc: SIGHUP, and wait until mwc has read mwmrc again, by its log line.
+reload_mwc() {
+	local n
+	n=$(grep -c 'reloading the configuration' "$LOG")
+	kill -HUP "$pid"
+	wait_for "the reload" eval "[ \$(grep -c 'reloading the configuration' \"$LOG\") -gt $n ]"
+}
+
 # ---- simulated input and window state (needs MWC_TEST_STATE) -----------------
 
 # start_vinput [width height]: the size of the whole layout, default one output.

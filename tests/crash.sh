@@ -258,8 +258,22 @@ check "both are gone" "[ -z \"\$(get bad x)\" ] && [ -z \"\$(get owner x)\" ]"
 
 # It is started with -terminate 10: 10 s after the last X client it exits. wlroots
 # only restarts it lazily when it had run for more than 5 s, which it has by now.
-sleep 6
-sleep 11
+# Ours is the one with this test's SMOKE_DIR in its environment.
+xwayland_running() {
+	local p
+	for p in /proc/[0-9]*; do
+		[ "$(cat "$p/comm" 2>/dev/null)" = Xwayland ] || continue
+		tr '\0' '\n' <"$p/environ" 2>/dev/null | grep -qx "SMOKE_DIR=$SMOKE_DIR" &&
+			return 0
+	done
+	return 1
+}
+for ((i = 0; i < 125; i++)); do
+	xwayland_running || break
+	sleep 0.2
+done
+xwayland_running && fail "Xwayland didn't exit 10 s after the last X client"
+echo "ok: Xwayland exited by itself"
 WAYLAND_DISPLAY=wayland-0 build/layerc layer=top anchor=top,left,right size=0x30 exclusive=30 \
 	>"$SMOKE_DIR/panel.events" 2>&1 &
 PID_panel=$!

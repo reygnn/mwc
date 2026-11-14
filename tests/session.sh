@@ -446,8 +446,7 @@ unset XKB_DEFAULT_VARIANT
 echo 'Mwm*keyboardLayout: de' >"$RC"
 begin
 echo 'Mwm*rootBackground: #102030' >>"$RC"
-kill -HUP "$pid"
-sleep 0.5
+reload_mwc
 grep -q 'keymap settings changed' "$LOG" && fail "a reload for a colour rebuilt the keymap"
 echo "ok: a reload for a colour leaves the keymap alone"
 echo 'Mwm*keyboardLayout: fr' >"$RC"

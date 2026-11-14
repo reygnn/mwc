@@ -912,7 +912,8 @@ void iconbox_init(struct server *server)
 	ib.logo = wlr_scene_buffer_create(ib.tree, NULL);
 	wlr_scene_node_set_enabled(&ib.chrome->node, false);
 	wlr_scene_node_set_enabled(&ib.logo->node, false);
-	/* Below every window, as if it had been lowered: Alt+Tab reaches it last. */
+	/* Below every window, as if it had been lowered: Alt+Tab, which brings the bottom
+	 * one to the front, comes to it first, Alt+Shift+Tab last. */
 	iconbox_lowered(server);
 	iconbox_config_changed(server);
 }

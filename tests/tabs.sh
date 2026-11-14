@@ -455,8 +455,7 @@ stop g3
 wayland a size=400x300
 x11 b size=300x200
 do_input key super+g
-kill -HUP "$pid"
-sleep 0.5
+reload_mwc
 shown "a group stays through a reload" b
 hidden "both of it" a
 stop a
