@@ -207,6 +207,45 @@ else
 	echo "ok: and mwc ends cleanly (no valgrind: not checked for writes into freed memory)"
 fi
 
+# ---- idle ---------------------------------------------------------------------------
+
+idles() { grep -c '^idle' "$SMOKE_DIR/watch.events"; }
+begin
+# The clients are started straight, not through a shell function: $! must be the
+# program itself, for kill.
+WAYLAND_DISPLAY=wayland-0 build/idlec watch 400 >"$SMOKE_DIR/watch.events" 2>&1 &
+PID_watch=$!
+wait_for "nobody does anything: idle" eval '[ "$(idles)" -ge 1 ]'
+do_input move 300 300
+wait_for "the pointer moves: resumed" grep -q '^resumed' "$SMOKE_DIR/watch.events"
+
+# A window asking not to be idle, as a video player does, keeps it away, also minimized.
+WAYLAND_DISPLAY=wayland-0 build/idlec inhibit >"$SMOKE_DIR/inhibit.events" 2>&1 &
+PID_inhibit=$!
+wait_for "a window inhibits idle" grep -q '^inhibiting' "$SMOKE_DIR/inhibit.events"
+check "it is mapped and has the focus" "[ \"\$(get idlec active)\" = 1 ]"
+do_input key alt+F9
+check "and minimized" "[ \"\$(get idlec min)\" = 1 ]"
+n=$(idles)
+sleep 1.2 # three times the timeout: idle would have come by now
+[ "$(idles)" = "$n" ] || fail "idle came while a window inhibited it"
+echo "ok: no idle while it inhibits, minimized or not"
+kill "$PID_inhibit"
+wait "$PID_inhibit" 2>/dev/null
+wait_for "it goes: idle comes" eval '[ "$(idles)" -gt "$n" ]'
+
+# An inhibitor on a surface that never appears doesn't count: nobody could see why the
+# screen stays on.
+do_input move 320 320
+WAYLAND_DISPLAY=wayland-0 build/idlec inhibit-unmapped >"$SMOKE_DIR/unmapped.events" 2>&1 &
+PID_unmapped=$!
+wait_for "an unmapped surface inhibits" grep -q '^inhibiting' "$SMOKE_DIR/unmapped.events"
+n=$(idles)
+wait_for "idle comes all the same" eval '[ "$(idles)" -gt "$n" ]'
+kill "$PID_unmapped" "$PID_watch"
+wait "$PID_unmapped" "$PID_watch" 2>/dev/null
+finish
+
 # ---- outputs set by a client, as a VNC or RDP server sets them ----------------------
 
 outputc() { WAYLAND_DISPLAY=wayland-0 build/outputc "$@"; }

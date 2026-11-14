@@ -227,6 +227,25 @@ build/capturec: tests/capturec.c $(CAPTUREC_GEN)
 		$(CAPTURE_PROTOS:%=build/%-v1-code.c) \
 		$(shell $(PKG_CONFIG) --libs wayland-client cairo)
 
+# Idle: watching for it as a locker does, keeping it away as a video player does.
+IDLEC_GEN = build/ext-idle-notify-v1-client.h build/ext-idle-notify-v1-code.c \
+	build/idle-inhibit-unstable-v1-client.h build/idle-inhibit-unstable-v1-code.c \
+	build/xdg-shell-client.h build/xdg-shell-code.c
+
+build/idle-inhibit-unstable-v1-client.h: | build
+	$(WAYLAND_SCANNER) client-header \
+		$(WAYLAND_PROTOCOLS)/unstable/idle-inhibit/idle-inhibit-unstable-v1.xml $@
+
+build/idle-inhibit-unstable-v1-code.c: | build
+	$(WAYLAND_SCANNER) private-code \
+		$(WAYLAND_PROTOCOLS)/unstable/idle-inhibit/idle-inhibit-unstable-v1.xml $@
+
+build/idlec: tests/idlec.c $(IDLEC_GEN)
+	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
+		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/idlec.c \
+		build/ext-idle-notify-v1-code.c build/idle-inhibit-unstable-v1-code.c \
+		build/xdg-shell-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
+
 # A window that waits for the refresh with wp_fifo_v1, as SDL 3 does.
 FIFOC_GEN = build/fifo-v1-client.h build/fifo-v1-client-code.c \
 	build/xdg-shell-client.h build/xdg-shell-code.c
@@ -265,10 +284,10 @@ tabs-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 	tests/tabs.sh
 
 session-test: mwc build/vinput build/pngtool build/xclient build/powerc build/outputc \
-		build/capturec
+		build/capturec build/idlec
 	tests/session.sh
 
-misc-test: mwc build/vinput build/pngtool build/xclient build/xdgc
+misc-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/badclient
 	tests/misc.sh
 
 state-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/badclient build/layerc
@@ -311,5 +330,6 @@ clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
-	$(CAPTUREC_GEN) $(FIFOC_GEN) build/ext-workspace-v1-client.h build/ext-workspace-v1-code.c
+	$(CAPTUREC_GEN) $(FIFOC_GEN) $(IDLEC_GEN) build/ext-workspace-v1-client.h \
+	build/ext-workspace-v1-code.c
 .PHONY: iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean

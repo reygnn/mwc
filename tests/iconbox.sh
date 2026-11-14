@@ -208,11 +208,36 @@ check "a click on the logo shows the box" "[ \"\$(box shown)\" = 1 ] && [ \"\$(b
 
 click_at $(max_button)
 check "maximized" "[ \"\$(box max)\" = 1 ]"
+# The chosen icon's label is highlighted while the box has the keyboard; leaving the
+# desktop takes that away, also when coming back.
+label_px() { # app: the middle of its icon's label
+	refresh
+	WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/label.png" || fail "a screenshot"
+	build/pngtool pixel "$SMOKE_DIR/label.png" $(($(get "$1" icon_x) + 5)) \
+		$(($(get "$1" icon_y) + ICON - 4))
+}
+chosen= other=
+for app in one two three four; do
+	[ "$(get $app icon_shown)" = 1 ] || continue
+	if [ "$(get $app icon_x)" = "$(($(box x) + B + P + $(box sel) * (ICON + 8)))" ]; then
+		chosen=$app
+	else
+		other=$app
+	fi
+done
+[ -n "$chosen" ] && [ -n "$other" ] || fail "no chosen and other icon in sight"
+check "the box has the keyboard" "[ \"\$(box focused)\" = 1 ]"
+lit=$(label_px $chosen)
+[ "$lit" != "$(label_px $other)" ] || fail "the chosen label looks like the others: $lit"
+echo "ok: the chosen icon's label is highlighted ($lit)"
 ws activate 2 >/dev/null || fail "activating desktop 2"
 check "another desktop: its own, empty box" "[ \"\$(box logo)\" = 1 ] && [ \"\$(box n)\" = 0 ]"
 ws activate 1 >/dev/null || fail "activating desktop 1"
 check "back: the icons, maximize forgotten" \
 	"[ \"\$(box shown)\" = 1 ] && [ \"\$(box n)\" = 2 ] && [ \"\$(box max)\" = 0 ]"
+[ "$(label_px $chosen)" = "$(label_px $other)" ] ||
+	fail "the label is still highlighted after the desktop switch"
+echo "ok: the highlight went with the desktop switch"
 
 # A button held down while the desktop changes: its release does nothing.
 do_input move $(min_button)
@@ -257,6 +282,22 @@ sed -i 's/useIconBox: false/useIconBox: true/' "$RC"
 kill -HUP "$pid"
 check "switched on again: the icons go into the box" \
 	"[ \"\$(box shown)\" = 1 ] && [ \"\$(box n)\" = 2 ]"
+
+# ---- from the right ------------------------------------------------------------------
+
+# "right bottom": the box at the bottom right, its first icon on the right, so going on
+# through the icons is to the left.
+echo 'Mwm*iconPlacement: right bottom' >>"$RC"
+reload_mwc
+check "the box stands at the bottom right" \
+	"[ \"\$(box shown)\" = 1 ] && [ \$((\$(box x) + \$(box w))) = $((1280 - 8)) ]"
+click_at $(title_bar)
+check "it has the keyboard" "[ \"\$(box focused)\" = 1 ]"
+first=$(box sel)
+do_input key Left
+check "Left goes on to the next icon" "[ \"\$(box sel)\" = $((first + 1)) ]"
+do_input key Right
+check "Right back" "[ \"\$(box sel)\" = $first ]"
 
 # ---- a column with a large font -------------------------------------------------------
 

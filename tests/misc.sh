@@ -70,6 +70,24 @@ wait_for "Super+Esc runs Mwm*screenSaver" test -e "$SMOKE_DIR/saver"
 finish
 rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 
+# ---- the clipboard ------------------------------------------------------------------
+
+# Copied in an X11 program, pasted in a Wayland one: all of it, through Xwayland's
+# selection bridge.
+begin
+DISPLAY=$X_DISPLAY build/xclient class=owner clipboard=1 >"$SMOKE_DIR/owner.events" 2>&1 &
+PID_owner=$!
+wait_for "the X11 program owns the clipboard" grep -q '^owner' "$SMOKE_DIR/owner.events"
+WAYLAND_DISPLAY=wayland-0 build/badclient paste >"$SMOKE_DIR/paste.events" 2>&1 &
+PID_paste=$!
+wait_for "the Wayland program pastes it" grep -q '^pasted' "$SMOKE_DIR/paste.events"
+got=$(sed -n 's/^pasted //p' "$SMOKE_DIR/paste.events" | head -1)
+[ "$got" = 200000 ] || fail "pasted $got bytes, the X11 program offered 200000"
+echo "ok: all 200000 bytes arrive"
+kill "$PID_paste" "$PID_owner"
+wait "$PID_paste" "$PID_owner" 2>/dev/null
+finish
+
 # ---- the terminal -----------------------------------------------------------------
 
 export MWC_TERMINAL="touch $SMOKE_DIR/started-1"
