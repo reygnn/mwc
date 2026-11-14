@@ -73,3 +73,29 @@ TODO
   Mwm*outputManagement bleibt nötig. src/fifo.c fällt zugunsten von wlroots'
   wlr_fifo_manager_v1 weg (vorher prüfen, dass tests/fifo.sh weiter besteht).
   Ein eigener Branch, mit allen API-Änderungen von 0.19 auf 0.20.
+
+* Dock für Werkzeuge wie deskControl und pulseControl (Idee 2026-11-14), wie
+  FvwmButtons sie früher "geschluckt" hat. Heute stehen sie per geometry mit
+  ausgerechneten Abständen (-319-0), die bei jeder Größenänderung nachgezogen
+  werden müssen.
+  - Mwm*NAME*dock: true nimmt die Fenster eines Programms ins Dock. Die
+    Werkzeuge bleiben eigene Fenster und merken nichts davon; mwc übernimmt nur
+    ihre Lage.
+  - Eine Reihe oder Spalte, nebeneinander in der Reihenfolge der mwmrc-Zeilen,
+    gestellt wie die Icon Box: eigene Einstellung Mwm*dockPlacement in der
+    Schreibweise von iconPlacement, Vorgabe "right bottom" (unten, von rechts
+    nach links wachsend). Neu angeordnet, wenn ein Werkzeug erscheint, geht
+    oder seine Größe ändert.
+  - Rahmen: jedes Werkzeug behält seinen, und das Dock bekommt einen Motif-
+    Rahmen um alle.
+  - Auf allen Desktops, und der Platz wird freigehalten wie bei Panels:
+    maximierte und gekachelte Fenster bleiben draußen.
+  - Beide Werkzeuge sind heute gleich hoch; bei verschiedenen Höhen unten
+    bündig (bei einer Spalte: rechts oder links bündig, je nach Kante).
+  Zu klären: ob Dock-Fenster sich verschieben, minimieren oder in der Größe
+  ändern lassen (wohl nicht, wie die Icon Box); ob der Dock-Rahmen eine
+  Titelleiste hat; was bei Alt+Tab mit Dock-Fenstern geschieht; Dock und Icon
+  Box in derselben Ecke; Reload, der dock an- oder abschaltet.
+  Abnahme: ein Test mit zwei xdgc und einem xclient im Dock (Reihenfolge,
+  Lage, Neuanordnung bei Größenänderung und Ende, freigehaltener Platz beim
+  Maximieren), README und CAVEATS wo nötig. Eigener Branch feature/dock.
