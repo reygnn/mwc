@@ -94,9 +94,10 @@ mwc: $(OBJ)
 # make check: the whole test suite against a build with AddressSanitizer and
 # UndefinedBehaviorSanitizer, in build/asan beside the normal one. A finding aborts
 # mwc, which the test then reports; its report is in that test's log. Leaks are not
-# checked: wlroots and Pango keep memory until exit.
+# checked: wlroots and Pango keep memory until exit. Warnings are errors here, not in
+# the normal build, where a newer compiler's new warning would only stop people.
 SAN_FLAGS = -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined \
-	-fno-sanitize-recover=undefined
+	-fno-sanitize-recover=undefined -Werror
 SAN_OBJ = $(SRC:src/%.c=build/asan/%.o) $(PROTO_CODE:build/%.c=build/asan/%.o)
 
 build/asan: | build

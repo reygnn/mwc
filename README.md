@@ -423,7 +423,8 @@ state mwc writes and pixels in screenshots. None of this tests real input hardwa
 DRM/KMS or VT switching; use a VM or a free TTY for those.
 
 `make check` runs the same tests against a build with AddressSanitizer and
-UndefinedBehaviorSanitizer, `build/mwc-asan`, beside the normal one. A finding aborts
+UndefinedBehaviorSanitizer, `build/mwc-asan`, beside the normal one, where warnings
+are errors. A finding aborts
 mwc and fails that test; the report is in its log under `build/`. Leaks are not
 checked.
 
