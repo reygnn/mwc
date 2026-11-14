@@ -92,10 +92,17 @@ TODO
     maximierte und gekachelte Fenster bleiben draußen.
   - Beide Werkzeuge sind heute gleich hoch; bei verschiedenen Höhen unten
     bündig (bei einer Spalte: rechts oder links bündig, je nach Kante).
-  Zu klären: ob Dock-Fenster sich verschieben, minimieren oder in der Größe
-  ändern lassen (wohl nicht, wie die Icon Box); ob der Dock-Rahmen eine
-  Titelleiste hat; was bei Alt+Tab mit Dock-Fenstern geschieht; Dock und Icon
-  Box in derselben Ecke; Reload, der dock an- oder abschaltet.
+  - Dock-Fenster lassen sich nicht verschieben, minimieren oder in der Größe
+    ändern. Der Dock-Rahmen hat keine Titelleiste.
+  - Alt+Tab übergeht sie; die Tastatur bekommen sie nur per Klick.
+  - Dock und Icon Box in derselben Ecke sind ein Fehler des Benutzers: mwc
+    fängt das nicht ab, CAVEATS sagt es.
+  - Reload: ein neues dock: true holt offene Fenster sofort ins Dock. Fällt
+    der Eintrag weg, bleibt das Fenster, wo es ist, als normales Fenster mit
+    seinem Rahmen; der Platz wird frei, die anderen rücken auf. Es bleibt auf
+    dem Desktop, auf dem es zu sehen ist, außer es hat allDesktops (wie beim
+    Wegfall von allDesktops). Ein geändertes dockPlacement stellt das Dock
+    sofort in die neue Ecke.
   Abnahme: ein Test mit zwei xdgc und einem xclient im Dock (Reihenfolge,
   Lage, Neuanordnung bei Größenänderung und Ende, freigehaltener Platz beim
   Maximieren), README und CAVEATS wo nötig. Eigener Branch feature/dock.
