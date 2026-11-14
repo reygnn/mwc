@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpixman-1-dev libcairo2-dev libpango1.0-dev xwayland \
     libxcb1-dev libxcb-icccm4-dev libx11-dev \
     xterm foot grim xkb-data fonts-dejavu-core procps valgrind \
+    clang libclang-rt-dev \
     && rm -rf /var/lib/apt/lists/*
 RUN useradd -m tester
 USER tester
