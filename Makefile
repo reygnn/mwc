@@ -122,6 +122,19 @@ check: build/mwc-asan
 	@if command -v $(FUZZ_CC) >/dev/null; then $(MAKE) fuzz-replay; \
 	else echo "make check: no $(FUZZ_CC), the fuzz inputs in fuzz/ were not replayed"; fi
 
+# make valgrind: the tests against mwc in valgrind's memcheck (tests/valgrind-mwc),
+# for what the sanitizers don't see: reads of uninitialized memory, and errors inside
+# wlroots, Pango and cairo, which aren't built with them. Many times slower, so not
+# part of make test or make check, and without the scripts that go by timing.
+# Left out, as they go by timing a slowed-down mwc can't keep: layer, move, fifo, rdp,
+# and state, whose clients act on timers of their own.
+VALGRIND_TESTS = smoke input-test wallpaper-test config-test window-test snap-test \
+	outputs-test tile-test crash-test pointer-test misc-test session-test \
+	tabs-test desktop-test iconbox-test
+
+valgrind: mwc
+	MWC=tests/valgrind-mwc MWC_VALGRIND=1 MWC_TIMEOUT=90 $(MAKE) $(VALGRIND_TESTS)
+
 # Fuzzing the mwmrc parser with libFuzzer, which comes with clang (see distrobox.ini).
 # make fuzz runs for FUZZ_TIME seconds, from the inputs kept in fuzz/corpus/mwmrc and
 # fuzz/findings; what it finds new goes to build/fuzz-corpus, a crash to build/ as
@@ -384,4 +397,4 @@ clean:
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN) $(IDLEC_GEN) build/ext-workspace-v1-client.h \
 	build/ext-workspace-v1-code.c
-.PHONY: check fuzz fuzz-replay iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: valgrind check fuzz fuzz-replay iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean

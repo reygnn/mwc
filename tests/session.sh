@@ -34,9 +34,8 @@ output_is() { # description name x y w h [scale]
 		[ \"\$(global output_$2 w)\" = $5 ] && [ \"\$(global output_$2 h)\" = $6 ] && \
 		[ \"\$(global output_$2 scale)\" = ${7:-100} ]"
 }
-log_has() {
-	grep -q -- "$2" "$LOG" || fail "$1: no \"$2\" in the log"
-	echo "ok: $1"
+log_has() { # description text: polling, mwc may get there after the check began
+	wait_for "$1" grep -q -- "$2" "$LOG"
 }
 
 # ---- what programs find ----------------------------------------------------------
@@ -172,8 +171,10 @@ finish
 # such write (its report lands in the log): without valgrind it only checks that mwc
 # ends cleanly.
 echo 'Mwm*outputManagement: true' >"$RC"
-# Not with a sanitizer build (make check): ASan and valgrind don't go together.
-if command -v valgrind >/dev/null && [ -z "${MWC_SANITIZED-}" ]; then
+# Not with a sanitizer build (make check), where valgrind doesn't work, nor under
+# make valgrind, which runs mwc in it already.
+if command -v valgrind >/dev/null && [ -z "${MWC_SANITIZED-}" ] &&
+		[ -z "${MWC_VALGRIND-}" ]; then
 	cat >"$SMOKE_DIR/mwc-valgrind" <<VG
 #!/bin/sh
 exec valgrind -q --error-exitcode=99 "$(readlink -f "$MWC")" "\$@"
@@ -485,6 +486,8 @@ unset XKB_DEFAULT_VARIANT
 # A new keymap resets the locks, so only a change brings one.
 echo 'Mwm*keyboardLayout: de' >"$RC"
 begin
+# The virtual keyboard's keymap first: before it, any reload counts as a change.
+log_has "the keymap is compiled" 'keymap compiled, layout German'
 echo 'Mwm*rootBackground: #102030' >>"$RC"
 reload_mwc
 grep -q 'keymap settings changed' "$LOG" && fail "a reload for a colour rebuilt the keymap"

@@ -2,9 +2,9 @@
 # Each test logs to build/<name>.log; the log is where to look after a failure.
 set -u
 
-# make check sets it to the sanitizer build.
+# make check and make valgrind set these.
 MWC=${MWC:-./mwc}
-TIMEOUT=15
+TIMEOUT=${MWC_TIMEOUT:-15} # seconds a wait may take
 
 mkdir -p build
 [ -x "$MWC" ] || { echo "FAIL: $MWC not built"; exit 1; }

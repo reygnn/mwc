@@ -1,0 +1,5 @@
+#!/bin/sh
+# mwc in valgrind's memcheck, for make valgrind. An error makes it exit with 99 when
+# it ends, which fails the test. Leaks are not checked.
+exec valgrind -q --error-exitcode=99 --leak-check=no --track-origins=yes \
+	"$(dirname "$0")/../mwc" "$@"

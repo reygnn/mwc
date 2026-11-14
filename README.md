@@ -428,6 +428,11 @@ are errors. A finding aborts
 mwc and fails that test; the report is in its log under `build/`. Leaks are not
 checked.
 
+`make valgrind` runs the tests against mwc in valgrind's memcheck, for reads of
+uninitialized memory and errors inside wlroots, Pango and cairo, which the sanitizers
+don't see. It is many times slower and leaves out the tests that go by timing: layer,
+move, fifo, rdp and state.
+
 The state file and the virtual input devices exist only with `MWC_TEST_STATE` set (the
 devices also with `MWC_VIRTUAL_INPUT=1`, for wayrdp), because those protocols let a
 client type for the user.
