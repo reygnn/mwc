@@ -945,6 +945,7 @@ int main(int argc, char *argv[])
 	server.layer_shell[0] = wlr_scene_tree_create(root);
 	server.layer_shell[1] = wlr_scene_tree_create(root);
 	server.layer_icons = wlr_scene_tree_create(root);
+	iconbox_init(&server);
 	server.layer_below = wlr_scene_tree_create(root);
 	server.layer_views = wlr_scene_tree_create(root);
 	server.layer_shell[2] = wlr_scene_tree_create(root);

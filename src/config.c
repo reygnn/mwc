@@ -26,6 +26,9 @@
  *   Mwm*deskControl*allDesktops:   true       its windows are on every desktop
  *   Mwm*iconPlacement:             top right  icons from the top right corner down
  *   Mwm*iconPlacement:             center right  a column centred on the right edge
+ *   Mwm*useIconBox:                true       icons in a box, see iconbox.c
+ *   Mwm*iconBoxSize:               10         its length at most, in icons
+ *   Mwm*iconBoxLogo:               ~/logo.png  on its tile while it is empty
  *
  * The client part matches an X11 window's WM_CLASS instance or class name, or
  * a Wayland client's app_id, ignoring case. Colours are #rrggbb, colour names
@@ -551,6 +554,7 @@ void config_reload(struct server *server)
 			view->all_desktops = config_view_all_desktops(view);
 	}
 	desktop_config_changed(server);
+	iconbox_config_changed(server);
 	/* iconPlacement may have changed: every icon finds its slot anew. */
 	wl_list_for_each(view, &server->views, link)
 		view->icon_placed = false;

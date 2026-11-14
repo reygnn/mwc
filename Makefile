@@ -25,7 +25,7 @@ MWC_LIBS = $(shell $(PKG_CONFIG) --libs $(PKGS))
 SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
 	src/input.c src/draw.c src/wallpaper.c src/config.c src/layer.c \
 	src/hints.c src/outline.c src/snap.c src/tile.c src/tabs.c src/testhook.c \
-	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c
+	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c src/iconbox.c
 # Protocols mwc implements itself, not through wlroots: their glue code too.
 PROTO_CODE = build/fifo-v1-protocol.c build/ext-workspace-v1-protocol.c
 OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)
@@ -77,6 +77,14 @@ build/wlr-output-power-management-unstable-v1-protocol.h: protocols/wlr-output-p
 
 build/%.o: src/%.c src/mwc.h $(PROTO) | build
 	$(CC) $(MWC_CFLAGS) $(CFLAGS) -c -o $@ $<
+
+# The icon box's logo, built in: a C array of the PNG's bytes.
+build/logo.h: data/logo.png | build
+	{ echo 'static const unsigned char logo_png[] = {'; \
+	  od -An -v -tx1 $< | sed 's/ *\([0-9a-f][0-9a-f]\)/0x\1,/g'; \
+	  echo '};'; } >$@
+
+build/iconbox.o: build/logo.h
 
 build/main.o: src/version.h
 
@@ -287,6 +295,9 @@ move-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 window-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 	tests/window.sh
 
+iconbox-test: mwc build/vinput build/pngtool build/xdgc build/workspacec
+	tests/iconbox.sh
+
 layer-test: mwc build/vinput build/pngtool build/layerc
 	tests/layer.sh
 
@@ -294,11 +305,11 @@ config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
 test: smoke input-test wallpaper-test config-test layer-test window-test \
-	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test desktop-test
+	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test desktop-test iconbox-test
 
 clean:
 	rm -rf build mwc
 
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN) build/ext-workspace-v1-client.h build/ext-workspace-v1-code.c
-.PHONY: desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean

@@ -108,6 +108,7 @@ void desktop_switch(struct server *server, int n)
 	if (server->menu.open)
 		menu_close(server);
 	server->desktop = n;
+	iconbox_desktop_changed(server);
 	bool lost = true;
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {

@@ -208,7 +208,21 @@ static struct view *plan(struct server *server, struct view **list, int n,
 	const struct config_icon_placement *p = config_icon_placement();
 	int left = a.x, right = a.x + a.width, top_edge = a.y, bottom = a.y + a.height;
 	struct view *v;
+	struct wlr_box ibox;
+	if (iconbox_rect(server, &ibox)) {
+		/* The icon box, or its logo, the same way. */
+		if (p->horizontal && p->from_bottom && ibox.y < bottom)
+			bottom = ibox.y;
+		else if (p->horizontal && !p->from_bottom && ibox.y + ibox.height > top_edge)
+			top_edge = ibox.y + ibox.height;
+		else if (!p->horizontal && p->from_right && ibox.x < right)
+			right = ibox.x;
+		else if (!p->horizontal && !p->from_right && ibox.x + ibox.width > left)
+			left = ibox.x + ibox.width;
+	}
 	wl_list_for_each(v, &server->views, link) {
+		if (iconbox_enabled())
+			break;
 		if (!v->minimized || v->off_desktop || !v->icon_placed || v->icon_x < a.x ||
 				v->icon_x >= a.x + a.width || v->icon_y < a.y ||
 				v->icon_y >= a.y + a.height)

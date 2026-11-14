@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <cairo.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_buffer.h>
@@ -250,6 +251,7 @@ struct view {
 	int icon_x, icon_y;
 	bool icon_placed;
 	long icon_seq;   /* the order it first became an icon in, see icons_arrange() */
+	long raise_seq;  /* higher: raised later; for the icon box in Alt+Tab, see iconbox.c */
 
 	enum frame_part pressed; /* button currently held down, for drawing */
 	bool pressed_inside;
@@ -483,6 +485,7 @@ struct server {
 	struct wl_listener layout_change;
 
 	int cascade;
+	long raise_hi, raise_lo; /* raise_seq counters, see view_raise_one() */
 	bool tiling;     /* tiling mode on */
 	int desktop;     /* the current one, see desktop.c */
 	long tile_front; /* tile_seq of the newest window, which leads */
@@ -890,6 +893,39 @@ struct wlr_output;
 void workspace_output_new(struct wlr_output *output);
 /* An output leaves the layout: its wl_output objects are about to go inert. */
 void workspace_output_leaving(struct wlr_output *output);
+
+/* ---- iconbox.c ------------------------------------------------------------ */
+
+/* Mwm*useIconBox: the icons in a box of their own, see iconbox.c. */
+bool iconbox_enabled(void);
+void iconbox_init(struct server *server);
+/* Places the box and the icons in it; icons_arrange() hands over to this. */
+void iconbox_arrange(struct server *server);
+/* The icon is the one chosen with the arrows, and the box has the keyboard. */
+bool iconbox_selected(struct view *view);
+bool iconbox_focusable(struct server *server);
+bool iconbox_has_focus(struct server *server);
+void iconbox_focus(struct server *server);
+void iconbox_blur(struct server *server);
+void iconbox_desktop_changed(struct server *server);
+/* After a reload, before icons_arrange(). */
+void iconbox_config_changed(struct server *server);
+/* Alt+Tab would give the focus to next: whether the box comes first. */
+bool iconbox_cycle_takes(struct server *server, struct view *next, bool backwards);
+/* Alt+Shift+Tab sent it to the back. */
+void iconbox_lowered(struct server *server);
+bool iconbox_key(struct server *server, uint32_t mods, uint32_t sym);
+bool iconbox_contains(struct server *server, double lx, double ly);
+bool iconbox_title_at(struct server *server, double lx, double ly);
+/* double_click: the second click of one on its title bar. */
+bool iconbox_press(struct server *server, uint32_t button, double lx, double ly,
+	bool double_click);
+bool iconbox_release(struct server *server, uint32_t button, double lx, double ly);
+bool iconbox_wheel(struct server *server, double lx, double ly, int32_t discrete);
+void iconbox_icon_pressed(struct view *view);
+/* Where it is, for the tiling layout to leave free; false when there is none. */
+bool iconbox_rect(struct server *server, struct wlr_box *out);
+void iconbox_state(struct server *server, FILE *f);
 
 /* ---- fifo.c --------------------------------------------------------------- */
 

@@ -87,7 +87,7 @@ monitor off and on, and the windows in every state follow the sizes connections
 ask for.
 
 `make desktop-test` switches desktops the way a tool does (`tests/workspacec.c`) and
-moves windows between them.
+moves windows between them. `make iconbox-test` walks through the icon box.
 
 `make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
 switching: use a VM or a free TTY for those.
@@ -104,6 +104,7 @@ mwc.
 | Menu button        | click: window menu · double-click: close            |
 | Border / corners   | resize                                              |
 | Icon               | double-click: restore · btn3: window menu           |
+| Icon box           | wheel: scroll · title double-click: maximize · logo: show the box |
 | Desktop            | btn1/btn3: root menu · btn2: run dialog             |
 | Alt + btn1/2/3     | move / lower / resize anywhere in the window        |
 
@@ -230,6 +231,26 @@ Mwm*iconPlacement:  center right
 
 In tiling mode the layout leaves out the strip the icons fill, up to their innermost
 row or column. A reload puts all icons in their places again.
+
+`useIconBox: true` puts the icons of the current desktop into a box instead, one row
+or column where `iconPlacement` would start them, on the first monitor. Unlike mwm's,
+the box is as long as its icons need, up to `iconBoxSize` icons (default 10, or what
+fits on the edge), and gets a scroll bar from there. Without icons it is a tile the
+size of an icon with the mwc logo, which `iconBoxLogo` can replace with a PNG of your
+own (shown at up to 60×60). The box can't be moved or resized and has no window menu:
+
+- its maximize button switches between the full length and what the icons need, its
+  minimize button turns it into the logo tile, and a click on the tile brings it back
+- the wheel over it and the scroll bar's arrows and trough scroll it
+- a click into it, or Alt+Tab, gives it the keyboard: the arrows choose an icon,
+  Enter restores its window
+- each desktop has its own; the layout leaves its strip free in tiling mode
+
+```
+Mwm*useIconBox:   true
+Mwm*iconBoxSize:  8
+Mwm*iconBoxLogo:  ~/.config/mwc/logo.png
+```
 
 The file is read at startup, on `SIGHUP` and on "Reload" in the root menu. A
 Wayland compositor can't restart and keep its windows, so "Reload" only

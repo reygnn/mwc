@@ -459,7 +459,14 @@ void icon_render(struct view *view)
 	set_source(cr, s->bg);
 	cairo_paint(cr);
 	draw_bevel(cr, 0, 0, ICON_W, img_h, 2, s, false);
-	draw_bevel(cr, 0, img_h, ICON_W, LABEL_H, 2, s, false);
+	/* Chosen with the arrows in the icon box: the label sunken and highlighted. */
+	bool selected = iconbox_selected(view);
+	if (selected) {
+		set_source(cr, theme.select);
+		cairo_rectangle(cr, 0, img_h, ICON_W, LABEL_H);
+		cairo_fill(cr);
+	}
+	draw_bevel(cr, 0, img_h, ICON_W, LABEL_H, 2, s, selected);
 
 	/* Default icon image: a miniature Motif window in a sunken well. */
 	int wx = 6, wy = 6, ww = ICON_W - 12, wh = img_h - 12;
@@ -617,6 +624,10 @@ void icons_arrange(struct server *server)
 	wl_list_for_each_reverse(v, &server->views, link) {
 		if (v->minimized && !v->icon_seq)
 			v->icon_seq = ++seq;
+	}
+	if (iconbox_enabled()) {
+		iconbox_arrange(server);
+		return;
 	}
 	if (config_icon_placement()->center) {
 		icons_arrange_centred(server);

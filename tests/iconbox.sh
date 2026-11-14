@@ -1,0 +1,195 @@
+#!/bin/bash
+# Headless test of the icon box (Mwm*useIconBox): the logo while it is empty, growing
+# with its icons up to iconBoxSize, scrolling, maximize and minimize, the keyboard,
+# Alt+Tab, desktops, tiling and switching it off by a reload.
+# Output goes to build/iconbox.log, a screenshot of the box to build/iconbox.png.
+# Exits non-zero on failure.
+LOG=build/iconbox.log
+. "$(dirname "$0")/lib.sh"
+
+require_tools grim
+for tool in build/vinput build/pngtool build/xdgc build/workspacec; do
+	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
+done
+
+RC=$XDG_CONFIG_HOME/mwc/mwmrc
+mkdir -p "$(dirname "$RC")"
+cat >"$RC" <<'EOF'
+Mwm*useIconBox: true
+Mwm*iconBoxSize: 3
+EOF
+
+export MWC_TEST_STATE=$SMOKE_DIR/state
+start_mwc 'exec sleep 300'
+start_vinput
+refresh
+T=$(global theme title)
+B=3 # bevel 2 + 1: a frame without resize handles
+P=4 # half the gap between icons
+ICON=72
+
+box() { global iconbox "$1"; }
+wayland() {
+	local name=$1
+	shift
+	WAYLAND_DISPLAY=wayland-0 build/xdgc app="$name" "$@" >"$SMOKE_DIR/$name.events" 2>&1 &
+	eval "PID_$name=$!"
+}
+mapped() { check "$1 is mapped" "[ -n \"\$(get $1 x)\" ]"; }
+ws() { WAYLAND_DISPLAY=wayland-0 build/workspacec "$@"; }
+# Focus a window by a click on its title bar, then minimize it with Alt+F9.
+minimize() {
+	refresh
+	do_input move $(($(get "$1" x) + 60)) $(($(get "$1" y) + B + 5))
+	do_input click left
+	check "$1 has the focus" "[ \"\$(get $1 active)\" = 1 ]"
+	do_input key alt+F9
+	check "$1 is an icon" "[ \"\$(get $1 min)\" = 1 ]"
+}
+click_at() { do_input move "$1" "$2"; do_input click left; }
+# The middle of the box's minimize and maximize buttons, and of its title.
+min_button() { refresh; echo $(($(box x) + $(box w) - B - T - T / 2)) $(($(box y) + B + T / 2)); }
+max_button() { refresh; echo $(($(box x) + $(box w) - B - T / 2)) $(($(box y) + B + T / 2)); }
+title_bar() { refresh; echo $(($(box x) + 20)) $(($(box y) + B + T / 2)); }
+
+# ---- empty: the logo --------------------------------------------------------------
+
+check "empty: the logo, bottom left as the first icon" \
+	"[ \"\$(box logo)\" = 1 ] && [ \"\$(box shown)\" = 0 ] && [ \"\$(box x)\" = 8 ] && \
+	 [ \"\$(box y)\" = $((720 - 8 - ICON)) ] && [ \"\$(box w)\" = $ICON ]"
+
+# ---- growing --------------------------------------------------------------------
+
+for app in one two three four; do
+	wayland $app size=300x200
+	mapped $app
+done
+minimize one
+check "one icon: the box with its frame, bottom left" \
+	"[ \"\$(box shown)\" = 1 ] && [ \"\$(box logo)\" = 0 ] && [ \"\$(box n)\" = 1 ] && \
+	 [ \"\$(box x)\" = 8 ] && [ \$((\$(box y) + \$(box h))) = $((720 - 8)) ] && \
+	 [ \"\$(box w)\" = $((2 * B + 2 * P + ICON)) ]"
+check "the icon is in the box" \
+	"[ \"\$(get one icon_shown)\" = 1 ] && [ \"\$(get one icon_x)\" = $((8 + B + P)) ] && \
+	 [ \"\$(get one icon_y)\" = \$((\$(box y) + B + T + P)) ]"
+minimize two
+check "two icons: one slot longer" "[ \"\$(box w)\" = $((2 * B + 2 * P + 2 * ICON + 8)) ]"
+check "the second icon right of the first" \
+	"[ \"\$(get two icon_x)\" = $((8 + B + P + ICON + 8)) ]"
+minimize three
+H3=$(box h)
+minimize four
+check "four icons, room for three: the box scrolls" \
+	"[ \"\$(box n)\" = 4 ] && [ \"\$(box visible)\" = 3 ] && \
+	 [ \"\$(box w)\" = $((2 * B + 2 * P + 3 * ICON + 16)) ] && [ \"\$(box h)\" -gt $H3 ]"
+check "the fourth icon is out of sight" \
+	"[ \"\$(get four icon_shown)\" = 0 ] && [ \"\$(get one icon_shown)\" = 1 ]"
+WAYLAND_DISPLAY=wayland-0 grim "build/iconbox.png" 2>/dev/null
+
+# ---- scrolling --------------------------------------------------------------------
+
+refresh
+do_input move $(($(box x) + 40)) $(($(box y) + B + T + 30))
+do_input wheel 1
+check "the wheel scrolls by one icon" \
+	"[ \"\$(box scroll)\" = 1 ] && [ \"\$(get one icon_shown)\" = 0 ] && \
+	 [ \"\$(get four icon_shown)\" = 1 ]"
+do_input wheel 1
+check "not past the end" "[ \"\$(box scroll)\" = 1 ]"
+do_input wheel -1
+check "and back" "[ \"\$(box scroll)\" = 0 ]"
+
+# ---- the keyboard -------------------------------------------------------------------
+
+click_at $(title_bar)
+check "a click on the box gives it the keyboard" \
+	"[ \"\$(box focused)\" = 1 ] && [ \"\$(global focus any)\" = 0 ]"
+do_input key Right
+check "Right chooses the next icon" "[ \"\$(box sel)\" = 1 ]"
+do_input key Right
+do_input key Right
+check "and scrolls it into sight" "[ \"\$(box sel)\" = 3 ] && [ \"\$(box scroll)\" = 1 ]"
+do_input key Left
+do_input key Left
+do_input key Return
+check "Enter restores the chosen window" \
+	"[ \"\$(get two min)\" = 0 ] && [ \"\$(get two active)\" = 1 ] && [ \"\$(box focused)\" = 0 ]"
+check "the box closes up" "[ \"\$(box n)\" = 3 ] && [ \"\$(box visible)\" = 3 ]"
+
+# ---- Alt+Tab ------------------------------------------------------------------------
+
+do_input key alt+Tab
+check "Alt+Tab reaches the box" "[ \"\$(box focused)\" = 1 ] && [ \"\$(get two active)\" = 0 ]"
+do_input key alt+Tab
+check "and goes on to the window" "[ \"\$(box focused)\" = 0 ] && [ \"\$(get two active)\" = 1 ]"
+
+# ---- maximize and minimize ------------------------------------------------------------
+
+# Two icons left, so that maximize has room to grow into. Not so soon after the last
+# click on the title bar that this one makes a double click.
+sleep 0.6
+click_at $(title_bar)
+do_input key Return
+check "two icons left" "[ \"\$(box n)\" = 2 ] && [ \"\$(box visible)\" = 2 ]"
+W2=$(box w)
+W3=$((2 * B + 2 * P + 3 * ICON + 16))
+click_at $(max_button)
+check "maximize: the full length, empty slots included" \
+	"[ \"\$(box max)\" = 1 ] && [ \"\$(box visible)\" = 3 ] && [ \"\$(box w)\" = $W3 ]"
+click_at $(max_button)
+check "and back to what the icons need" "[ \"\$(box max)\" = 0 ] && [ \"\$(box w)\" = $W2 ]"
+click_at $(min_button)
+check "minimize: the logo, icons hidden" \
+	"[ \"\$(box logo)\" = 1 ] && [ \"\$(box min)\" = 1 ] && [ \"\$(box w)\" = $ICON ]"
+for app in one two three four; do
+	[ "$(get $app min)" = 1 ] && [ "$(get $app icon_shown)" = 1 ] && fail "$app's icon shows"
+done
+click_at $((8 + 30)) $((720 - 8 - 30))
+check "a click on the logo shows the box" "[ \"\$(box shown)\" = 1 ] && [ \"\$(box min)\" = 0 ]"
+
+# ---- desktops -------------------------------------------------------------------------
+
+click_at $(max_button)
+check "maximized" "[ \"\$(box max)\" = 1 ]"
+ws activate 2 >/dev/null || fail "activating desktop 2"
+check "another desktop: its own, empty box" "[ \"\$(box logo)\" = 1 ] && [ \"\$(box n)\" = 0 ]"
+ws activate 1 >/dev/null || fail "activating desktop 1"
+check "back: the icons, maximize forgotten" \
+	"[ \"\$(box shown)\" = 1 ] && [ \"\$(box n)\" = 2 ] && [ \"\$(box max)\" = 0 ]"
+
+# ---- tiling ----------------------------------------------------------------------------
+
+do_input key super+t
+# Every window that isn't an icon ends above the box.
+above_box() {
+	local a
+	for a in one two three four; do
+		[ "$(get $a min)" = 1 ] && continue
+		[ $(($(get $a y) + $(get $a fh))) -le "$(box y)" ] || return 1
+	done
+}
+check "tiling: the windows end above the box" "[ \"\$(global tiling on)\" = 1 ] && above_box"
+do_input key super+t
+
+# ---- reload ----------------------------------------------------------------------------
+
+sed -i 's/useIconBox: true/useIconBox: false/' "$RC"
+kill -HUP "$pid"
+# Every icon is shown.
+icons_shown() {
+	local a
+	for a in one two three four; do
+		[ "$(get $a min)" = 1 ] || continue
+		[ "$(get $a icon_shown)" = 1 ] || return 1
+	done
+}
+check "switched off: no box, the icons on the desktop again" \
+	"[ \"\$(box on)\" = 0 ] && [ \"\$(box shown)\" = 0 ] && [ \"\$(box logo)\" = 0 ] && icons_shown"
+sed -i 's/useIconBox: false/useIconBox: true/' "$RC"
+kill -HUP "$pid"
+check "switched on again: the icons go into the box" \
+	"[ \"\$(box shown)\" = 1 ] && [ \"\$(box n)\" = 2 ]"
+
+stop_vinput
+stop_mwc
+echo "PASS"

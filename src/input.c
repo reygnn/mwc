@@ -625,9 +625,19 @@ static bool handle_press(struct server *server, uint32_t button,
 	struct view *view = view_at(server, cx, cy, &surface, &sx, &sy,
 		&part, &edges, &on_icon);
 
+	/* The icon box's frame, scroll bar and logo; its icons are the views' own. Its
+	 * title bar counts as a part of no window for double clicks. */
+	if (!view && !surface && iconbox_contains(server, cx, cy)) {
+		bool dbl = button == BTN_LEFT && is_double_click(server, NULL,
+			iconbox_title_at(server, cx, cy) ? PART_TITLE : PART_NONE, time);
+		if (iconbox_press(server, button, cx, cy, dbl))
+			return true;
+	}
+
 	if (!view) {
 		/* A panel or an X11 popup menu: not ours to handle. */
 		if (surface) {
+			iconbox_blur(server);
 			layer_handle_click(server, surface);
 			return false;
 		}
@@ -645,6 +655,7 @@ static bool handle_press(struct server *server, uint32_t button,
 	}
 
 	if (on_icon) {
+		iconbox_icon_pressed(view);
 		/* Double-click restores, button 3 posts the window menu. */
 		if (button == BTN_LEFT && is_double_click(server, view,
 				PART_NONE, time))
@@ -850,6 +861,9 @@ static void cursor_button(struct wl_listener *listener, void *data)
 	}
 
 	if (!pressed) {
+		/* A button of the icon box acts on its release. */
+		if (!client_saw_it && iconbox_release(server, event->button, cx, cy))
+			return;
 		/* The implicit grab is over, the pointer may be somewhere else by now. */
 		if (client_saw_it && server->n_forwarded == 0)
 			process_cursor_motion(server, event->time_msec);
@@ -903,6 +917,9 @@ static void cursor_axis(struct wl_listener *listener, void *data)
 		bool on_icon;
 		struct view *view = view_at(server, server->cursor->x, server->cursor->y,
 			&surface, &sx, &sy, &part, &edges, &on_icon);
+		if ((!view || on_icon) && !surface && iconbox_wheel(server,
+				server->cursor->x, server->cursor->y, event->delta_discrete))
+			return;
 		if (view && part == PART_TAB) {
 			server->tab_wheel += event->delta_discrete;
 			while (server->tab_wheel >= WLR_POINTER_AXIS_DISCRETE_STEP) {
@@ -994,6 +1011,8 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	/* A frame button is held down: no other action until it is released. */
 	if (server->cursor_mode == CURSOR_BUTTON)
 		return false;
+	if (iconbox_key(server, mods, sym))
+		return true;
 
 	struct view *view = focused_view(server);
 	bool alt = mods & WLR_MODIFIER_ALT;

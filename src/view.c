@@ -263,6 +263,7 @@ void view_raise_one(struct view *view)
 	wlr_scene_node_raise_to_top(&view->tree->node);
 	wl_list_remove(&view->link);
 	wl_list_insert(&view->server->views, &view->link);
+	view->raise_seq = ++view->server->raise_hi;
 	if (view->type == VIEW_XWAYLAND)
 		wlr_xwayland_surface_restack(view->xsurface, NULL,
 			XCB_STACK_MODE_ABOVE);
@@ -270,6 +271,9 @@ void view_raise_one(struct view *view)
 
 void view_set_activated(struct view *view, bool activated)
 {
+	/* A window with the keyboard: the icon box doesn't have it any more. */
+	if (activated)
+		iconbox_blur(view->server);
 	view->activated = activated;
 	if (view->type == VIEW_XDG)
 		wlr_xdg_toplevel_set_activated(view->xdg_toplevel, activated);
@@ -543,6 +547,7 @@ static void view_lower_one(struct view *view)
 	wlr_scene_node_lower_to_bottom(&view->tree->node);
 	wl_list_remove(&view->link);
 	wl_list_insert(server->views.prev, &view->link);
+	view->raise_seq = --server->raise_lo;
 }
 
 /* Whether anything could take the focus from it. If not it keeps it, even when it
@@ -802,8 +807,8 @@ void view_minimize(struct view *view)
 		}
 	}
 	icon_render(view);
-	icons_arrange(server);
 	wlr_scene_node_set_enabled(&view->icon_node->node, !view->off_desktop);
+	icons_arrange(server); /* the icon box decides which of its icons are in sight */
 	struts_changed(view);
 	/* The layout first: a shaded window may become the main one, and take the focus. */
 	tile_arrange(server);
@@ -1003,9 +1008,19 @@ void view_cycle(struct server *server, bool backwards)
 			break;
 		}
 	}
-	if (!top)
+	if (!top) {
+		/* Every window an icon: the box is all there is to go to. */
+		if (iconbox_cycle_takes(server, NULL, backwards))
+			iconbox_focus(server);
 		return;
+	}
 	if (backwards) {
+		/* The icon box goes to the back as a window does. */
+		if (iconbox_has_focus(server)) {
+			iconbox_lowered(server);
+			focus_next(server, NULL);
+			return;
+		}
 		/* Push the current window to the back, with what belongs to it, and focus
 		 * the next one. */
 		struct view *active = focused_view(server);
@@ -1021,14 +1036,26 @@ void view_cycle(struct server *server, bool backwards)
 			view_lower_one(group[i]);
 		free(group);
 		view_lower_one(root);
-		if (had_successor)
+		struct view *next = NULL;
+		wl_list_for_each(v, &server->views, link) {
+			if (v != root && view_focusable(v) && !v->shaded) {
+				next = v;
+				break;
+			}
+		}
+		if (iconbox_cycle_takes(server, next, true))
+			iconbox_focus(server);
+		else if (had_successor)
 			focus_next(server, root);
 		input_pointer_changed(server);
 		return;
 	}
 	wl_list_for_each_reverse(v, &server->views, link) {
 		if (view_focusable(v)) {
-			view_focus(v);
+			if (iconbox_cycle_takes(server, v, false))
+				iconbox_focus(server);
+			else
+				view_focus(v);
 			return;
 		}
 	}
