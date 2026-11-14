@@ -904,6 +904,15 @@ pixel_is "black beside it" 300 360 000000
 pixel_is "the window itself in the middle" 640 360 808080
 stop fixedres
 
+# ---- what a window is offered ----------------------------------------------------------------
+
+# wm_capabilities as mwc means them: a dialog gets no maximize or minimize to show.
+wayland capable size=300x200 caps=1 dialog=capdlg
+mapped capable
+wait_for "the main window is offered both" grep -q 'caps capable max=1 min=1' "$SMOKE_DIR/capable.events"
+wait_for "its dialog neither" grep -q 'caps capdlg max=0 min=0' "$SMOKE_DIR/capable.events"
+stop capable
+
 # ---- X11 states that wlroots offers ----------------------------------------------------------
 
 more_is() { [ "$(grep '^net-more' "$SMOKE_DIR/$1.events" | tail -1)" = "net-more $2" ]; }

@@ -231,6 +231,7 @@ void view_update_properties(struct view *view)
 		view->wtype = xwayland_type(view->xsurface);
 	}
 	view_update_decorations(view);
+	xdg_publish_caps(view);
 	if (view->wtype != old_type)
 		views_update_layers(view->server);
 	/* Whether it fits the layout, or takes part at all, may have changed. */

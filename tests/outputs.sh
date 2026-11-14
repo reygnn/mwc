@@ -187,6 +187,18 @@ do_input key alt+F10
 frame_is "maximized on the right, it stays out of both panels" rightwin 1310 40 1250 680
 kill "$PID_rightwin" "$PID_innerdock" "$PID_topdock"
 wait "$PID_rightwin" "$PID_innerdock" "$PID_topdock" 2>/dev/null
+
+# Fullscreen on the output the client names, not the one the window is on.
+do_input move 100 100
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=fsout size=300x200 fs_output=1 \
+	>"$SMOKE_DIR/fsout.events" 2>&1 &
+PID_fsout=$!
+check "it opens on the left output" "[ -n \"\$(get fsout x)\" ] && [ \"\$(get fsout x)\" -lt 1280 ]"
+wait_for "it asks for fullscreen on the right one" grep -q 'fullscreen asked' "$SMOKE_DIR/fsout.events"
+check "it is fullscreen there" "[ \"\$(get fsout full)\" = 1 ] && [ \"\$(get fsout x)\" = 1280 ] && \
+	[ \"\$(get fsout w)\" = 1280 ]"
+kill "$PID_fsout"
+wait "$PID_fsout" 2>/dev/null
 stop_vinput
 stop_mwc
 

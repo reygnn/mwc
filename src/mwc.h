@@ -215,6 +215,7 @@ struct view {
 	enum window_type wtype;
 	unsigned decor, funcs; /* see view_update_properties() */
 	unsigned base_funcs;   /* the same, before tiling takes some away */
+	uint32_t wm_caps;      /* xdg wm_capabilities last sent, see xdg_publish_caps() */
 	uint32_t motif_flags, motif_funcs, motif_decor; /* X11 only */
 	/* Size limits of the client: 0 means none. */
 	int min_w, min_h, max_w, max_h, base_w, base_h, inc_w, inc_h;
@@ -635,6 +636,8 @@ void views_layout_changed(struct server *server);
 
 /* Reads type and size limits from the client, derives decor and funcs. */
 void view_update_properties(struct view *view);
+/* xdg: wm_capabilities as funcs has them, sent only when they change. */
+void xdg_publish_caps(struct view *view);
 void view_update_decorations(struct view *view);
 bool view_fixed(struct view *view);
 bool view_has_aspect(const struct view *view);

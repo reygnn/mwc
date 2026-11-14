@@ -20,6 +20,10 @@
  *     grow=WxH     after mapping, take that size of its own accord; says "grown"
  *     grow_ms=MS   wait that long before, default 1000
  *     dialog=NAME  also open a child toplevel with this app_id
+ *     caps=1       print the wm_capabilities each window is offered:
+ *                  "caps NAME max=M min=N"
+ *     fs_output=N  a moment after mapping, ask for fullscreen on the Nth wl_output,
+ *                  counting from 0; says "fullscreen asked"
  *     own_size=1   keep its own size whatever a configure says, as a game with a
  *                  fixed resolution does
  *     clear=1      draw nothing (fully transparent) and take no clicks: an empty
@@ -66,6 +70,7 @@ struct window {
 	int natural_w, natural_h; /* what it takes when the choice is its own */
 	bool framed;
 	struct wp_viewport *viewport;
+	const char *app;
 };
 
 static struct wl_display *the_display;
@@ -187,8 +192,24 @@ static void toplevel_bounds(void *data, struct xdg_toplevel *t, int32_t w, int32
 {
 }
 
+static bool print_caps;
+static int fs_output = -1;
+static struct wl_output *outputs[4];
+static int n_outputs;
+
 static void toplevel_caps(void *data, struct xdg_toplevel *t, struct wl_array *c)
 {
+	if (!print_caps)
+		return;
+	struct window *win = data;
+	bool max = false, min = false;
+	uint32_t *cap;
+	wl_array_for_each(cap, c) {
+		max |= *cap == XDG_TOPLEVEL_WM_CAPABILITIES_MAXIMIZE;
+		min |= *cap == XDG_TOPLEVEL_WM_CAPABILITIES_MINIMIZE;
+	}
+	printf("caps %s max=%d min=%d\n", win->app, max, min);
+	fflush(stdout);
 }
 
 static const struct xdg_toplevel_listener toplevel_listener = {
@@ -213,8 +234,12 @@ static void registry_global(void *data, struct wl_registry *registry,
 			&wl_compositor_interface, 4);
 	else if (strcmp(interface, wl_shm_interface.name) == 0)
 		shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
+	else if (strcmp(interface, wl_output_interface.name) == 0 && n_outputs < 4)
+		outputs[n_outputs++] = wl_registry_bind(registry, name, &wl_output_interface, 1);
 	else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
-		wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
+		/* wm_capabilities came with version 5; the other tests keep version 1. */
+		wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface,
+			print_caps && version >= 5 ? 5 : 1);
 		xdg_wm_base_add_listener(wm_base, &wm_base_listener, NULL);
 	} else if (strcmp(interface,
 			zxdg_decoration_manager_v1_interface.name) == 0) {
@@ -243,6 +268,7 @@ static struct window *open_window(const char *app, struct window *parent,
 	int w, int h, bool limits)
 {
 	struct window *win = calloc(1, sizeof(*win));
+	win->app = app;
 	win->w = win->natural_w = w;
 	win->h = win->natural_h = h;
 	win->surface = wl_compositor_create_surface(compositor);
@@ -328,6 +354,10 @@ int main(int argc, char *argv[])
 			clear = atoi(v);
 		else if (!strcmp(argv[i], "own_size"))
 			own_size = atoi(v);
+		else if (!strcmp(argv[i], "caps"))
+			print_caps = atoi(v);
+		else if (!strcmp(argv[i], "fs_output"))
+			fs_output = atoi(v);
 		else if (!strcmp(argv[i], "viewport"))
 			use_viewport = atoi(v);
 		else if (!strcmp(argv[i], "late_app"))
@@ -385,6 +415,15 @@ int main(int argc, char *argv[])
 		xdg_toplevel_set_app_id(main_win->toplevel, late_app);
 		wl_surface_commit(main_win->surface);
 		wl_display_flush(display);
+	}
+	if (fs_output >= 0 && fs_output < n_outputs) {
+		wl_display_roundtrip(display);
+		wl_display_roundtrip(display);
+		wait_dispatching(display, 500);
+		xdg_toplevel_set_fullscreen(main_win->toplevel, outputs[fs_output]);
+		wl_display_flush(display);
+		printf("fullscreen asked\n");
+		fflush(stdout);
 	}
 	if (grow_w > 0) {
 		wl_display_roundtrip(display);

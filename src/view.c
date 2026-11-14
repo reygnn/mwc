@@ -728,7 +728,32 @@ void view_apply_tile(struct view *view)
 		frame_render(view);
 }
 
+/* The middle of the output an xdg client asked to be fullscreen on, if it can have it.
+ * xdg-shell: a preference, which mwc follows when that output is in the layout. */
+static bool fullscreen_output_point(struct view *view, double *px, double *py)
+{
+	if (view->type != VIEW_XDG)
+		return false;
+	struct wlr_output *o = view->xdg_toplevel->requested.fullscreen_output;
+	struct output *output = o ? o->data : NULL;
+	if (!output || !output_in_layout(output))
+		return false;
+	struct wlr_box b;
+	wlr_output_layout_get_box(view->server->output_layout, o, &b);
+	*px = b.x + b.width / 2.0;
+	*py = b.y + b.height / 2.0;
+	return true;
+}
+
+static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output);
+
 void view_set_fullscreen(struct view *view, bool fullscreen)
+{
+	view_fullscreen_at(view, fullscreen, false);
+}
+
+/* asked_output: on the output the client named with its request, if any. */
+static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output)
 {
 	if (!view_configurable(view)) {
 		view->fullscreen = fullscreen;
@@ -749,9 +774,11 @@ void view_set_fullscreen(struct view *view, bool fullscreen)
 				view_save_free(view);
 			}
 			struct wlr_cursor *c = view->server->cursor;
-			struct wlr_box a = output_full_area(view->server,
-				view->mapped ? view->x + view->width / 2.0 : c->x,
-				view->mapped ? view->y + view->height / 2.0 : c->y);
+			double px = view->mapped ? view->x + view->width / 2.0 : c->x;
+			double py = view->mapped ? view->y + view->height / 2.0 : c->y;
+			if (asked_output)
+				fullscreen_output_point(view, &px, &py);
+			struct wlr_box a = output_full_area(view->server, px, py);
 			view->fullscreen = true;
 			views_update_layers(view->server);
 			/* Fullscreen windows lose their frame for the duration. */
@@ -1495,10 +1522,30 @@ static struct view *view_from_xdg_toplevel(struct server *server,
 
 /* The state noted so far goes out with the first configure, and with it the size
  * that belongs to it. Otherwise the client chooses. */
+/* Clients hide what isn't offered: no maximize button on a dialog mwc won't maximize.
+ * Changing them sends a configure, so only on a change. */
+void xdg_publish_caps(struct view *view)
+{
+	/* Before the first configure there is nothing to send them with: that one does. */
+	if (view->type != VIEW_XDG || !view->xdg_toplevel->base->initialized)
+		return;
+	uint32_t caps = WLR_XDG_TOPLEVEL_WM_CAPABILITIES_WINDOW_MENU |
+		WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN;
+	if (view->funcs & FUNC_MAXIMIZE)
+		caps |= WLR_XDG_TOPLEVEL_WM_CAPABILITIES_MAXIMIZE;
+	if (view->funcs & FUNC_MINIMIZE)
+		caps |= WLR_XDG_TOPLEVEL_WM_CAPABILITIES_MINIMIZE;
+	if (caps == view->wm_caps)
+		return;
+	view->wm_caps = caps;
+	wlr_xdg_toplevel_set_wm_capabilities(view->xdg_toplevel, caps);
+}
+
 static void xdg_send_first_configure(struct view *view)
 {
 	struct server *server = view->server;
 	struct wlr_xdg_toplevel *top = view->xdg_toplevel;
+	view->wm_caps = 0; /* sent again with this configure */
 	view_update_properties(view);
 	view->placed = false;
 	/* wlroots keeps what was last scheduled across a null buffer, and the client would
@@ -1512,8 +1559,9 @@ static void xdg_send_first_configure(struct view *view)
 	view->fit_px = server->cursor->x;
 	view->fit_py = server->cursor->y;
 	if (view->fullscreen) {
-		struct wlr_box a = output_full_area(server, server->cursor->x,
-			server->cursor->y);
+		double px = server->cursor->x, py = server->cursor->y;
+		fullscreen_output_point(view, &px, &py);
+		struct wlr_box a = output_full_area(server, px, py);
 		view->x = a.x;
 		view->y = a.y;
 		view->placed = true;
@@ -1544,11 +1592,6 @@ static void xdg_commit(struct wl_listener *listener, void *data)
 	struct wlr_xdg_surface *base = view->xdg_toplevel->base;
 
 	if (base->initial_commit) {
-		wlr_xdg_toplevel_set_wm_capabilities(view->xdg_toplevel,
-			WLR_XDG_TOPLEVEL_WM_CAPABILITIES_WINDOW_MENU |
-			WLR_XDG_TOPLEVEL_WM_CAPABILITIES_MAXIMIZE |
-			WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN |
-			WLR_XDG_TOPLEVEL_WM_CAPABILITIES_MINIMIZE);
 		struct xdg_deco *deco = view->deco;
 		if (deco)
 			wlr_xdg_toplevel_decoration_v1_set_mode(deco->wlr,
@@ -1682,7 +1725,7 @@ static void xdg_request_maximize(struct wl_listener *listener, void *data)
 static void xdg_request_fullscreen(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_fullscreen);
-	view_set_fullscreen(view, view->xdg_toplevel->requested.fullscreen);
+	view_fullscreen_at(view, view->xdg_toplevel->requested.fullscreen, true);
 }
 
 static void xdg_request_minimize(struct wl_listener *listener, void *data)
@@ -1821,13 +1864,32 @@ static struct view *view_from_tree(struct wlr_scene_tree *tree)
 
 static void popup_unconstrain(struct popup *popup)
 {
-	/* Keep the popup on the output its toplevel is on. */
 	struct wlr_scene_tree *tree = popup->xdg_popup->base->data;
 	struct view *view = tree ? view_from_tree(tree) : NULL;
 	if (view && view->type == VIEW_XDG) {
-		struct wlr_box a = output_usable_area(view->server,
-			view->x + 1, view->y + 1);
+		/* On the output where it opens from, its anchor: for a window across two
+		 * monitors, a menu opened on the right one stays there. */
 		struct wlr_box *g = &view->xdg_toplevel->base->geometry;
+		struct wlr_xdg_popup *xp = popup->xdg_popup;
+		struct wlr_box ar = xp->scheduled.rules.anchor_rect;
+		int ax = ar.x + ar.width / 2, ay = ar.y + ar.height / 2;
+		/* The anchor is in the parent's window geometry; the toplevel's surface
+		 * starts at view->x + frame_left - g->x in the layout. */
+		int tx = g->x + ax, ty = g->y + ay;
+		struct wlr_xdg_popup *parent =
+			wlr_xdg_popup_try_from_wlr_surface(xp->parent);
+		if (parent)
+			wlr_xdg_popup_get_toplevel_coords(parent,
+				parent->base->geometry.x + ax, parent->base->geometry.y + ay,
+				&tx, &ty);
+		double lx = view->x + frame_left(view) - g->x + tx;
+		double ly = view->y + frame_top(view) - g->y + ty;
+		/* Off every monitor, the window's corner decides, as before. */
+		if (!wlr_output_layout_output_at(view->server->output_layout, lx, ly)) {
+			lx = view->x + 1;
+			ly = view->y + 1;
+		}
+		struct wlr_box a = output_usable_area(view->server, lx, ly);
 		a.x -= view->x + frame_left(view) - g->x;
 		a.y -= view->y + frame_top(view) - g->y;
 		/* wlroots wants the box relative to the toplevel, however deep the popup
