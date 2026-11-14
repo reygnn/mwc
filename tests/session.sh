@@ -172,7 +172,8 @@ finish
 # such write (its report lands in the log): without valgrind it only checks that mwc
 # ends cleanly.
 echo 'Mwm*outputManagement: true' >"$RC"
-if command -v valgrind >/dev/null; then
+# Not with a sanitizer build (make check): ASan and valgrind don't go together.
+if command -v valgrind >/dev/null && [ -z "${MWC_SANITIZED-}" ]; then
 	cat >"$SMOKE_DIR/mwc-valgrind" <<VG
 #!/bin/sh
 exec valgrind -q --error-exitcode=99 "$(readlink -f "$MWC")" "\$@"

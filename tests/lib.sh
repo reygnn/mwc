@@ -2,7 +2,8 @@
 # Each test logs to build/<name>.log; the log is where to look after a failure.
 set -u
 
-MWC=./mwc
+# make check sets it to the sanitizer build.
+MWC=${MWC:-./mwc}
 TIMEOUT=15
 
 mkdir -p build

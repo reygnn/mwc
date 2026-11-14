@@ -420,13 +420,12 @@ snap, outputs, tile, crash, pointer, state, misc, session, tabs, fifo, rdp, desk
 iconbox. They run mwc on a
 headless output with small clients in `tests/` that can ask for any hint, and check the
 state mwc writes and pixels in screenshots. None of this tests real input hardware,
-DRM/KMS or VT switching; use a VM or a free TTY for those. A sanitizer build is worth
-running too:
+DRM/KMS or VT switching; use a VM or a free TTY for those.
 
-    make clean
-    CFLAGS="-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined" \
-        LDFLAGS="-fsanitize=address,undefined" \
-        ASAN_OPTIONS=detect_leaks=0 make test
+`make check` runs the same tests against a build with AddressSanitizer and
+UndefinedBehaviorSanitizer, `build/mwc-asan`, beside the normal one. A finding aborts
+mwc and fails that test; the report is in its log under `build/`. Leaks are not
+checked.
 
 The state file and the virtual input devices exist only with `MWC_TEST_STATE` set (the
 devices also with `MWC_VIRTUAL_INPUT=1`, for wayrdp), because those protocols let a

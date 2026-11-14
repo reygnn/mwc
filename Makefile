@@ -91,6 +91,34 @@ build/main.o: src/version.h
 mwc: $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(MWC_LIBS) $(LDLIBS)
 
+# make check: the whole test suite against a build with AddressSanitizer and
+# UndefinedBehaviorSanitizer, in build/asan beside the normal one. A finding aborts
+# mwc, which the test then reports; its report is in that test's log. Leaks are not
+# checked: wlroots and Pango keep memory until exit.
+SAN_FLAGS = -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined \
+	-fno-sanitize-recover=undefined
+SAN_OBJ = $(SRC:src/%.c=build/asan/%.o) $(PROTO_CODE:build/%.c=build/asan/%.o)
+
+build/asan: | build
+	mkdir -p build/asan
+
+build/asan/%.o: src/%.c src/mwc.h $(PROTO) | build/asan
+	$(CC) $(MWC_CFLAGS) $(SAN_FLAGS) -c -o $@ $<
+
+build/asan/%-protocol.o: build/%-protocol.c | build/asan
+	$(CC) $(MWC_CFLAGS) $(SAN_FLAGS) -c -o $@ $<
+
+build/asan/iconbox.o: build/logo.h
+
+build/asan/main.o: src/version.h
+
+build/mwc-asan: $(SAN_OBJ)
+	$(CC) $(SAN_FLAGS) -o $@ $(SAN_OBJ) $(MWC_LIBS)
+
+check: build/mwc-asan
+	MWC=build/mwc-asan MWC_SANITIZED=1 ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 \
+		UBSAN_OPTIONS=print_stacktrace=1 $(MAKE) test
+
 install: mwc
 	install -Dm755 mwc $(DESTDIR)$(PREFIX)/bin/mwc
 	install -d $(DESTDIR)/usr/share/wayland-sessions
@@ -332,4 +360,4 @@ clean:
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN) $(IDLEC_GEN) build/ext-workspace-v1-client.h \
 	build/ext-workspace-v1-code.c
-.PHONY: iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: check iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
