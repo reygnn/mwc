@@ -224,6 +224,20 @@ wait_for "its keys arrive" has_event lock1 "key 30"
 layerc_stop lock1
 check "with both gone, the window has it again" "[ \"\$(get foot kbfocus)\" = 1 ]"
 
+# Of two that insist, the higher layer keeps it: layer-shell gives it to the top-most.
+layerc_start high layer=overlay anchor=left size=50x50 keyboard=exclusive color=555555
+wait_for "exclusive in the overlay layer has it" has_event high keyboard-enter
+layerc_start low layer=top anchor=right size=50x50 keyboard=exclusive color=555555
+pixel_is "the one in the top layer is mapped" 1270 360 555555
+do_input key a
+wait_for "the overlay one keeps the keys" has_event high "key 30"
+has_event low keyboard-enter && fail "the top layer one took the keyboard"
+echo "ok: the top layer one waits"
+layerc_stop high
+wait_for "when the overlay one goes, the waiting one gets it" has_event low keyboard-enter
+layerc_stop low
+check "with both gone, the window has it again" "[ \"\$(get foot kbfocus)\" = 1 ]"
+
 # A panel reserving more than there is doesn't leave windows nowhere to go.
 layerc_start huge layer=top anchor=top,left,right size=0x30 exclusive=5000 color=444444
 sleep 0.3

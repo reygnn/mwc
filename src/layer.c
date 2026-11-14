@@ -167,6 +167,9 @@ void layers_arrange_all(struct server *server)
 static void give_keyboard(struct layer_surface *ls)
 {
 	ls->server->focused_layer = ls->wlr;
+	/* A window's open menu would keep the keys, a password typed here among them. */
+	input_end_client_grab(ls->server);
+	iconbox_blur();
 	input_keyboard_enter(ls->server, ls->wlr->surface);
 }
 
@@ -206,11 +209,16 @@ static void take_keyboard_back(struct server *server)
 			return;
 		}
 	}
+	input_end_client_grab(server);
 	wlr_seat_keyboard_notify_clear_focus(server->seat);
 }
 
-/* Only the layers above the windows may take the keyboard on their own. */
-static void update_keyboard(struct layer_surface *ls)
+/* Only the layers above the windows may take the keyboard on their own: an exclusive
+ * one whenever it asks, unless one in a higher layer holds it, as layer-shell wants the
+ * top-most of them to have it. An on-demand one only as it appears; after that by a
+ * click, or a surface turning on-demand on and off could pull the keys away from
+ * whatever the user types into. */
+static void update_keyboard(struct layer_surface *ls, bool appearing)
 {
 	struct server *server = ls->server;
 	const struct wlr_layer_surface_v1_state *st = &ls->wlr->current;
@@ -220,13 +228,16 @@ static void update_keyboard(struct layer_surface *ls)
 		st->keyboard_interactive != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
 	bool exclusive = wants && st->keyboard_interactive ==
 		ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
+	struct wlr_layer_surface_v1 *holder = server->exclusive_layer;
+	bool outranks = exclusive && (!holder || holder == ls->wlr ||
+		st->layer >= holder->current.layer);
+	bool may = exclusive ? outranks : appearing && !holder;
 
-	if (wants && server->focused_layer != ls->wlr &&
-			(!server->exclusive_layer || exclusive))
+	if (wants && may && server->focused_layer != ls->wlr)
 		give_keyboard(ls);
-	if (exclusive)
+	if (outranks)
 		server->exclusive_layer = ls->wlr;
-	else if (server->exclusive_layer == ls->wlr)
+	else if (!exclusive && holder == ls->wlr)
 		server->exclusive_layer = NULL;
 	if (!wants && server->focused_layer == ls->wlr)
 		take_keyboard_back(server);
@@ -283,7 +294,7 @@ static void layer_map(struct wl_listener *listener, void *data)
 	struct layer_surface *ls = wl_container_of(listener, ls, map);
 	layer_arrange(ls->output);
 	ls->keyboard_interactive = ls->wlr->current.keyboard_interactive;
-	update_keyboard(ls);
+	update_keyboard(ls, true);
 	/* Soon: the scene gets its buffer only after this signal, and a pointer resting
 	 * here would see nothing yet. */
 	input_pointer_changed_soon(ls->server);
@@ -292,7 +303,7 @@ static void layer_map(struct wl_listener *listener, void *data)
 static void layer_unmap(struct wl_listener *listener, void *data)
 {
 	struct layer_surface *ls = wl_container_of(listener, ls, unmap);
-	update_keyboard(ls);
+	update_keyboard(ls, false);
 	layer_arrange(ls->output);
 	input_pointer_changed(ls->server);
 }
@@ -333,7 +344,7 @@ static void layer_commit(struct wl_listener *listener, void *data)
 	layer_arrange(ls->output);
 	if (layer_changed || wlr->current.keyboard_interactive != ls->keyboard_interactive) {
 		ls->keyboard_interactive = wlr->current.keyboard_interactive;
-		update_keyboard(ls);
+		update_keyboard(ls, false);
 	}
 }
 

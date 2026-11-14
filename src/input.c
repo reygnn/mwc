@@ -47,6 +47,11 @@ struct keyboard {
 	 * which never saw them go down. */
 	uint32_t swallowed[MAX_SWALLOWED_KEYS];
 	int n_swallowed;
+	/* An arrow key held in a menu, a keyboard move or the icon box: wlroots repeats
+	 * keys for clients only, so mwc does it for its own. */
+	struct wl_event_source *repeat;
+	uint32_t repeat_keycode;
+	xkb_keysym_t repeat_sym;
 };
 
 static void spawn_argv(const char *const argv[])
@@ -168,6 +173,13 @@ void grab_started(struct server *server)
 /* The grab is over; the caller decides what becomes of the window. */
 static void clear_grab(struct server *server)
 {
+	struct view *pressed = server->cursor_mode == CURSOR_BUTTON ?
+		server->grabbed_view : NULL;
+	if (pressed) {
+		pressed->pressed = PART_NONE;
+		pressed->pressed_inside = false;
+		frame_render(pressed);
+	}
 	server->cursor_mode = CURSOR_PASSTHROUGH;
 	server->grabbed_view = NULL;
 	server->grab_until_click = false;
@@ -660,7 +672,6 @@ static bool handle_press(struct server *server, uint32_t button,
 	if (!view) {
 		/* A panel or an X11 popup menu: not ours to handle. */
 		if (surface) {
-			iconbox_blur();
 			layer_handle_click(server, surface);
 			return false;
 		}
@@ -878,12 +889,12 @@ static void cursor_button(struct wl_listener *listener, void *data)
 	case CURSOR_BUTTON:
 		/* A frame button, or with no window one of the icon box's. */
 		if (!pressed && event->button == server->grab_button) {
-			if (server->grabbed_view) {
+			if (server->grabbed_view)
 				handle_button_release(server);
-			} else {
+			else
 				iconbox_button_release(server);
-				process_cursor_motion(server, event->time_msec);
-			}
+			/* Released off the button: the pointer is over something else now. */
+			process_cursor_motion(server, event->time_msec);
 		}
 		return;
 	case CURSOR_PASSTHROUGH:
@@ -1194,6 +1205,54 @@ static void keyboard_modifiers(struct wl_listener *listener, void *data)
 		&kb->wlr_keyboard->modifiers);
 }
 
+static bool is_arrow(xkb_keysym_t sym)
+{
+	return sym == XKB_KEY_Left || sym == XKB_KEY_Right || sym == XKB_KEY_Up ||
+		sym == XKB_KEY_Down;
+}
+
+/* Where mwc steers with the arrows itself. */
+static bool navigating(struct server *server)
+{
+	return server->menu.open || server->cursor_mode == CURSOR_MOVE ||
+		server->cursor_mode == CURSOR_RESIZE || iconbox_has_focus();
+}
+
+static void repeat_stop(struct keyboard *kb)
+{
+	kb->repeat_keycode = 0;
+	if (kb->repeat)
+		wl_event_source_timer_update(kb->repeat, 0);
+}
+
+static int repeat_fire(void *data)
+{
+	struct keyboard *kb = data;
+	struct server *server = kb->server;
+	struct wlr_keyboard *wlr_kb = kb->wlr_keyboard;
+	/* Whatever the arrows steered may have closed meanwhile. */
+	if (!kb->repeat_keycode || !navigating(server) || wlr_kb->repeat_info.rate <= 0 ||
+			!handle_keybinding(server, wlr_keyboard_get_modifiers(wlr_kb),
+				kb->repeat_sym)) {
+		kb->repeat_keycode = 0;
+		return 0;
+	}
+	wl_event_source_timer_update(kb->repeat, 1000 / wlr_kb->repeat_info.rate);
+	return 0;
+}
+
+static void repeat_start(struct keyboard *kb, uint32_t keycode, xkb_keysym_t sym)
+{
+	struct wlr_keyboard *wlr_kb = kb->wlr_keyboard;
+	if (!kb->repeat)
+		kb->repeat = wl_event_loop_add_timer(kb->server->event_loop, repeat_fire, kb);
+	if (!kb->repeat || wlr_kb->repeat_info.rate <= 0)
+		return;
+	kb->repeat_keycode = keycode;
+	kb->repeat_sym = sym;
+	wl_event_source_timer_update(kb->repeat, wlr_kb->repeat_info.delay);
+}
+
 static void keyboard_key(struct wl_listener *listener, void *data)
 {
 	struct keyboard *kb = wl_container_of(listener, kb, key);
@@ -1213,14 +1272,22 @@ static void keyboard_key(struct wl_listener *listener, void *data)
 	uint32_t mods = wlr_keyboard_get_modifiers(kb->wlr_keyboard);
 
 	bool handled = false;
+	/* Any other key, or this one going up, ends a repeat. */
+	if (kb->repeat_keycode && (event->state == WL_KEYBOARD_KEY_STATE_PRESSED ||
+			event->keycode == kb->repeat_keycode))
+		repeat_stop(kb);
 	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
 		/* Noted beforehand: a window that gets the focus from this very key must not
 		 * be told it is down, or it would wait for a release it never gets. */
 		bool room = kb->n_swallowed < MAX_SWALLOWED_KEYS;
 		if (room)
 			kb->swallowed[kb->n_swallowed++] = event->keycode;
-		for (int i = 0; i < nsyms && !handled; i++)
+		for (int i = 0; i < nsyms && !handled; i++) {
+			bool steering = navigating(server) && is_arrow(syms[i]);
 			handled = handle_keybinding(server, mods, syms[i]);
+			if (handled && steering)
+				repeat_start(kb, event->keycode, syms[i]);
+		}
 		if (room && !handled)
 			kb->n_swallowed--;
 	} else {
@@ -1242,6 +1309,8 @@ static void keyboard_key(struct wl_listener *listener, void *data)
 static void keyboard_destroy(struct wl_listener *listener, void *data)
 {
 	struct keyboard *kb = wl_container_of(listener, kb, destroy);
+	if (kb->repeat)
+		wl_event_source_remove(kb->repeat);
 	wl_list_remove(&kb->modifiers.link);
 	wl_list_remove(&kb->key.link);
 	wl_list_remove(&kb->destroy.link);
@@ -1358,6 +1427,12 @@ void input_keyboard_enter(struct server *server, struct wlr_surface *surface)
 			keycodes[n++] = wlr_kb->keycodes[i];
 	}
 	wlr_seat_keyboard_notify_enter(seat, surface, keycodes, n, &wlr_kb->modifiers);
+}
+
+void input_end_client_grab(struct server *server)
+{
+	if (!server->seat->drag)
+		wlr_seat_pointer_end_grab(server->seat);
 }
 
 /* The focus moved during a popup's grab or a drag, and only now can the keyboard go
@@ -1542,6 +1617,10 @@ static void on_new_virtual_pointer(struct wl_listener *listener, void *data)
 {
 	struct wlr_virtual_pointer_v1_new_pointer_event *event = data;
 	input_add_device(virtual_server, &event->new_pointer->pointer.base);
+	/* Its absolute motion is in that output's coordinates (wayrdp sharing one). */
+	if (event->suggested_output)
+		wlr_cursor_map_input_to_output(virtual_server->cursor,
+			&event->new_pointer->pointer.base, event->suggested_output);
 }
 
 void input_virtual_init(struct server *server)

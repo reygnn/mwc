@@ -769,6 +769,9 @@ void input_pointer_changed_soon(struct server *server);
 bool input_button_held(struct server *server);
 /* Gives the keyboard to a surface, without the keys mwc kept to itself. */
 void input_keyboard_enter(struct server *server, struct wlr_surface *surface);
+/* A client's open menu ends: its grab holds the keyboard wherever the focus goes,
+ * also to nobody. Not during a drag, which has to run its course. */
+void input_end_client_grab(struct server *server);
 void spawn(const char *cmd);
 /* The same for a program by its path, which needs no quoting. */
 void spawn_file(const char *path);

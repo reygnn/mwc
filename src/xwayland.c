@@ -311,9 +311,26 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 	view_set_geometry(view, fx, fy, w, h);
 }
 
+/* Any X client can ask for any X window to be activated or brought back
+ * (_NET_ACTIVE_WINDOW, WM_CHANGE_STATE), and wlroots doesn't say who asked. Among X
+ * windows that is how X works, taskbars and emacsclient rely on it; but the keyboard
+ * isn't taken from a Wayland window, a panel or the icon box that way. */
+static bool x11_may_take_focus(struct server *server)
+{
+	if (server->focused_layer || iconbox_has_focus())
+		return false;
+	struct view *focused = view_focused(server);
+	return !focused || focused->type == VIEW_XWAYLAND;
+}
+
 static void xw_request_activate(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_activate);
+	if (!x11_may_take_focus(view->server)) {
+		wlr_log(WLR_DEBUG, "X11 activation of %s refused: the focus isn't on X11",
+			view_app_id(view));
+		return;
+	}
 	view_focus(view);
 }
 
@@ -353,8 +370,9 @@ static void xw_request_minimize(struct wl_listener *listener, void *data)
 	struct wlr_xwayland_minimize_event *ev = data;
 	if (ev->minimize)
 		view_minimize(view);
-	/* Back from an icon, nothing more: it isn't asking to be un-maximized as well. */
-	else if (view_hidden_by_state(view))
+	/* Back from an icon, nothing more: it isn't asking to be un-maximized as well.
+	 * Coming back takes the focus, see x11_may_take_focus(). */
+	else if (view_hidden_by_state(view) && x11_may_take_focus(view->server))
 		view_restore(view);
 }
 
@@ -534,9 +552,10 @@ static void um_map(struct wl_listener *listener, void *data)
 	wlr_scene_node_set_position(&um->tree->node, xs->x, xs->y);
 	um->set_geometry.notify = um_set_geometry;
 	wl_signal_add(&xs->events.set_geometry, &um->set_geometry);
-	/* An exclusive layer surface keeps the keyboard, a password prompt for one. */
+	/* An exclusive layer surface keeps the keyboard, a password prompt for one; and
+	 * an X menu takes it from an X window only, see x11_may_take_focus(). */
 	if (wlr_xwayland_surface_override_redirect_wants_focus(xs) &&
-			!um->server->exclusive_layer)
+			!um->server->exclusive_layer && x11_may_take_focus(um->server))
 		input_keyboard_enter(um->server, xs->surface);
 	/* A menu opening under a pointer that doesn't move: it is what the pointer is
 	 * over now, for the wheel and the client's own highlight and cursor. */

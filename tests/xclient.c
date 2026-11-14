@@ -36,6 +36,8 @@
  *     grow=WxH            1 s after mapping, XResizeWindow to that size; says "grown"
  *     iconic=1            WM_HINTS with the initial state iconic
  *     normalize=1         once mapped, WM_CHANGE_STATE to NormalState
+ *     activate_ms=MS      that long after mapping, _NET_ACTIVE_WINDOW for itself, as a
+ *                         program does that wants to be in front; says "activate asked"
  *     iconify_ms=MS       that long after mapping (and the dialog), WM_CHANGE_STATE to
  *                         IconicState, as a program minimizing itself; says "iconified"
  *     iconify_dialog=1    that goes to the dialog instead of the main window
@@ -118,6 +120,7 @@ struct options {
 	bool iconify_dialog;
 	int moveresize;
 	bool has_moveto, iconic, normalize, report, netstate;
+	int activate_ms;
 	int moveto_x, moveto_y;
 	int grow_w, grow_h;
 	const char *override;
@@ -519,6 +522,8 @@ int main(int argc, char *argv[])
 			o.iconic = atoi(v);
 		else if (!strcmp(k, "normalize"))
 			o.normalize = atoi(v);
+		else if (!strcmp(k, "activate_ms"))
+			o.activate_ms = atoi(v);
 		else if (!strcmp(k, "iconify_ms"))
 			o.iconify_ms = atoi(v);
 		else if (!strcmp(k, "iconify_dialog"))
@@ -608,6 +613,22 @@ int main(int argc, char *argv[])
 			SubstructureRedirectMask | SubstructureNotifyMask, &e);
 		XSync(dpy, False);
 		printf("normalized\n");
+	}
+	if (o.activate_ms > 0) {
+		XSync(dpy, False);
+		usleep(o.activate_ms * 1000);
+		XEvent e = { 0 };
+		e.xclient.type = ClientMessage;
+		e.xclient.window = main_win;
+		e.xclient.message_type = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+		e.xclient.format = 32;
+		e.xclient.data.l[0] = 1; /* from an application */
+		e.xclient.data.l[1] = CurrentTime;
+		XSendEvent(dpy, DefaultRootWindow(dpy), False,
+			SubstructureRedirectMask | SubstructureNotifyMask, &e);
+		XSync(dpy, False);
+		printf("activate asked\n");
+		fflush(stdout);
 	}
 	if (o.moveresize == 2) {
 		XSync(dpy, False);

@@ -146,6 +146,20 @@ do_input key Return
 geometry_is "Return confirms" mover 159 139 300 200
 no_grab_left "nothing is left of the grab"
 
+# Held down, an arrow repeats, as keys do for clients (600 ms, then 25 a second).
+do_input key alt+F7
+do_input press Right
+check "a held arrow repeats" "[ \"\$(global outline x)\" -ge 209 ]"
+do_input lift Right
+refresh
+held_x=$(global outline x)
+sleep 0.3
+refresh
+[ "$(global outline x)" = "$held_x" ] || fail "the repeat goes on after the key went up"
+echo "ok: and stops when it goes up"
+do_input key Escape
+geometry_is "Escape: the window stays where it was" mover 159 139 300 200
+
 do_input key alt+F7
 do_input key Left
 outline_is "a new move" 149 139 "$OW" "$OH"

@@ -602,6 +602,7 @@ void iconbox_focus(struct server *server)
 	ib.seq = ++server->raise_hi;
 	if (!server->exclusive_layer) {
 		server->focused_layer = NULL;
+		input_end_client_grab(server);
 		wlr_seat_keyboard_notify_clear_focus(server->seat);
 	}
 	set_focused(true);

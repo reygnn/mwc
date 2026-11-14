@@ -855,6 +855,43 @@ check "a click where it takes none brings it to the front" \
 stop other
 stop clear
 
+# ---- X11 requests for the focus ---------------------------------------------------------
+
+saw() { wait_for "$1" grep -q "$3" "$SMOKE_DIR/$2.events"; }
+# A program asks for its window to be activated (_NET_ACTIVE_WINDOW): not from a
+# Wayland window that has the focus.
+x11 asker size=300x200 activate_ms=2500
+mapped asker
+wayland wfront size=300x200
+mapped wfront
+check "the Wayland window has the focus" "[ \"\$(get wfront kbfocus)\" = 1 ]"
+saw "the X11 program asks to be activated" asker '^activate asked'
+sleep 0.3
+check "the Wayland window keeps it" \
+	"[ \"\$(get wfront kbfocus)\" = 1 ] && [ \"\$(get asker active)\" = 0 ]"
+stop asker
+# From another X11 window it may: that is how X taskbars and emacsclient work.
+x11 asker2 size=300x200 activate_ms=2500
+mapped asker2
+x11 xfront size=300x200
+mapped xfront
+check "an X11 window has the focus" "[ \"\$(get xfront active)\" = 1 ]"
+saw "the other X11 program asks" asker2 '^activate asked'
+check "it gets the focus" "[ \"\$(get asker2 active)\" = 1 ]"
+stop asker2
+stop xfront
+# A menu-like window that wants the keyboard doesn't take it from a Wayland window.
+x11 orwin pos=900,400 size=300x200 popup=600,300 popup_type=none popup_ms=1500 popup_for=1500
+mapped orwin
+refresh
+do_input move $(($(get wfront x) + 100)) $(($(get wfront y) + 100))
+do_input click left
+check "the Wayland window has the focus again" "[ \"\$(get wfront kbfocus)\" = 1 ]"
+saw "the X11 popup opens" orwin '^popup shown'
+check "the keyboard stays with the Wayland window" "[ \"\$(get wfront kbfocus)\" = 1 ]"
+stop orwin
+stop wfront
+
 stop_vinput
 stop_mwc
 echo "PASS: window"

@@ -295,7 +295,7 @@ move-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 window-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 	tests/window.sh
 
-iconbox-test: mwc build/vinput build/pngtool build/xdgc build/workspacec
+iconbox-test: mwc build/vinput build/pngtool build/xdgc build/workspacec build/layerc
 	tests/iconbox.sh
 
 layer-test: mwc build/vinput build/pngtool build/layerc

@@ -8,7 +8,7 @@ LOG=build/iconbox.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools grim
-for tool in build/vinput build/pngtool build/xdgc build/workspacec; do
+for tool in build/vinput build/pngtool build/xdgc build/workspacec build/layerc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -104,6 +104,15 @@ check "and back" "[ \"\$(box scroll)\" = 0 ]"
 click_at $(title_bar)
 check "a click on the box gives it the keyboard" \
 	"[ \"\$(box focused)\" = 1 ] && [ \"\$(global focus any)\" = 0 ]"
+# A panel that takes no keyboard leaves it with the box when clicked.
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=top anchor=top size=100x30 keyboard=none \
+	color=444444 >"$SMOKE_DIR/panel.events" 2>&1 &
+PANEL_PID=$!
+wait_for "a panel is there" grep -q configured "$SMOKE_DIR/panel.events"
+sleep 0.3
+click_at 640 15
+check "a click on it leaves the keyboard with the box" "[ \"\$(box focused)\" = 1 ]"
+kill $PANEL_PID; wait $PANEL_PID 2>/dev/null
 do_input key Right
 check "Right chooses the next icon" "[ \"\$(box sel)\" = 1 ]"
 do_input key Right

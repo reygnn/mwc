@@ -6,6 +6,7 @@
  *   down|up|click B    B is left, middle or right
  *   key COMBO          press and release, e.g. "alt+F4", "shift+Escape", "q"
  *   press KEY          press a key and keep it down, until vinput goes
+ *   lift KEY           let a pressed key go up again
  *   hold|release MOD   keep alt, ctrl, shift or super down across commands
  *   caps on|off        lock or unlock Caps
  *   wheel N            turn the wheel N steps
@@ -253,11 +254,11 @@ static const char *run_command(char *line)
 		return do_button(a, true, true);
 	if (strcmp(cmd, "key") == 0)
 		return do_key(a);
-	if (strcmp(cmd, "press") == 0) {
+	if (strcmp(cmd, "press") == 0 || strcmp(cmd, "lift") == 0) {
 		uint32_t code;
 		if (find_key(a, &code) != 0)
 			return "unknown key";
-		send_key(code, true);
+		send_key(code, cmd[0] == 'p');
 		return NULL;
 	}
 	if (strcmp(cmd, "wheel") == 0 && a) {

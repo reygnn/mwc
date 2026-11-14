@@ -385,8 +385,10 @@ static void focus_next(struct server *server, struct view *except)
 	}
 	if (except && except->activated)
 		view_set_activated(except, false);
-	if (!server->focused_layer)
+	if (!server->focused_layer) {
+		input_end_client_grab(server);
 		wlr_seat_keyboard_notify_clear_focus(server->seat);
+	}
 }
 
 static void view_maximize_at(struct view *view, bool maximized, double px,
