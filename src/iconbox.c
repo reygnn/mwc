@@ -166,11 +166,6 @@ static struct wlr_box visible_part(cairo_surface_t *image)
 
 /* ---- geometry ------------------------------------------------------------- */
 
-static int border(void)
-{
-	return theme.bevel + 1; /* a frame without resize handles */
-}
-
 static int pad(void)
 {
 	return icon_gap() / 2;
@@ -203,13 +198,13 @@ static int run_len(int k, bool horizontal)
 
 static int frame_along(bool horizontal)
 {
-	return 2 * border() + 2 * pad() + (horizontal ? 0 : theme.title_height);
+	return 2 * frame_thin_border() + 2 * pad() + (horizontal ? 0 : theme.title_height);
 }
 
 /* Where something w x h goes in the area, as iconPlacement puts the first icon. */
 static void anchor(struct wlr_box a, int w, int h, int *x, int *y)
 {
-	const struct config_icon_placement *p = config_icon_placement();
+	const struct config_placement *p = config_icon_placement();
 	*x = p->from_right ? a.x + a.width - ICON_MARGIN - w : a.x + ICON_MARGIN;
 	*y = p->from_bottom ? a.y + a.height - ICON_MARGIN - h : a.y + ICON_MARGIN;
 	if (p->center) {
@@ -223,8 +218,8 @@ static void anchor(struct wlr_box a, int w, int h, int *x, int *y)
 /* Slot k of those in sight, from the end the icons start at. */
 static void slot_pos(int k, int *x, int *y)
 {
-	const struct config_icon_placement *p = config_icon_placement();
-	int B = border(), P = pad(), T = theme.title_height, G = icon_gap();
+	const struct config_placement *p = config_icon_placement();
+	int B = frame_thin_border(), P = pad(), T = theme.title_height, G = icon_gap();
 	if (p->horizontal) {
 		*y = ib.box.y + B + T + P;
 		*x = p->from_right && !p->center ?
@@ -241,7 +236,7 @@ static void slot_pos(int k, int *x, int *y)
 /* Whether moving forward through the icons goes right or down on the screen. */
 static bool forward_is_positive(void)
 {
-	const struct config_icon_placement *p = config_icon_placement();
+	const struct config_placement *p = config_icon_placement();
 	if (p->center)
 		return true;
 	return p->horizontal ? !p->from_right : !p->from_bottom;
@@ -287,8 +282,8 @@ struct sb_layout {
 
 static void sb_layout(struct sb_layout *l)
 {
-	const struct config_icon_placement *p = config_icon_placement();
-	int B = border(), T = theme.title_height, W = ib.box.width, H = ib.box.height;
+	const struct config_placement *p = config_icon_placement();
+	int B = frame_thin_border(), T = theme.title_height, W = ib.box.width, H = ib.box.height;
 	if (p->horizontal)
 		l->trough = (struct wlr_box){ B, H - B - SB, W - 2 * B, SB };
 	else
@@ -322,7 +317,7 @@ struct title_parts {
 
 static void title_parts(struct title_parts *tp)
 {
-	int B = border(), T = theme.title_height, W = ib.box.width;
+	int B = frame_thin_border(), T = theme.title_height, W = ib.box.width;
 	tp->max = (struct wlr_box){ W - B - T, B, T, T };
 	tp->min = (struct wlr_box){ W - B - 2 * T, B, T, T };
 	tp->title = (struct wlr_box){ B, B, W - 2 * B - 2 * T, T };
@@ -330,8 +325,8 @@ static void title_parts(struct title_parts *tp)
 
 static void render_chrome(void)
 {
-	const struct config_icon_placement *p = config_icon_placement();
-	int W = ib.box.width, H = ib.box.height, B = border(), T = theme.title_height;
+	const struct config_placement *p = config_icon_placement();
+	int W = ib.box.width, H = ib.box.height, B = frame_thin_border(), T = theme.title_height;
 	struct cairo_buffer *buf = cairo_buffer_create(W, H);
 	if (!buf)
 		return;
@@ -494,7 +489,7 @@ void iconbox_arrange(struct server *server)
 		return;
 	}
 	struct wlr_box a = o->usable;
-	const struct config_icon_placement *p = config_icon_placement();
+	const struct config_placement *p = config_icon_placement();
 	bool hz = p->horizontal;
 
 	if (ib.n == 0 || d->minimized) {
@@ -524,7 +519,7 @@ void iconbox_arrange(struct server *server)
 	ib.scrolls = ib.n > ib.visible;
 	clamp_scroll(d);
 
-	int B = border(), P = pad(), T = theme.title_height;
+	int B = frame_thin_border(), P = pad(), T = theme.title_height;
 	int w, h;
 	if (hz) {
 		w = 2 * B + 2 * P + run_len(ib.visible, true);
@@ -697,7 +692,7 @@ bool iconbox_key(struct server *server, uint32_t mods, uint32_t sym)
 		WLR_MODIFIER_LOGO;
 	if (!ib.focused || !ib.shown || (mods & held) || server->focused_layer)
 		return false;
-	const struct config_icon_placement *p = config_icon_placement();
+	const struct config_placement *p = config_icon_placement();
 	struct desk *d = cur();
 	int dir = 0; /* +1: right or down on the screen */
 	switch (sym) {

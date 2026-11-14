@@ -55,8 +55,7 @@ static void xw_commit(struct wl_listener *listener, void *data)
 	view->height = s->current.height;
 	frame_render(view);
 	tabs_sync_sizes(view);
-	if (view_docked(view) && view->mapped)
-		dock_arrange(server);
+	dock_view_resized(view);
 }
 
 /* wlroots parses only the decoration part of _MOTIF_WM_HINTS. Reading it here
@@ -290,6 +289,11 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 	int w = (ev->mask & XCB_CONFIG_WINDOW_WIDTH) ? ev->width : view->xsurface->width;
 	int h = (ev->mask & XCB_CONFIG_WINDOW_HEIGHT) ? ev->height : view->xsurface->height;
 	view_apply_size_hints(view, &w, &h, false);
+	/* Docked windows keep their place; the commit of a new size rearranges. */
+	if (view_docked(view)) {
+		view_send_size(view, w, h);
+		return;
+	}
 	int fx0, fy0;
 	view_gravity_to_frame(view, 0, 0, view->xsurface->width, view->xsurface->height,
 		&fx0, &fy0);
@@ -488,6 +492,7 @@ static void xw_set_class(struct wl_listener *listener, void *data)
 	config_view_shades(view);
 	config_view_tiling(view);
 	view_theme_changed(view);
+	dock_view_changed(view);
 	tile_arrange(view->server);
 }
 
@@ -495,6 +500,7 @@ static void xw_set_window_type(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, set_window_type);
 	view_update_properties(view);
+	dock_view_changed(view); /* only normal windows are docked */
 	desktop_recheck(view); /* a panel is on every desktop */
 }
 

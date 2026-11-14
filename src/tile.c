@@ -202,7 +202,7 @@ struct strip {
 };
 
 /* The edge the icons pile up from moves in past b. */
-static void leave_free(struct strip *st, const struct config_icon_placement *p,
+static void leave_free(struct strip *st, const struct config_placement *p,
 	struct wlr_box b)
 {
 	if (p->horizontal && p->from_bottom) {
@@ -230,7 +230,7 @@ static struct view *plan(struct server *server, struct view **list, int n,
 	/* Icons stay in view: the layout leaves out the strip along the edge they
 	 * pile up from, up to the innermost row or column of them (they keep their
 	 * own 8 px margin). */
-	const struct config_icon_placement *p = config_icon_placement();
+	const struct config_placement *p = config_icon_placement();
 	struct strip strip = { a.x, a.x + a.width, a.y, a.y + a.height };
 	struct view *v;
 	struct wlr_box ibox;

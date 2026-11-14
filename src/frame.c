@@ -21,13 +21,18 @@ static unsigned frame_decor(struct view *view)
 	return view->decorated ? view->decor : 0;
 }
 
+int frame_thin_border(void)
+{
+	return theme.bevel + 1;
+}
+
 int frame_border(struct view *view)
 {
 	unsigned d = frame_decor(view);
 	if (d & DECOR_RESIZEH)
 		return theme.border;
 	if (d & DECOR_BORDER)
-		return theme.bevel + 1;
+		return frame_thin_border();
 	return 0;
 }
 
@@ -546,7 +551,7 @@ static int along_pos(int start, int len, int size, int gap, int k, bool from_end
 }
 
 /* How many icons a row or column holds. */
-static int icons_per_line(const struct config_icon_placement *p, struct wlr_box area,
+static int icons_per_line(const struct config_placement *p, struct wlr_box area,
 	int gap)
 {
 	int along = p->horizontal ? area.width : area.height;
@@ -560,7 +565,7 @@ static int icons_per_line(const struct config_icon_placement *p, struct wlr_box 
  * "left bottom" fills the bottom row from the left. */
 static void icon_slot(struct wlr_box area, int i, int *x, int *y)
 {
-	const struct config_icon_placement *p = config_icon_placement();
+	const struct config_placement *p = config_icon_placement();
 	int gap = icon_gap();
 	int per_line = icons_per_line(p, area, gap);
 	int k = i % per_line, line = i / per_line;
@@ -609,7 +614,7 @@ int icon_gap(void)
  * next one, which is centred for itself. They close up when one goes. */
 static void icons_arrange_centred(struct server *server)
 {
-	const struct config_icon_placement *p = config_icon_placement();
+	const struct config_placement *p = config_icon_placement();
 	int gap = icon_gap();
 	int size = p->horizontal ? ICON_W : ICON_H;
 	int n;

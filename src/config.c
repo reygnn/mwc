@@ -79,10 +79,11 @@ static struct {
 } root_items[CONFIG_MAX_ROOT_ITEMS];
 static int n_root_items;
 
-static struct config_icon_placement icon_placement = { .horizontal = true,
+static const struct config_placement icon_default = { .horizontal = true,
 	.from_bottom = true };
-static struct config_icon_placement dock_placement = { .horizontal = true,
+static const struct config_placement dock_default = { .horizontal = true,
 	.from_right = true, .from_bottom = true };
+static struct config_placement icon_placement, dock_placement; /* config_load() */
 
 static char *trim(char *s)
 {
@@ -286,9 +287,9 @@ static void check_positions(void)
  * then the icons stand centred along the edge the other word names ("center right",
  * or "right center": a column in the middle of the right edge). */
 static bool parse_icon_placement(const char *value,
-	struct config_icon_placement *out)
+	struct config_placement *out)
 {
-	*out = (struct config_icon_placement){ 0 };
+	*out = (struct config_placement){ 0 };
 	char *copy = strdup(value), *save = NULL;
 	if (!copy)
 		return false;
@@ -323,8 +324,8 @@ static bool parse_icon_placement(const char *value,
 }
 
 /* iconPlacement or dockPlacement: the last global line, or the default. */
-static void load_placement(const char *resource, struct config_icon_placement def,
-	struct config_icon_placement *out)
+static void load_placement(const char *resource, struct config_placement def,
+	struct config_placement *out)
 {
 	*out = def;
 	const struct rule *r = NULL;
@@ -332,7 +333,7 @@ static void load_placement(const char *resource, struct config_icon_placement de
 		if (!rules[i].client && !strcasecmp(rules[i].resource, resource))
 			r = &rules[i];
 	}
-	struct config_icon_placement p;
+	struct config_placement p;
 	if (!r)
 		return;
 	if (parse_icon_placement(r->value, &p))
@@ -343,21 +344,18 @@ static void load_placement(const char *resource, struct config_icon_placement de
 			resource, r->value);
 }
 
-static void load_icon_placement(void)
+static void load_placements(void)
 {
-	load_placement("iconPlacement", (struct config_icon_placement){
-		.horizontal = true, .from_bottom = true }, &icon_placement);
-	load_placement("dockPlacement", (struct config_icon_placement){
-		.horizontal = true, .from_right = true, .from_bottom = true },
-		&dock_placement);
+	load_placement("iconPlacement", icon_default, &icon_placement);
+	load_placement("dockPlacement", dock_default, &dock_placement);
 }
 
-const struct config_icon_placement *config_icon_placement(void)
+const struct config_placement *config_icon_placement(void)
 {
 	return &icon_placement;
 }
 
-const struct config_icon_placement *config_dock_placement(void)
+const struct config_placement *config_dock_placement(void)
 {
 	return &dock_placement;
 }
@@ -396,7 +394,7 @@ void config_load(void)
 	if (!f) {
 		load_tile_filter();
 		load_root_items();
-		load_icon_placement();
+		load_placements();
 		return;
 	}
 
@@ -421,7 +419,7 @@ void config_load(void)
 	wlr_log(WLR_DEBUG, "%s: %d rules", path, n_rules);
 	load_tile_filter();
 	load_root_items();
-	load_icon_placement();
+	load_placements();
 	check_positions();
 }
 
@@ -518,6 +516,27 @@ static const struct rule *client_rule(const char *name, const char *class,
 	return r;
 }
 
+/* X11 windows go by instance or class, Wayland ones by app_id. */
+static void view_names(struct view *view, const char **name, const char **class)
+{
+	*name = *class = view_app_id(view);
+	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
+		*name = view->xsurface->instance;
+}
+
+static const struct rule *view_rule(struct view *view, const char *resource)
+{
+	const char *name, *class;
+	view_names(view, &name, &class);
+	return client_rule(name, class, resource);
+}
+
+/* Dialogs belong with their window, not in the program's corner or the dock. */
+static bool toplevel(struct view *view)
+{
+	return view->wtype == WT_NORMAL && !view_parent(view);
+}
+
 static bool rule_color(const struct rule *r, struct mwc_color *out)
 {
 	if (!r)
@@ -531,34 +550,23 @@ static bool rule_color(const struct rule *r, struct mwc_color *out)
 
 int config_view_dock(struct view *view)
 {
-	/* Its dialogs stay with it, outside. */
-	if (view->wtype != WT_NORMAL || view_parent(view))
+	if (!toplevel(view))
 		return -1;
-	const char *name = view_app_id(view), *class = name;
-	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
-		name = view->xsurface->instance;
-	const struct rule *r = client_rule(name, class, "dock");
+	const struct rule *r = view_rule(view, "dock");
 	return r && config_bool("dock", r->value) == 1 ? (int)(r - rules) : -1;
 }
 
 bool config_view_all_desktops(struct view *view)
 {
-	const char *name = view_app_id(view), *class = name;
-	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
-		name = view->xsurface->instance;
-	const struct rule *r = client_rule(name, class, "allDesktops");
+	const struct rule *r = view_rule(view, "allDesktops");
 	return r && config_bool("allDesktops", r->value) == 1;
 }
 
 bool config_view_position(struct view *view, struct config_position *out)
 {
-	/* Dialogs belong with their window, not in the program's corner. */
-	if (view->wtype != WT_NORMAL || view_parent(view))
+	if (!toplevel(view))
 		return false;
-	const char *name = view_app_id(view), *class = name;
-	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
-		name = view->xsurface->instance;
-	const struct rule *r = client_rule(name, class, "geometry");
+	const struct rule *r = view_rule(view, "geometry");
 	return r && parse_position(r->value, out);
 }
 
@@ -569,9 +577,8 @@ void config_view_tiling(struct view *view)
 		return;
 	if (tile_filter == FILTER_NONE)
 		return;
-	const char *name = view_app_id(view), *class = name;
-	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
-		name = view->xsurface->instance;
+	const char *name, *class;
+	view_names(view, &name, &class);
 	bool listed = false;
 	for (int i = 0; i < n_tile_names && !listed; i++)
 		listed = !strcasecmp(tile_names[i], name) ||
@@ -587,17 +594,11 @@ void config_view_shades(struct view *view)
 	if (!n_rules)
 		return;
 
-	const char *name = view_app_id(view), *class = name;
-	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
-		name = view->xsurface->instance;
-
 	struct mwc_color abg, afg, ibg, ifg;
-	bool has_abg = rule_color(client_rule(name, class,
-		"activeBackground"), &abg);
-	bool has_afg = rule_color(client_rule(name, class,
-		"activeForeground"), &afg);
-	bool has_ibg = rule_color(client_rule(name, class, "background"), &ibg);
-	bool has_ifg = rule_color(client_rule(name, class, "foreground"), &ifg);
+	bool has_abg = rule_color(view_rule(view, "activeBackground"), &abg);
+	bool has_afg = rule_color(view_rule(view, "activeForeground"), &afg);
+	bool has_ibg = rule_color(view_rule(view, "background"), &ibg);
+	bool has_ifg = rule_color(view_rule(view, "foreground"), &ifg);
 
 	if (has_abg || has_afg) {
 		if (!has_abg)

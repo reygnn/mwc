@@ -176,7 +176,7 @@ static int arrange_rested(void *data)
 	return 0;
 }
 
-static void arrange_soon(struct output *output)
+void layer_arrange_soon(struct output *output)
 {
 	if (!output->arrange_timer)
 		output->arrange_timer = wl_event_loop_add_timer(output->server->event_loop,
@@ -378,7 +378,7 @@ static void layer_commit(struct wl_listener *listener, void *data)
 	bool layer_changed = wlr->current.layer != ls->layer;
 	if (layer_changed)
 		place_in_layer(ls, wlr->current.layer);
-	arrange_soon(ls->output);
+	layer_arrange_soon(ls->output);
 	if (layer_changed || wlr->current.keyboard_interactive != ls->keyboard_interactive) {
 		ls->keyboard_interactive = wlr->current.keyboard_interactive;
 		update_keyboard(ls, false);
@@ -451,6 +451,7 @@ static void new_layer_surface(struct wl_listener *listener, void *data)
 	wl_signal_add(&wlr->events.new_popup, &ls->new_popup);
 }
 
+/* Both ways an output goes, unplugged or switched off by a client, pass here. */
 void layer_output_gone(struct output *output)
 {
 	dock_output_gone(output);

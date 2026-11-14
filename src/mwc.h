@@ -634,6 +634,7 @@ void xwayland_read_motif_hints(struct view *view);
 /* ---- frame.c ------------------------------------------------------------ */
 
 int frame_border(struct view *view);
+int frame_thin_border(void); /* without resize handles */
 int frame_title(struct view *view);
 int frame_left(struct view *view);
 int frame_top(struct view *view);
@@ -776,6 +777,8 @@ const char *feedback_get(struct wlr_box *box); /* "" while hidden */
 
 void layer_init(struct server *server);
 void layer_arrange(struct output *output);
+/* At once, then at most once per refresh. */
+void layer_arrange_soon(struct output *output);
 void layers_arrange_all(struct server *server);
 void layer_publish_workarea(struct server *server);
 void layer_output_gone(struct output *output);
@@ -821,17 +824,16 @@ bool config_view_position(struct view *view, struct config_position *out);
 /* A leading ~/ as $HOME. */
 void config_expand_home(const char *value, char *out, size_t size);
 /* Mwm*iconPlacement: "primary secondary [tight]", default "left bottom". */
-struct config_icon_placement {
+struct config_placement {
 	bool horizontal;
 	bool from_right, from_bottom;
 	bool center; /* one block in the middle of the edge */
 	bool tight;
 };
-const struct config_icon_placement *config_icon_placement(void);
+const struct config_placement *config_icon_placement(void);
 /* Mwm*dockPlacement, iconPlacement's syntax; default "right bottom". */
-const struct config_icon_placement *config_dock_placement(void);
-/* Mwm*NAME*dock, for normal top-level windows: its line's place in mwmrc, the dock's
- * order; -1: not docked. */
+const struct config_placement *config_dock_placement(void);
+/* Its dock line's place in mwmrc, the dock's order; -1: not docked. */
 int config_view_dock(struct view *view);
 /* Reload and SIGHUP: mwmrc applied to what runs; no re-exec. */
 void config_reload(struct server *server);
@@ -905,16 +907,23 @@ void iconbox_state(FILE *f);
 
 /* ---- dock.c -------------------------------------------------------------- */
 
+/* Between the normal windows' layer and the top layer. */
 void dock_init(struct server *server);
-/* When a docked window comes, goes or changes size, or the outputs change. */
+/* When a docked window comes or goes, or the outputs change. */
 void dock_arrange(struct server *server);
 /* From layer_arrange(): takes the dock's strip off the usable area. */
 void dock_reserve(struct output *output, struct wlr_box *usable);
+/* Takes what docked windows can't have: a state, a tab group, an icon. */
+void dock_admit(struct view *view);
+/* Its size or frame changed. */
+void dock_view_resized(struct view *view);
+/* Its name, type or parent changed: into the dock or out of it. */
+void dock_view_changed(struct view *view);
 /* After a reload has set view.dock_order anew. */
 void dock_config_changed(struct server *server);
-/* Until the next dock_arrange(). */
+/* Forgets the output; the next dock_arrange() picks one. */
 void dock_output_gone(struct output *output);
-bool dock_rect(struct wlr_box *out); /* false: empty */
+bool dock_contains(double lx, double ly);
 void dock_state(FILE *f);
 
 /* ---- fifo.c --------------------------------------------------------------- */

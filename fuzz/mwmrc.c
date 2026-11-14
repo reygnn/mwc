@@ -93,7 +93,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 		const struct rule *r = &rules[i];
 		struct mwc_color c;
 		struct config_position pos;
-		struct config_icon_placement ip;
+		struct config_placement ip;
 		char path[4096];
 		config_color(r->value, &c);
 		config_bool(r->resource, r->value);

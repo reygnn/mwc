@@ -216,8 +216,7 @@ static void view_apply_size(struct view *view, int w, int h, bool own)
 	view->height = h;
 	view_update_content_pos(view);
 	frame_render(view);
-	if (view_docked(view) && view->mapped)
-		dock_arrange(view->server);
+	dock_view_resized(view);
 }
 
 /* Scene layers windows can be in, bottom to top. */
@@ -233,6 +232,8 @@ static enum view_layer own_layer(struct view *view, struct view *focus)
 {
 	if (view->wtype == WT_DESKTOP)
 		return VL_DESKTOP;
+	if (view_docked(view))
+		return VL_ABOVE; /* whatever X11 says */
 	/* A fullscreen window covers top-layer panels only while it or one of
 	 * its dialogs has the focus. Otherwise a window focused beside it, or a
 	 * panel, would come up in the wrong place. */
@@ -242,7 +243,7 @@ static enum view_layer own_layer(struct view *view, struct view *focus)
 	if (x11 && view->xsurface->below)
 		return VL_BELOW;
 	if ((x11 && view->xsurface->above) || view->wtype == WT_DOCK ||
-			view->wtype == WT_NOTIFICATION || view_docked(view))
+			view->wtype == WT_NOTIFICATION)
 		return VL_ABOVE;
 	return VL_NORMAL;
 }
@@ -391,7 +392,7 @@ void view_focus(struct view *view)
 }
 
 /* Docked windows get the focus by a click only. */
-static bool in_turn(struct view *view)
+static bool cyclable(struct view *view)
 {
 	return view_focusable(view) && !view_docked(view);
 }
@@ -402,12 +403,12 @@ static void focus_next(struct server *server, struct view *except)
 {
 	/* Prefer the window a dialog belongs to. */
 	struct view *v = except ? view_parent(except) : NULL;
-	if (v && v != except && in_turn(v) && !v->shaded) {
+	if (v && v != except && cyclable(v) && !v->shaded) {
 		view_focus(v);
 		return;
 	}
 	wl_list_for_each(v, &server->views, link) {
-		if (v != except && in_turn(v) && !v->shaded) {
+		if (v != except && cyclable(v) && !v->shaded) {
 			view_focus(v);
 			return;
 		}
@@ -591,7 +592,7 @@ static bool view_has_successor(struct view *view)
 {
 	struct view *v;
 	wl_list_for_each(v, &view->server->views, link) {
-		if (v != view && in_turn(v) && !v->shaded &&
+		if (v != view && cyclable(v) && !v->shaded &&
 				view_transient_root(v) != view_transient_root(view))
 			return true;
 	}
@@ -846,6 +847,7 @@ void view_show(struct view *view, bool show)
 void view_parent_changed(struct view *view)
 {
 	view_update_properties(view);
+	dock_view_changed(view); /* dialogs stay outside */
 	views_update_layers(view->server);
 	/* Hidden with a window it no longer belongs to, nothing would bring it back. */
 	struct view *parent = view_parent(view);
@@ -973,8 +975,10 @@ void views_usable_area_changed(struct server *server)
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
 		v->icon_placed = false;
+		/* Docked windows have no state; were one there, refitting it would
+		 * change the dock, and so the usable area, without end. */
 		if (v->mapped && (v->maximized || v->snap != SNAP_NONE) &&
-				!v->fullscreen && !v->tiled)
+				!v->fullscreen && !v->tiled && !view_docked(v))
 			view_refit(v);
 	}
 	icons_arrange(server);
@@ -1080,8 +1084,7 @@ void view_frame_changed(struct view *view)
 	/* In the layout, the cell stays and the client has to make room. */
 	if (view->tiled)
 		tile_arrange(view->server);
-	if (view_docked(view) && view->mapped)
-		dock_arrange(view->server);
+	dock_view_resized(view);
 }
 
 void view_theme_changed(struct view *view)
@@ -1100,7 +1103,7 @@ void view_cycle(struct server *server, bool backwards)
 {
 	struct view *top = NULL, *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (in_turn(v)) {
+		if (cyclable(v)) {
 			top = v;
 			break;
 		}
@@ -1135,7 +1138,7 @@ void view_cycle(struct server *server, bool backwards)
 		view_lower_one(root);
 		struct view *next = NULL;
 		wl_list_for_each(v, &server->views, link) {
-			if (v != root && in_turn(v) && !v->shaded) {
+			if (v != root && cyclable(v) && !v->shaded) {
 				next = v;
 				break;
 			}
@@ -1148,7 +1151,7 @@ void view_cycle(struct server *server, bool backwards)
 		return;
 	}
 	wl_list_for_each_reverse(v, &server->views, link) {
-		if (in_turn(v)) {
+		if (cyclable(v)) {
 			if (iconbox_cycle_takes(v, false))
 				iconbox_focus(server);
 			else
@@ -1408,9 +1411,9 @@ void view_handle_map(struct view *view)
 	config_view_shades(view); /* the class or app_id is known by now */
 	view->tile_seq = --view->server->tile_front; /* a new window leads the layout */
 	view_update_properties(view); /* the window type, for desktop_view_mapped() */
-	view->dock_order = config_view_dock(view); /* needs the type */
-	if (view_docked(view))
-		view_update_decorations(view); /* its functions */
+	/* Docking needs the type, the functions need docking. */
+	view->dock_order = config_view_dock(view);
+	view_update_decorations(view);
 	config_view_tiling(view);
 	view->all_desktops = config_view_all_desktops(view);
 	desktop_view_mapped(view);
@@ -1425,9 +1428,10 @@ void view_handle_map(struct view *view)
 	/* Hidden with it, not for being on another desktop: it goes there too, and
 	 * shows when that one does. */
 	bool hide = parent && view_hidden_by_state(parent);
-	if (view_docked(view))
+	if (view_docked(view)) {
+		dock_admit(view); /* a state asked for before it was mapped */
 		dock_arrange(view->server);
-	else if (view->placed)
+	} else if (view->placed)
 		view_set_position(view, view->x, view->y);
 	else if (!view->maximized && !view->fullscreen && view->snap == SNAP_NONE)
 		view_place_mapped(view);
@@ -1491,8 +1495,10 @@ void view_handle_unmap(struct view *view)
 	wlr_scene_node_set_enabled(&view->icon_node->node, false);
 	if (was_icon)
 		icons_arrange(server); /* centred ones close up */
-	if (view_docked(view))
+	if (view_docked(view)) {
+		view->dock_order = -1; /* decided anew at the next map */
 		dock_arrange(server); /* the others close up */
+	}
 	struts_changed(view);
 	/* The layout first: a shaded window may become the main one, and take the focus. */
 	tile_arrange(server);
@@ -1714,6 +1720,7 @@ static void xdg_set_app_id(struct wl_listener *listener, void *data)
 	config_view_shades(view);
 	config_view_tiling(view);
 	view_theme_changed(view);
+	dock_view_changed(view);
 	tile_arrange(view->server);
 }
 

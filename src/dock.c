@@ -9,30 +9,28 @@
  *   | +--------+ +--------------+ |   in the corner, the next to its left
  *   +-----------------------------+
  *
- * - Where and which way: Mwm*dockPlacement, iconPlacement's syntax, default
- *   "right bottom". At the output's edge, not inside panels.
+ * - Where and which way: Mwm*dockPlacement, iconPlacement's syntax without "tight",
+ *   default "right bottom". At the output's edge, not inside panels.
  * - Arranged anew when a tool appears, goes or changes its size, and on a reload.
  * - In a row the tools align at the dock's outer edge, in a column likewise.
  * - The strip is kept free like a panel's (dock_reserve(), from layer_arrange()).
  * - Normal top-level windows only: a tool's dialogs open outside.
- * - Docked windows are on every desktop, above normal windows, out of Alt+Tab and
- *   tiling, and can't be moved, resized, minimized or maximized (see the callers of
- *   view_docked()).
+ * - Docked windows are on every desktop, above normal windows, out of Alt+Tab, tiling
+ *   and tab groups, and can't be moved, resized, minimized, maximized or made
+ *   fullscreen (see the callers of view_docked()).
  */
 #include <stdlib.h>
 #include <wlr/types/wlr_output_layout.h>
 #include "mwc.h"
 
 static struct {
+	/* Between normal and docked windows, in a layer of its own: lowering a docked
+	 * window can't put it under the frame. */
 	struct wlr_scene_buffer *frame;
+	int drawn_w, drawn_h;  /* 0: to be drawn anew */
 	struct output *output; /* the one the dock is on, or NULL */
 	struct wlr_box box;    /* the dock with its frame; empty without tools */
 } dk;
-
-static int border(void)
-{
-	return theme.bevel + 1;
-}
 
 static int outer_w(struct view *v)
 {
@@ -44,6 +42,7 @@ static int outer_h(struct view *v)
 	return frame_height(v);
 }
 
+/* Docked windows never tile, so tile_seq is only the order they were mapped in. */
 static int by_dock_order(const void *a, const void *b)
 {
 	const struct view *x = *(struct view *const *)a, *y = *(struct view *const *)b;
@@ -54,6 +53,8 @@ static int by_dock_order(const void *a, const void *b)
 
 static void render_frame(int w, int h)
 {
+	if (w == dk.drawn_w && h == dk.drawn_h)
+		return;
 	struct cairo_buffer *buf = cairo_buffer_create(w, h);
 	if (!buf)
 		return;
@@ -63,10 +64,13 @@ static void render_frame(int w, int h)
 	draw_bevel(buf->cr, 0, 0, w, h, theme.bevel, s, false);
 	wlr_scene_buffer_set_buffer(dk.frame, &buf->base);
 	cairo_buffer_drop(buf);
+	dk.drawn_w = w;
+	dk.drawn_h = h;
 }
 
 /* Only when it changed: a new strip changes the usable area, which refits every
- * maximized window and the tiling layout. */
+ * maximized window and the tiling layout. A tool changing its size with every frame
+ * is throttled as a panel is. */
 static void set_box(struct output *output, struct wlr_box box)
 {
 	struct output *old = dk.output;
@@ -77,7 +81,7 @@ static void set_box(struct output *output, struct wlr_box box)
 	if (old && old != output)
 		layer_arrange(old);
 	if (output)
-		layer_arrange(output);
+		layer_arrange_soon(output);
 }
 
 void dock_arrange(struct server *server)
@@ -100,8 +104,8 @@ void dock_arrange(struct server *server)
 	}
 	qsort(list, n, sizeof(*list), by_dock_order);
 
-	const struct config_icon_placement *p = config_dock_placement();
-	const int B = border();
+	const struct config_placement *p = config_dock_placement();
+	const int B = frame_thin_border();
 	int along = 0, across = 0;
 	for (int i = 0; i < n; i++) {
 		int a = p->horizontal ? outer_w(list[i]) : outer_h(list[i]);
@@ -151,7 +155,6 @@ void dock_arrange(struct server *server)
 	render_frame(w, h);
 	wlr_scene_node_set_position(&dk.frame->node, box.x, box.y);
 	wlr_scene_node_set_enabled(&dk.frame->node, true);
-	wlr_scene_node_lower_to_bottom(&dk.frame->node);
 	set_box(output, box);
 }
 
@@ -159,7 +162,7 @@ void dock_reserve(struct output *output, struct wlr_box *usable)
 {
 	if (output != dk.output || dk.box.width <= 0)
 		return;
-	const struct config_icon_placement *p = config_dock_placement();
+	const struct config_placement *p = config_dock_placement();
 	struct wlr_box b = dk.box;
 	int left = usable->x, top = usable->y;
 	int right = usable->x + usable->width, bottom = usable->y + usable->height;
@@ -178,27 +181,61 @@ void dock_reserve(struct output *output, struct wlr_box *usable)
 	*usable = (struct wlr_box){ left, top, right - left, bottom - top };
 }
 
-/* Who is in it may have changed, or where it is. Tiling has let go of the new
- * ones already. */
+void dock_admit(struct view *view)
+{
+	if (view->group)
+		tabs_detach(view);
+	if (view->minimized)
+		view_restore(view);
+	if (view->tiled)
+		view_set_tiled(view, false, false);
+	if (view->fullscreen)
+		view_set_fullscreen(view, false);
+	if (view->maximized || view->snap != SNAP_NONE)
+		view_snap(view, SNAP_NONE, 0, 0);
+}
+
+void dock_view_resized(struct view *view)
+{
+	if (view->mapped && view_docked(view))
+		dock_arrange(view->server);
+}
+
+void dock_view_changed(struct view *view)
+{
+	if (!view->mapped)
+		return;
+	int order = config_view_dock(view);
+	if (order == view->dock_order)
+		return;
+	bool joins = order >= 0 && !view_docked(view);
+	view->dock_order = order;
+	if (joins)
+		dock_admit(view);
+	view_update_decorations(view); /* docked windows lose functions */
+	config_view_tiling(view);
+	views_update_layers(view->server);
+	desktop_recheck(view);
+	tile_arrange(view->server);
+	dock_arrange(view->server);
+}
+
 void dock_config_changed(struct server *server)
 {
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
 		if (!v->mapped)
 			continue;
-		if (view_docked(v)) {
-			if (v->group)
-				tabs_detach(v);
-			if (v->fullscreen)
-				view_set_fullscreen(v, false);
-			if (v->maximized || v->snap != SNAP_NONE)
-				view_snap(v, SNAP_NONE, 0, 0);
-		}
-		view_update_properties(v); /* its functions */
-		frame_render(v);
+		if (view_docked(v))
+			dock_admit(v);
+		view_update_decorations(v);
 	}
 	views_update_layers(server);
+	dk.drawn_w = 0; /* the theme may have changed */
 	dock_arrange(server);
+	/* Another placement may keep the box and reserve another edge. */
+	if (dk.output)
+		layer_arrange(dk.output);
 }
 
 void dock_output_gone(struct output *output)
@@ -209,10 +246,9 @@ void dock_output_gone(struct output *output)
 	dk.box = (struct wlr_box){ 0 };
 }
 
-bool dock_rect(struct wlr_box *out)
+bool dock_contains(double lx, double ly)
 {
-	*out = dk.box;
-	return dk.box.width > 0;
+	return dk.box.width > 0 && wlr_box_contains_point(&dk.box, lx, ly);
 }
 
 void dock_state(FILE *f)
@@ -223,7 +259,6 @@ void dock_state(FILE *f)
 
 void dock_init(struct server *server)
 {
-	/* With the windows that stay above, below them: docked windows are there. */
-	dk.frame = wlr_scene_buffer_create(server->layer_shell[2], NULL);
+	dk.frame = wlr_scene_buffer_create(&server->scene->tree, NULL);
 	wlr_scene_node_set_enabled(&dk.frame->node, false);
 }

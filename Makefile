@@ -394,7 +394,7 @@ window-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 iconbox-test: mwc build/vinput build/pngtool build/xdgc build/workspacec build/layerc
 	tests/iconbox.sh
 
-dock-test: mwc build/vinput build/xclient build/xdgc
+dock-test: mwc build/vinput build/xclient build/xdgc build/pngtool build/workspacec
 	tests/dock.sh
 
 layer-test: mwc build/vinput build/pngtool build/layerc build/xdgc

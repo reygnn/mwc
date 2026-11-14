@@ -676,8 +676,7 @@ static bool handle_press(struct server *server, uint32_t button,
 	}
 
 	/* Between the docked windows: nothing to do there, and not the desktop. */
-	struct wlr_box dock;
-	if (!view && !surface && dock_rect(&dock) && wlr_box_contains_point(&dock, cx, cy))
+	if (!view && !surface && dock_contains(cx, cy))
 		return true;
 
 	if (!view) {
