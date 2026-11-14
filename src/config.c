@@ -28,7 +28,6 @@
  *   Mwm*iconPlacement:             center right  a column centred on the right edge
  *   Mwm*useIconBox:                true       icons in a box, see iconbox.c
  *   Mwm*iconBoxSize:               10         its length at most, in icons
- *   Mwm*iconBoxLogo:               ~/logo.png  on its tile while it is empty
  *
  * The client part matches an X11 window's WM_CLASS instance or class name, or
  * a Wayland client's app_id, ignoring case. Colours are #rrggbb, colour names

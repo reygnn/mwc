@@ -236,8 +236,8 @@ row or column. A reload puts all icons in their places again.
 or column where `iconPlacement` would start them, on the first monitor. Unlike mwm's,
 the box is as long as its icons need, up to `iconBoxSize` icons (default 10, or what
 fits on the edge), and gets a scroll bar from there. Without icons it is a tile the
-size of an icon with the mwc logo, which `iconBoxLogo` can replace with a PNG of your
-own: its transparent margin is left out and the rest scaled to 64×64. The box can't be moved or resized and has no window menu:
+size of an icon with the mwc logo. The box can't be moved or resized and has no window
+menu:
 
 - its maximize button switches between the full length and what the icons need, its
   minimize button turns it into the logo tile, and a click on the tile brings it back
@@ -249,7 +249,6 @@ own: its transparent margin is left out and the rest scaled to 64×64. The box c
 ```
 Mwm*useIconBox:   true
 Mwm*iconBoxSize:  8
-Mwm*iconBoxLogo:  ~/.config/mwc/logo.png
 ```
 
 The file is read at startup, on `SIGHUP` and on "Reload" in the root menu. A

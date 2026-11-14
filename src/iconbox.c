@@ -13,7 +13,7 @@
  * - It stands where Mwm*iconPlacement puts the first icon, on the first output,
  *   and grows the way the icons would; "center" and "tight" as without it.
  * - Without icons, or minimized, it is a tile the size of an icon with the logo:
- *   data/logo.png, built in, or Mwm*iconBoxLogo. A click on the tile shows the box.
+ *   data/logo.png, built in. A click on the tile shows the box.
  * - Maximize switches between the full length and the length the icons need. It
  *   is forgotten on a desktop switch and a reload; minimized is kept per desktop.
  * - It can't be moved or resized and has no window menu.
@@ -162,24 +162,6 @@ static struct wlr_box visible_part(cairo_surface_t *image)
 	if (x1 < 0)
 		return all;
 	return (struct wlr_box){ x0, y0, x1 - x0 + 1, y1 - y0 + 1 };
-}
-
-/* Mwm*iconBoxLogo, or the built-in one if it is unset or can't be read. */
-static cairo_surface_t *read_logo(void)
-{
-	const char *value = config_get("iconBoxLogo");
-	if (!value || !*value)
-		return builtin_logo();
-	char path[4096];
-	config_expand_home(value, path, sizeof(path));
-	cairo_surface_t *image = cairo_image_surface_create_from_png(path);
-	if (cairo_surface_status(image) != CAIRO_STATUS_SUCCESS) {
-		wlr_log(WLR_ERROR, "cannot load Mwm*iconBoxLogo %s: %s", path,
-			cairo_status_to_string(cairo_surface_status(image)));
-		cairo_surface_destroy(image);
-		return builtin_logo();
-	}
-	return image;
 }
 
 /* ---- geometry ------------------------------------------------------------- */
@@ -645,7 +627,7 @@ void iconbox_config_changed(struct server *server)
 	if (ib.enabled) {
 		int h;
 		text_extent(theme.font, "Icons", &ib.title_w, &h);
-		cairo_surface_t *image = read_logo();
+		cairo_surface_t *image = builtin_logo();
 		render_logo(image);
 		if (image)
 			cairo_surface_destroy(image);
