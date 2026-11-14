@@ -99,8 +99,7 @@ cannot restart and keep its windows, so a reload applies the file to what is run
 Lines starting with `!` are comments; a `!` after a value belongs to the value. Later
 lines win. Colours are `#rrggbb`, names such as `gold`, or `rgb:rr/gg/bb`. Programs are
 matched by an X11 window's `WM_CLASS` instance or class, or a Wayland `app_id`,
-ignoring case; an `app_id` may contain dots. `fontList` takes Pango names such as
-`Sans Bold 10`; other forms are logged and ignored, as are unknown resources.
+ignoring case; an `app_id` may contain dots. Unknown resources are logged and ignored.
 
 Global resources:
 
@@ -171,10 +170,8 @@ bar under the pointer instead, as far as the monitor allows.
     Mwm*XTerm*geometry:         +20-40
     Mwm*mrun*geometry:          pointer
 
-The entry wins over a position the program asks for, but not for dialogs. It doesn't
-apply to a window that starts maximized or fullscreen, or to a client that sets its
-`app_id` only after the window has appeared. In tiling mode the layout decides, unless
-the program is in `DoNotTile`. A window placed from the right or bottom edge keeps that
+The entry wins over a position the program asks for, but not for dialogs. In tiling
+mode the layout decides, unless the program is in `DoNotTile`. A window placed from the right or bottom edge keeps that
 edge when it changes its size by itself, until it is moved or resized by hand. Hidden
 and shown again, a window returns to its entry's place, unless it is an X11 program
 with a position of its own.
@@ -211,7 +208,7 @@ quarter, from maximized to normal, and from normal to an icon.
 ## Tiling
 
 Super+T, or "Tile Windows" in the root menu, switches tiling on. The main window takes
-the right part of the first monitor, 55 % or `tileMainWidth`, all of it while alone;
+the right part of the screen, 55 % or `tileMainWidth`, all of it while alone;
 the others stack on the left. A new window, or one back from an icon, becomes the main
 window. Tiled windows keep their frame but cannot be moved or resized; the title bar
 buttons do this instead:
@@ -279,7 +276,7 @@ place of the first word puts the icons in the middle of the edge the second name
     Mwm*iconPlacement:  center right
 
 `useIconBox` puts the icons of the current desktop into a box instead: one row or
-column where `iconPlacement` would start them, on the first monitor. It is as long as
+column where `iconPlacement` would start them. It is as long as
 its icons need, up to `iconBoxSize` icons (default 10, or what fits), and scrolls from
 there. Empty, it shows the mwc logo on a tile. It cannot be moved or resized and has no
 window menu. Maximize switches between full length and what the icons need; minimize
@@ -327,7 +324,7 @@ holds the keyboard exclusively, the window bindings are off, except VT switching
 Ctrl+Alt+Backspace.
 
 X11 panels work as well: a dock window with `_NET_WM_STRUT_PARTIAL` reserves space, and
-`_NET_WORKAREA` tells X11 programs what is free. The older `_NET_WM_STRUT` is not read.
+`_NET_WORKAREA` tells X11 programs what is free.
 
 ext-idle-notify-v1, idle-inhibit-unstable-v1 and wlr-output-power-management-unstable-v1
 are there for tools such as [displayOff](https://github.com/reygnn/displayOff). A
@@ -349,7 +346,7 @@ appeared, also while minimized.
 |---|---|
 | `keyboardLayout`, `keyboardVariant`, `keyboardOptions`, `keyboardModel` | as in XKB; `XKB_DEFAULT_*` wins. Without them the layout is `us`, also in a GDM session |
 | `Name*outputMode` | `WIDTHxHEIGHT` or `WIDTHxHEIGHT@HZ`; default the preferred mode |
-| `Name*outputScale` | 0.1 to 10. Frames and menus are drawn at 1x, and X11 programs are not scaled |
+| `Name*outputScale` | 0.1 to 10 |
 | `Name*outputPosition` | `X,Y` in the layout; default the next free place in the row |
 | `Name*outputTransform` | `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180`, `flipped-270` |
 
@@ -357,10 +354,8 @@ The log names each monitor and its modes. All of this applies on reload too.
 
 Tools such as wlr-randr, kanshi and wdisplays, and VNC or RDP servers that size a
 headless monitor to the viewer's window, need wlr-output-management. It is offered with
-`Mwm*outputManagement: true`, read at startup only, and off by default: wlroots up to
-0.20 aborts when one client of the protocol has an object for a mode that another
-lacks, which any client can bring about, most easily on headless and nested monitors.
-The fix is on wlroots' master (commit 40640950). With it on, what a client set stays
+`Mwm*outputManagement: true`, read at startup only, and off by default. With it on,
+what a client set stays
 over a reload until mwmrc says something new about that monitor, and a monitor a client
 switched off leaves the layout and stays off until such a client switches it on.
 
@@ -386,13 +381,10 @@ Programs that wait for the refresh through wp_fifo_v1, as SDL 3 and Mesa's Vulka
 mode do, get one update per refresh; minimized or on a monitor that is off, about one a
 second.
 
-X11 programs find `_NET_FRAME_EXTENTS`, `_NET_WORKAREA` and `_MOTIF_WM_INFO`. Xwayland
-starts on the first X11 connection, so a program asking before its window is mapped may
-miss them the first time.
+X11 programs find `_NET_FRAME_EXTENTS`, `_NET_WORKAREA` and `_MOTIF_WM_INFO`.
 
 Clients that speak xdg-decoration (foot, Qt, alacritty, kitty, mpv) or KDE's server
-decoration protocol (GTK3) get a Motif frame. GTK4 and libadwaita programs always draw
-their own title bar and stay unframed.
+decoration protocol (GTK3) get a Motif frame.
 
 
 ## How this is built
@@ -406,7 +398,7 @@ checks:
 * `make input-test` drives real clients with a simulated mouse and keyboard and checks
   geometry and focus after every move, resize, maximize, minimize, menu and key binding.
 * What is open, and which protocols any client can use, is written down rather than
-  hidden: see TODO and Testing below.
+  hidden: see TODO and CAVEATS.
 
 
 ## Testing
@@ -423,8 +415,9 @@ Podman and Distrobox:
 host's X server is not reachable; X11 programs run inside mwc only.
 
 `make test` runs every script in `tests/`, each also on its own as `make NAME-test`
-(`make smoke` for the first): smoke, input, wallpaper, config, layer, window, move, snap, outputs, tile, crash,
-pointer, state, misc, session, tabs, fifo, rdp, desktop and iconbox. They run mwc on a
+(`make smoke` for the first): smoke, input, wallpaper, config, layer, window, move,
+snap, outputs, tile, crash, pointer, state, misc, session, tabs, fifo, rdp, desktop and
+iconbox. They run mwc on a
 headless output with small clients in `tests/` that can ask for any hint, and check the
 state mwc writes and pixels in screenshots. None of this tests real input hardware,
 DRM/KMS or VT switching; use a VM or a free TTY for those. A sanitizer build is worth
@@ -437,8 +430,4 @@ running too:
 
 The state file and the virtual input devices exist only with `MWC_TEST_STATE` set (the
 devices also with `MWC_VIRTUAL_INPUT=1`, for wayrdp), because those protocols let a
-client type for the user. Other protocols are open to every client, as in most wlroots
-compositors: wlr-screencopy and ext-image-copy-capture-v1 let it read the screen,
-ext-data-control-v1 and wlr-data-control read and set the clipboard, wlr-layer-shell
-cover the screen, and ext-workspace-v1 switch the desktop. wlr-output-management, when
-switched on, lets it change and switch off the monitors.
+client type for the user.
