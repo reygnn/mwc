@@ -202,6 +202,7 @@ struct view {
 	struct wlr_scene_rect *backdrop;
 	int drawn_w, drawn_h;  /* the frame's size at the last frame_render() */
 	char *drawn_title;     /* the title then, see view_update_title() */
+	char *known_app_id;    /* app_id or WM_CLASS as last acted on */
 	struct wlr_scene_buffer *icon_node;  /* shown while minimized */
 
 	/* Frame geometry: x/y is the outer top-left corner in layout coords,
@@ -590,6 +591,8 @@ void view_frame_changed(struct view *view);
 void view_theme_changed(struct view *view);
 const char *view_title(struct view *view);
 const char *view_app_id(struct view *view);
+/* Whether it differs from the one last asked about; remembers the new one. */
+bool view_app_id_changed(struct view *view);
 struct wlr_surface *view_surface(struct view *view);
 void view_cycle(struct server *server, bool backwards);
 /* Common setup after the type-specific part has filled in the client. */
@@ -775,6 +778,9 @@ void input_pointer_changed(struct server *server);
 void input_pointer_changed_soon(struct server *server);
 /* Whether a client may start a move now: only with a button down that it got. */
 bool input_button_held(struct server *server);
+/* Whether the pointer is over this surface or one of its subsurfaces, as during the
+ * press a move or resize request comes from. */
+bool input_pointer_on(struct server *server, struct wlr_surface *surface);
 /* Gives the keyboard to a surface, without the keys mwc kept to itself. */
 void input_keyboard_enter(struct server *server, struct wlr_surface *surface);
 /* A client's open menu ends: its grab holds the keyboard wherever the focus goes,

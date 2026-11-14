@@ -16,18 +16,22 @@
 /* Guards against WM_TRANSIENT_FOR cycles, which a client can set up. */
 #define MAX_TRANSIENT_DEPTH 16
 
+/* Straight from the parent's surface, without going through all views: it is asked
+ * for each view on every focus change, and a client decides how many there are. An
+ * xdg surface's data is its scene tree (xdg_surface_set_tree()), which hangs in its
+ * view's tree; an X11 surface's data is its view (new_managed()). */
 struct view *view_parent(struct view *view)
 {
-	struct view *v;
-	wl_list_for_each(v, &view->server->views, link) {
-		if (v == view || v->type != view->type)
-			continue;
-		if (view->type == VIEW_XDG ?
-				v->xdg_toplevel == view->xdg_toplevel->parent :
-				v->xsurface == view->xsurface->parent)
-			return v;
+	struct view *p = NULL;
+	if (view->type == VIEW_XDG) {
+		struct wlr_xdg_toplevel *t = view->xdg_toplevel->parent;
+		struct wlr_scene_tree *tree = t ? t->base->data : NULL;
+		if (tree && tree->node.parent)
+			p = tree->node.parent->node.data;
+	} else if (view->xsurface->parent) {
+		p = view->xsurface->parent->data;
 	}
-	return NULL;
+	return p != view ? p : NULL;
 }
 
 bool view_is_transient_of(struct view *view, struct view *ancestor)

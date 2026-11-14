@@ -902,6 +902,16 @@ void view_restore(struct view *view)
 	}
 }
 
+bool view_app_id_changed(struct view *view)
+{
+	const char *id = view_app_id(view);
+	if (view->known_app_id && id && strcmp(view->known_app_id, id) == 0)
+		return false;
+	free(view->known_app_id);
+	view->known_app_id = id ? strdup(id) : NULL;
+	return true;
+}
+
 void view_update_title(struct view *view)
 {
 	/* Programs that set a progress or the current line as their title may set the
@@ -1459,6 +1469,7 @@ void view_handle_destroy(struct view *view)
 	wlr_scene_node_destroy(&view->icon_node->node);
 	wlr_scene_node_destroy(&view->tree->node);
 	free(view->drawn_title);
+	free(view->known_app_id);
 	free(view);
 }
 
@@ -1634,8 +1645,8 @@ static void xdg_set_parent(struct wl_listener *listener, void *data)
 static void xdg_set_app_id(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, set_app_id);
-	if (!view->mapped)
-		return; /* the map picks it up */
+	if (!view->mapped || !view_app_id_changed(view))
+		return; /* the map picks it up; or the same again */
 	config_view_shades(view);
 	config_view_tiling(view);
 	view_theme_changed(view);
@@ -1649,7 +1660,7 @@ static void xdg_request_move(struct wl_listener *listener, void *data)
 	/* Only for a button still down: a late request would glue the window to the
 	 * pointer until the next click. */
 	if (wlr_seat_validate_pointer_grab_serial(view->server->seat, NULL,
-			event->serial))
+			event->serial) && input_pointer_on(view->server, view_surface(view)))
 		view_begin_interactive(view, CURSOR_MOVE, 0, false);
 }
 
@@ -1658,7 +1669,7 @@ static void xdg_request_resize(struct wl_listener *listener, void *data)
 	struct wlr_xdg_toplevel_resize_event *event = data;
 	struct view *view = wl_container_of(listener, view, request_resize);
 	if (wlr_seat_validate_pointer_grab_serial(view->server->seat, NULL,
-			event->serial))
+			event->serial) && input_pointer_on(view->server, view_surface(view)))
 		view_begin_interactive(view, CURSOR_RESIZE, event->edges, false);
 }
 

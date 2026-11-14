@@ -518,6 +518,12 @@ void input_pointer_changed_soon(struct server *server)
 			pointer_refresh_idle, server);
 }
 
+bool input_pointer_on(struct server *server, struct wlr_surface *surface)
+{
+	struct wlr_surface *focus = server->seat->pointer_state.focused_surface;
+	return surface && focus && wlr_surface_get_root_surface(focus) == surface;
+}
+
 bool input_button_held(struct server *server)
 {
 	return server->n_forwarded > 0;

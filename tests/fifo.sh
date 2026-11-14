@@ -31,6 +31,8 @@ start_mwc 'exec sleep 300'
 refreshes_between "updates without the barrier replace each other" 0 4 plain 30
 refreshes_between "updates with the barrier come one per refresh" 25 45 fifo 30
 refreshes_between "a second run in a new window too" 25 45 fifo 30
+# Held, each update keeps a surface state in memory: past 64 the barrier clears early.
+refreshes_between "more than 64 at once don't all wait" 0 120 fifo 300
 # The wp_fifo_v1 goes after the first: the held ones must come at once.
 refreshes_between "destroying the wp_fifo_v1 lets the held updates go" 0 6 release 30
 

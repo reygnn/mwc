@@ -42,6 +42,11 @@
  * window nobody sees, about one update a second. */
 #define OFF_SCREEN_MS 1000
 
+/* Commits waiting per surface. A swapchain holds a few, tests/fifoc.c sends 30; a
+ * client queueing more gets the barrier cleared early, as the protocol allows.
+ * Otherwise each held commit keeps a surface state in memory, without limit. */
+#define MAX_HELD 64
+
 struct fifo_state {
 	bool set_barrier, wait_barrier;
 };
@@ -208,6 +213,17 @@ static void client_commit(struct wl_listener *listener, void *data)
 		return;
 	if (!fifo->barrier && wl_list_empty(&fifo->held))
 		return;
+	if (wl_list_length(&fifo->held) >= MAX_HELD) {
+		/* Oldest first, as they would have gone; this one goes with them. */
+		while (fifo->surface && !wl_list_empty(&fifo->held)) {
+			struct fifo_held *old = wl_container_of(fifo->held.next, old, link);
+			uint32_t seq = old->seq;
+			wl_list_remove(&old->link);
+			free(old);
+			wlr_surface_unlock_cached(fifo->surface, seq);
+		}
+		return;
+	}
 	struct fifo_held *h = calloc(1, sizeof(*h));
 	if (!h) {
 		wl_resource_post_no_memory(fifo->resource);

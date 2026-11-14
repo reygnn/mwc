@@ -258,20 +258,45 @@ static void output_power_set_mode(struct wl_listener *listener, void *data)
 	output_manager_update(server);
 }
 
-/* One per inhibitor; while any exists, nobody counts as idle. */
+/* One per inhibitor. While one exists whose surface is mapped, nobody counts as idle;
+ * minimized or on another desktop it still counts, see README. One whose surface
+ * never appeared doesn't, or a client could keep the screen on unseen. */
 struct idle_inhibitor {
 	struct wl_listener destroy;
+	struct wl_listener map, unmap;
 	struct server *server;
+	struct wlr_idle_inhibitor_v1 *wlr;
 };
+
+static void idle_recount(struct server *server, struct wlr_idle_inhibitor_v1 *going)
+{
+	bool any = false;
+	struct wlr_idle_inhibitor_v1 *i;
+	wl_list_for_each(i, &server->idle_inhibit->inhibitors, link)
+		any |= i != going && i->surface->mapped;
+	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, any);
+}
+
+static void idle_inhibitor_mapped(struct wl_listener *listener, void *data)
+{
+	struct idle_inhibitor *inhibitor = wl_container_of(listener, inhibitor, map);
+	idle_recount(inhibitor->server, NULL);
+}
+
+static void idle_inhibitor_unmapped(struct wl_listener *listener, void *data)
+{
+	struct idle_inhibitor *inhibitor = wl_container_of(listener, inhibitor, unmap);
+	idle_recount(inhibitor->server, NULL);
+}
 
 static void idle_inhibitor_destroy(struct wl_listener *listener, void *data)
 {
 	struct idle_inhibitor *inhibitor = wl_container_of(listener, inhibitor, destroy);
-	struct server *server = inhibitor->server;
 	/* It is still in the list while it says that it goes. */
-	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier,
-		wl_list_length(&server->idle_inhibit->inhibitors) > 1);
+	idle_recount(inhibitor->server, inhibitor->wlr);
 	wl_list_remove(&inhibitor->destroy.link);
+	wl_list_remove(&inhibitor->map.link);
+	wl_list_remove(&inhibitor->unmap.link);
 	free(inhibitor);
 }
 
@@ -285,9 +310,14 @@ static void new_idle_inhibitor(struct wl_listener *listener, void *data)
 		return;
 	}
 	inhibitor->server = server;
+	inhibitor->wlr = wlr_inhibitor;
 	inhibitor->destroy.notify = idle_inhibitor_destroy;
 	wl_signal_add(&wlr_inhibitor->events.destroy, &inhibitor->destroy);
-	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, true);
+	inhibitor->map.notify = idle_inhibitor_mapped;
+	wl_signal_add(&wlr_inhibitor->surface->events.map, &inhibitor->map);
+	inhibitor->unmap.notify = idle_inhibitor_unmapped;
+	wl_signal_add(&wlr_inhibitor->surface->events.unmap, &inhibitor->unmap);
+	idle_recount(server, NULL);
 }
 
 static void output_destroy(struct wl_listener *listener, void *data)

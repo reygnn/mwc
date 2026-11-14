@@ -243,6 +243,11 @@ layerc_start huge layer=top anchor=top,left,right size=0x30 exclusive=5000 color
 sleep 0.3
 output_is "exclusive zone beyond the output: it isn't believed" 0 0 1280 720
 layerc_stop huge
+# All but a sliver: no more believable, windows would be squeezed into it.
+layerc_start sliver layer=top anchor=top,left,right size=0x30 exclusive=680 color=444444
+sleep 0.3
+output_is "an exclusive zone leaving less than 100 px isn't believed either" 0 0 1280 720
+layerc_stop sliver
 
 layerc_start lock layer=overlay anchor=right size=50x50 keyboard=exclusive color=555555
 wait_for "exclusive keyboard: focus on map" has_event lock keyboard-enter

@@ -143,10 +143,11 @@ void layer_arrange(struct output *output)
 	arrange_pass(output, &full, &usable, true);
 	arrange_pass(output, &full, &usable, false);
 	apply_struts(output, &usable);
-	/* A panel may reserve more than there is. Then there is no use in believing it:
-	 * windows would have nowhere to go. */
-	if (!wlr_box_intersection(&usable, &usable, &full) || usable.width <= 0 ||
-			usable.height <= 0)
+	/* A panel may reserve more than there is, or all but a sliver. Then there is no
+	 * use in believing it: windows would have nowhere to go. X11 struts keep the same
+	 * room, see apply_struts(). */
+	if (!wlr_box_intersection(&usable, &usable, &full) || usable.width < MIN_ROOM ||
+			usable.height < MIN_ROOM)
 		usable = full;
 	if (!wlr_box_equal(&usable, &output->usable)) {
 		output->usable = usable;

@@ -262,6 +262,7 @@ static void xw_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&view->request_sticky.link);
 	wl_list_remove(&view->request_shaded.link);
 	wl_list_remove(&view->request_demands_attention.link);
+	view->xsurface->data = NULL;
 	view_handle_destroy(view);
 }
 
@@ -344,9 +345,11 @@ static void xw_request_activate(struct wl_listener *listener, void *data)
 static void xw_request_move(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_move);
-	/* X11 gives no serial to check, so at least a button must be down. A late
-	 * request would glue the window to the pointer until the next click. */
-	if (input_button_held(view->server))
+	/* X11 gives no serial to check, so at least a button must be down, pressed on
+	 * this window. A late request would glue the window to the pointer until the
+	 * next click; one for another window would take over the user's drag. */
+	if (input_button_held(view->server) &&
+			input_pointer_on(view->server, view->xsurface->surface))
 		view_begin_interactive(view, CURSOR_MOVE, 0, false);
 }
 
@@ -354,7 +357,8 @@ static void xw_request_resize(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_resize);
 	struct wlr_xwayland_resize_event *ev = data;
-	if (input_button_held(view->server))
+	if (input_button_held(view->server) &&
+			input_pointer_on(view->server, view->xsurface->surface))
 		view_begin_interactive(view, CURSOR_RESIZE, ev->edges, false);
 }
 
@@ -477,8 +481,8 @@ static void xw_set_parent(struct wl_listener *listener, void *data)
 static void xw_set_class(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, set_app_id);
-	if (!view->mapped)
-		return; /* the map picks it up */
+	if (!view->mapped || !view_app_id_changed(view))
+		return; /* the map picks it up; or the same again */
 	config_view_shades(view);
 	config_view_tiling(view);
 	view_theme_changed(view);
@@ -548,6 +552,7 @@ static struct view *new_managed(struct server *server, struct wlr_xwayland_surfa
 	view->server = server;
 	view->type = VIEW_XWAYLAND;
 	view->xsurface = xs;
+	xs->data = view; /* for view_parent() */
 	view->ssd = true;
 	view->decorated = true;
 	view_init_common(view);
