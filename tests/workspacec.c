@@ -261,8 +261,9 @@ int main(int argc, char *argv[])
 		wl_display_roundtrip(display);
 		for (int i = 0; i < n_ws; i++) {
 			struct ws *w = &workspaces[i];
-			printf("workspace id=%s name=%s x=%d state=%s caps=%s group=%d\n", w->id,
-				w->name, w->x, state_text(w->state), caps_text(w->caps), w->in_group);
+			printf("workspace id=%s name=%s x=%d state=%s caps=%s group=%d\n",
+				w->id, w->name, w->x, state_text(w->state), caps_text(w->caps),
+				w->in_group);
 		}
 		printf("group outputs=%d caps=%d\n", group_outputs, group_caps);
 		return 0;

@@ -217,10 +217,12 @@ static struct layer_surface *waiting_exclusive(struct server *server)
 	wl_list_for_each(output, &server->outputs, link) {
 		for (int layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
 				layer >= ZWLR_LAYER_SHELL_V1_LAYER_TOP; layer--) {
+			const enum zwlr_layer_surface_v1_keyboard_interactivity exclusive =
+				ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
 			struct layer_surface *ls;
 			wl_list_for_each(ls, &output->layers[layer], link) {
-				if (ls->wlr->surface->mapped && ls->wlr->current.keyboard_interactive ==
-						ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
+				if (ls->wlr->surface->mapped &&
+						ls->wlr->current.keyboard_interactive == exclusive)
 					return ls;
 			}
 		}

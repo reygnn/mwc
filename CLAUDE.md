@@ -14,11 +14,12 @@ test tools. `distrobox enter mwc-dev -- bash -lc 'cd ~/data/C-Projects/mwc && ..
 | `make test` | the 21 headless scripts in `tests/`; one alone: `make NAME-test`, log in `build/NAME.log` |
 | `make check` | the same under ASan and UBSan with `-Werror`, then the kept fuzz inputs |
 | `make analyze` | `gcc -fanalyzer` over the sources, findings as errors |
+| `make lint` | C lines over 100 columns, tabs as 8 |
 | `make valgrind` | memcheck, slow, without the timing-dependent scripts |
 | `make fuzz` | libFuzzer on the mwmrc parser, `FUZZ_TIME` seconds |
 
-CI (`.github/workflows/ci.yml`) runs a `-Werror` build, `make analyze` and `make check` in
-`tests/Containerfile`'s image.
+CI (`.github/workflows/ci.yml`) runs `make lint`, a `-Werror` build, `make analyze` and
+`make check` in `tests/Containerfile`'s image.
 
 Every fix or feature gets a test that fails without it; check that by taking the
 change out when it is cheap. Poll, don't sleep: `check`, `wait_for`, `pixel_is`,

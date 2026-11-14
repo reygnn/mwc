@@ -134,6 +134,20 @@ analyze: $(PROTO) build/logo.h
 		$(CC) $(MWC_CFLAGS) -O0 -fanalyzer -Werror -c $$f -o /dev/null || exit 1; \
 	done
 
+# make lint: C lines longer than LINT_MAX columns, tabs to every eighth column as the
+# kernel's checkpatch counts them. Shell scripts are left out: their checks are long
+# conditions that read better whole.
+LINT_MAX = 100
+LINT_FILES = src/*.c src/*.h tests/*.c fuzz/*.c
+
+lint:
+	@awk -v max=$(LINT_MAX) '{ \
+		n = 0; \
+		for (i = 1; i <= length($$0); i++) \
+			n = substr($$0, i, 1) == "\t" ? n + 8 - n % 8 : n + 1; \
+		if (n > max) { print FILENAME ":" FNR ": " n " columns"; bad = 1 } \
+	} END { exit bad }' $(LINT_FILES)
+
 # make valgrind: the tests against mwc in valgrind's memcheck (tests/valgrind-mwc),
 # for what the sanitizers don't see: reads of uninitialized memory, and errors inside
 # wlroots, Pango and cairo, which aren't built with them. Many times slower, so not
@@ -412,4 +426,4 @@ clean:
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN) $(IDLEC_GEN) build/ext-workspace-v1-client.h \
 	build/ext-workspace-v1-code.c
-.PHONY: analyze valgrind check fuzz fuzz-replay dock-test iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: lint analyze valgrind check fuzz fuzz-replay dock-test iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean

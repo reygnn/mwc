@@ -453,6 +453,9 @@ checked.
 `make analyze` runs GCC's static analyzer over the sources, with findings as errors:
 NULL dereferences, use after free and leaks on a path.
 
+`make lint` reports C lines longer than 100 columns, tabs counted to every eighth
+column.
+
 `make valgrind` runs the tests against mwc in valgrind's memcheck, for reads of
 uninitialized memory and errors inside wlroots, Pango and cairo, which the sanitizers
 don't see. It is many times slower and leaves out the tests that go by timing: layer,

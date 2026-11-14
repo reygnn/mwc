@@ -100,7 +100,8 @@ static void ask_state(Window win, const char *state)
 }
 
 struct options {
-	const char *class, *type, *state, *dialog, *dialog_type, *gravity, *ask_before, *ask_after, *ask_later;
+	const char *class, *type, *state, *dialog, *dialog_type, *gravity;
+	const char *ask_before, *ask_after, *ask_later;
 	int w, h, x, y;
 	bool has_pos;
 	int min_w, min_h, max_w, max_h, inc_w, inc_h, base_w, base_h;

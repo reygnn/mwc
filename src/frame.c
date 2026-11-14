@@ -651,9 +651,11 @@ static void icons_arrange_centred(struct server *server)
 			v = list[j];
 			if (p->horizontal) {
 				v->icon_x = along;
-				v->icon_y = along_pos(a.y, a.height, ICON_H, gap, line, p->from_bottom);
+				v->icon_y = along_pos(a.y, a.height, ICON_H, gap, line,
+					p->from_bottom);
 			} else {
-				v->icon_x = along_pos(a.x, a.width, ICON_W, gap, line, p->from_right);
+				v->icon_x = along_pos(a.x, a.width, ICON_W, gap, line,
+					p->from_right);
 				v->icon_y = along;
 			}
 			v->icon_placed = true;

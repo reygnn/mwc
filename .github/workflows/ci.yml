@@ -1,5 +1,5 @@
-# On every push and pull request: a build with warnings as errors, GCC's static
-# analyzer (make analyze), then make check,
+# On every push and pull request: lines longer than 100 columns (make lint), a build
+# with warnings as errors, GCC's static analyzer (make analyze), then make check,
 # the whole test suite under AddressSanitizer and UndefinedBehaviorSanitizer and the
 # kept fuzz inputs. GitHub has no Ubuntu with wlroots 0.19 yet, so it all runs in
 # tests/Containerfile's image, as on a developer's machine. The test logs come out
@@ -20,13 +20,14 @@ jobs:
       - name: Image
         run: docker build -t mwc-test -f tests/Containerfile tests
 
-      - name: Build with -Werror, make analyze, make check
+      - name: make lint, build with -Werror, make analyze, make check
         run: |
           mkdir -m 777 logs
           docker run --rm --network=none --tmpfs /tmp/.X11-unix:mode=1777 \
             -v "$PWD:/src/mwc:ro" -v "$PWD/logs:/logs" mwc-test sh -c '
               cp -r /src/mwc /tmp/mwc && cd /tmp/mwc && make clean &&
-              make CFLAGS="-O2 -g -Werror" && make analyze && make -k check; status=$?
+              make lint && make CFLAGS="-O2 -g -Werror" && make analyze &&
+              make -k check; status=$?
               cp build/*.log build/*.png /logs/ 2>/dev/null; exit $status'
 
       - name: Test logs
