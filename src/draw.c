@@ -107,15 +107,27 @@ static const char *usable_font(const char *font, const char *where)
 	return font;
 }
 
+const PangoFontDescription *font_description(const char *font)
+{
+	static char *name;
+	static PangoFontDescription *desc;
+	if (name && strcmp(name, font) == 0)
+		return desc;
+	if (desc)
+		pango_font_description_free(desc);
+	free(name);
+	name = strdup(font);
+	desc = pango_font_description_from_string(font);
+	return desc;
+}
+
 void text_extent(const char *font, const char *text, int *w, int *h)
 {
 	cairo_surface_t *tmp = cairo_image_surface_create(
 		CAIRO_FORMAT_ARGB32, 1, 1);
 	cairo_t *cr = cairo_create(tmp);
 	PangoLayout *layout = pango_cairo_create_layout(cr);
-	PangoFontDescription *desc = pango_font_description_from_string(font);
-	pango_layout_set_font_description(layout, desc);
-	pango_font_description_free(desc);
+	pango_layout_set_font_description(layout, font_description(font));
 	pango_layout_set_text(layout, text, -1);
 	pango_layout_get_pixel_size(layout, w, h);
 	g_object_unref(layout);

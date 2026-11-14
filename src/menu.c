@@ -26,10 +26,7 @@ enum menu_action_private {
 static PangoLayout *make_layout(cairo_t *cr, const char *text, char mnemonic)
 {
 	PangoLayout *layout = pango_cairo_create_layout(cr);
-	PangoFontDescription *desc =
-		pango_font_description_from_string(theme.font);
-	pango_layout_set_font_description(layout, desc);
-	pango_font_description_free(desc);
+	pango_layout_set_font_description(layout, font_description(theme.font));
 
 	const char *u = mnemonic ? strchr(text, mnemonic) : NULL;
 	if (u) {

@@ -126,27 +126,19 @@ bool outline_get(struct wlr_box *box)
 
 /* ---- feedback ------------------------------------------------------------ */
 
-static void text_size(const char *text, int *w, int *h)
-{
-	cairo_surface_t *tmp = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
-	cairo_t *cr = cairo_create(tmp);
-	PangoLayout *layout = pango_cairo_create_layout(cr);
-	PangoFontDescription *desc = pango_font_description_from_string(theme.font);
-	pango_layout_set_font_description(layout, desc);
-	pango_font_description_free(desc);
-	pango_layout_set_text(layout, text, -1);
-	pango_layout_get_pixel_size(layout, w, h);
-	g_object_unref(layout);
-	cairo_destroy(cr);
-	cairo_surface_destroy(tmp);
-}
-
 void feedback_show(struct server *server, const char *text, double lx, double ly)
 {
 	struct wlr_box m = output_full_area(server, lx, ly);
-	int tw, th;
-	text_size(text, &tw, &th);
-	int w = tw + 24 > 80 ? tw + 24 : 80, h = th + 14;
+	/* It follows the pointer's monitor on every motion event, but the text changes
+	 * less often, and only then is it measured and drawn. */
+	bool same = feedback_node && strcmp(text, feedback_shown) == 0;
+	int w = feedback_box.width, h = feedback_box.height;
+	if (!same) {
+		int tw, th;
+		text_extent(theme.font, text, &tw, &th);
+		w = tw + 24 > 80 ? tw + 24 : 80;
+		h = th + 14;
+	}
 
 	if (!feedback_node) {
 		feedback_node = wlr_scene_buffer_create(server->layer_feedback, NULL);
@@ -157,7 +149,7 @@ void feedback_show(struct server *server, const char *text, double lx, double ly
 	wlr_scene_node_set_position(&feedback_node->node, feedback_box.x,
 		feedback_box.y);
 	wlr_scene_node_set_enabled(&feedback_node->node, true);
-	if (strcmp(text, feedback_shown) == 0)
+	if (same)
 		return;
 	snprintf(feedback_shown, sizeof(feedback_shown), "%s", text);
 

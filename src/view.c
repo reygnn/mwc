@@ -680,14 +680,23 @@ void view_apply_tile(struct view *view)
 	view_apply_size_hints(view, &w, &h, true);
 	/* The main window keeps to the right edge, the stack to the left. */
 	int x = view->tile_main ? r.x + r.width - (w + frame_extra_w(view)) : r.x;
-	view_set_geometry(view, x, r.y, w, h);
+	/* Every layout round comes here for every tiled window: one already where it
+	 * belongs, at the size last asked of it, needs no configure and no new frame. */
+	bool asked = view->type == VIEW_XDG ?
+		view->requested_w == w && view->requested_h == h :
+		view->xsurface->width == w && view->xsurface->height == h;
+	bool in_place = asked && view->x == x && view->y == r.y;
+	if (!in_place)
+		view_set_geometry(view, x, r.y, w, h);
 	if (view->tile_main && view->type == VIEW_XDG) {
 		/* Also if the client decides on a size of its own. */
 		view->anchor_edges = WLR_EDGE_LEFT;
 		view->anchor_right = r.x + r.width;
 	}
 	view_show_content(view);
-	frame_render(view);
+	/* Rolled up or out, the frame changes height with the client's size the same. */
+	if (!in_place || view->drawn_h != frame_height(view))
+		frame_render(view);
 }
 
 void view_set_fullscreen(struct view *view, bool fullscreen)
@@ -866,9 +875,18 @@ void view_restore(struct view *view)
 
 void view_update_title(struct view *view)
 {
+	/* Programs that set a progress or the current line as their title may set the
+	 * same one again and again. */
+	const char *title = view_title(view);
+	if (view->drawn_title && title && strcmp(view->drawn_title, title) == 0)
+		return;
+	free(view->drawn_title);
+	view->drawn_title = title ? strdup(title) : NULL;
 	/* The tabs of a group are all drawn by the shown view. */
-	frame_render(view->tab_hidden ? view->group->shown : view);
-	if (view->minimized)
+	frame_render_title(view->tab_hidden ? view->group->shown : view);
+	/* The icon's label is the title only without an app_id. */
+	const char *app_id = view_app_id(view);
+	if (view->minimized && (!app_id || !*app_id))
 		icon_render(view);
 }
 
@@ -1408,6 +1426,7 @@ void view_handle_destroy(struct view *view)
 	wl_list_remove(&view->link);
 	wlr_scene_node_destroy(&view->icon_node->node);
 	wlr_scene_node_destroy(&view->tree->node);
+	free(view->drawn_title);
 	free(view);
 }
 
@@ -1521,6 +1540,8 @@ static void xdg_commit(struct wl_listener *listener, void *data)
 	view_update_properties(view);
 	tabs_sync_sizes(view);
 
+	if (base->current.configure_serial >= view->anchor_serial)
+		grab_resize_caught_up(view);
 	/* The drag is over and the client has answered the last size request. */
 	struct server *server = view->server;
 	bool grabbed = server->cursor_mode == CURSOR_RESIZE &&

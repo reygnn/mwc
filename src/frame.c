@@ -148,9 +148,7 @@ void draw_text(cairo_t *cr, const char *text, const char *font,
 	}
 
 	PangoLayout *layout = pango_cairo_create_layout(cr);
-	PangoFontDescription *desc = pango_font_description_from_string(font);
-	pango_layout_set_font_description(layout, desc);
-	pango_font_description_free(desc);
+	pango_layout_set_font_description(layout, font_description(font));
 	pango_layout_set_text(layout, text, -1);
 	g_free(converted);
 	pango_layout_set_single_paragraph_mode(layout, true);
@@ -360,34 +358,58 @@ static void draw_frame(cairo_t *cr, struct view *view, int W, int H, bool title)
 	}
 }
 
+/* Top with the title bar, bottom, left, right; the sides between the two. A shaded
+ * window has no sides, and one without a frame no strips at all. */
+static void frame_strips(struct view *view, struct wlr_box strips[4], int *W, int *H)
+{
+	const int B = frame_border(view), T = frame_title(view);
+	*W = view->width + 2 * B;
+	*H = frame_height(view);
+	strips[0] = (struct wlr_box){ 0, 0, *W, B + T };
+	strips[1] = (struct wlr_box){ 0, *H - B, *W, B };
+	strips[2] = (struct wlr_box){ 0, B + T, B, *H - 2 * B - T };
+	strips[3] = (struct wlr_box){ *W - B, B + T, B, *H - 2 * B - T };
+}
+
+static void render_strip(struct view *view, int i, const struct wlr_box *r, int W, int H)
+{
+	struct wlr_scene_buffer *node = view->frame_nodes[i];
+	struct cairo_buffer *buf = r->width > 0 && r->height > 0 ?
+		cairo_buffer_create(r->width, r->height) : NULL;
+	if (!buf) {
+		wlr_scene_node_set_enabled(&node->node, false);
+		return;
+	}
+	cairo_translate(buf->cr, -r->x, -r->y);
+	draw_frame(buf->cr, view, W, H, i == 0);
+	wlr_scene_buffer_set_buffer(node, &buf->base);
+	cairo_buffer_drop(buf);
+	wlr_scene_node_set_position(&node->node, r->x, r->y);
+	wlr_scene_node_set_enabled(&node->node, true);
+}
+
+void frame_render_title(struct view *view)
+{
+	struct wlr_box strips[4];
+	int W, H;
+	frame_strips(view, strips, &W, &H);
+	if (W != view->drawn_w || H != view->drawn_h) {
+		frame_render(view);
+		return;
+	}
+	render_strip(view, 0, &strips[0], W, H);
+}
+
 void frame_render(struct view *view)
 {
 	const int B = frame_border(view), T = frame_title(view);
-	const int W = view->width + 2 * B, H = frame_height(view);
-	/* Top with the title bar, bottom, left, right; the sides between the two. A
-	 * shaded window has no sides, and one without a frame no strips at all. */
-	const struct wlr_box strips[4] = {
-		{ 0, 0, W, B + T },
-		{ 0, H - B, W, B },
-		{ 0, B + T, B, H - 2 * B - T },
-		{ W - B, B + T, B, H - 2 * B - T },
-	};
-	for (int i = 0; i < 4; i++) {
-		struct wlr_scene_buffer *node = view->frame_nodes[i];
-		const struct wlr_box *r = &strips[i];
-		struct cairo_buffer *buf = r->width > 0 && r->height > 0 ?
-			cairo_buffer_create(r->width, r->height) : NULL;
-		if (!buf) {
-			wlr_scene_node_set_enabled(&node->node, false);
-			continue;
-		}
-		cairo_translate(buf->cr, -r->x, -r->y);
-		draw_frame(buf->cr, view, W, H, i == 0);
-		wlr_scene_buffer_set_buffer(node, &buf->base);
-		cairo_buffer_drop(buf);
-		wlr_scene_node_set_position(&node->node, r->x, r->y);
-		wlr_scene_node_set_enabled(&node->node, true);
-	}
+	struct wlr_box strips[4];
+	int W, H;
+	frame_strips(view, strips, &W, &H);
+	view->drawn_w = W;
+	view->drawn_h = H;
+	for (int i = 0; i < 4; i++)
+		render_strip(view, i, &strips[i], W, H);
 	/* Between the strips, behind the client. */
 	const int fw = W - 2 * B, fh = H - 2 * B - T;
 	struct wlr_scene_rect *fill = view->frame_fill;

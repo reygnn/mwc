@@ -318,6 +318,16 @@ do_input key Escape
 geometry_is "moveOpaque, Wayland: Escape restores it, corner and all" wopaque "$WX" "$WY" 300 200
 do_input up left
 
+# Faster than the client draws: sizes it hasn't caught up with wait, the last one counts.
+do_input move $((WX + 1)) $((WY + 1))
+do_input down left
+for i in $(seq 1 30); do
+	do_input move $((WX + 1 + 3 * i)) $((WY + 1 + 2 * i))
+done
+do_input up left
+geometry_is "moveOpaque, Wayland: many steps end at the last one" wopaque \
+	$((WX + 90)) $((WY + 60)) 210 140
+
 # Mid-resize, a client that goes away is not to be told about the resize ending.
 refresh
 do_input move $(($(get wopaque x) + 1)) $(($(get wopaque y) + 1))

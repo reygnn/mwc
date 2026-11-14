@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <cairo.h>
+#include <pango/pango.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_output_management_v1.h>
@@ -84,6 +85,9 @@ void draw_text(cairo_t *cr, const char *text, const char *font,
 	bool center);
 /* The size text takes in the font, in pixels. */
 void text_extent(const char *font, const char *text, int *w, int *h);
+/* The font by its Pango name, parsed once for as long as the name stays the same. Owned
+ * here: don't free it. */
+const PangoFontDescription *font_description(const char *font);
 
 /* ---- cairo-backed wlr_buffer --------------------------------------------- */
 
@@ -193,6 +197,8 @@ struct view {
 	 * it shows through what the client leaves transparent, and takes the clicks
 	 * outside its input region, as the frame window under an X11 client does. */
 	struct wlr_scene_rect *frame_fill;
+	int drawn_w, drawn_h;  /* the frame's size at the last frame_render() */
+	char *drawn_title;     /* the title then, see view_update_title() */
 	struct wlr_scene_buffer *icon_node;  /* shown while minimized */
 
 	/* Frame geometry: x/y is the outer top-left corner in layout coords,
@@ -477,6 +483,7 @@ struct server {
 	enum snap grab_orig_snap;
 	enum snap grab_zone;        /* snap target under the pointer */
 	struct wlr_box grab_target; /* same, where the window is to go */
+	bool grab_resize_waiting;   /* opaque: grab_target not sent, the client is busy */
 
 	/* Double-click detection */
 	uint32_t last_click_msec;
@@ -670,6 +677,8 @@ void frame_title_center(struct view *view, int *x, int *y);
 /* Outer frame height; a shaded window keeps only its title bar. */
 int frame_height(struct view *view);
 void frame_render(struct view *view);
+/* Only the title changed: the top strip, if the frame's size is still the same. */
+void frame_render_title(struct view *view);
 enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges);
 /* Which tab is at x in the frame: its index, or -1 for none. */
 int frame_tab_at(struct view *view, int fx);
@@ -734,6 +743,9 @@ void run_action(struct server *server, enum menu_action action,
 void input_init(struct server *server);
 /* The keyboard settings in mwmrc changed: new keymaps for real keyboards. */
 void input_config_changed(struct server *server);
+/* An xdg client answered the last size asked of it: during an opaque resize, the
+ * size the pointer got to meanwhile goes out now. */
+void grab_resize_caught_up(struct view *view);
 /* After view_begin_interactive() set the grab up: show what it needs. */
 void grab_started(struct server *server);
 /* The grabbed window went away. */

@@ -176,6 +176,7 @@ static void clear_grab(struct server *server)
 	server->grab_drop = NULL;
 	server->cursor_name = NULL;
 	server->grab_zone = SNAP_NONE;
+	server->grab_resize_waiting = false;
 	outline_hide();
 	feedback_hide();
 	snap_preview_hide();
@@ -227,7 +228,9 @@ static void end_grab(struct server *server)
 	struct view *take = server->grab_take;
 	bool moved = server->grab_detached;
 	enum cursor_mode mode = server->cursor_mode;
-	bool apply = server->grab_outline && server->grab_changed;
+	/* Opaque: the size it got to while the client was still busy. */
+	bool apply = (server->grab_outline || server->grab_resize_waiting) &&
+		server->grab_changed;
 	bool changed = server->grab_changed;
 	struct wlr_box target = server->grab_target, orig = server->grab_orig;
 	enum snap zone = server->grab_zone, orig_snap = server->grab_orig_snap;
@@ -454,9 +457,24 @@ static void process_resize(struct server *server)
 	server->grab_changed = true;
 	if (server->grab_outline)
 		show_outline(server);
+	else if (view->type == VIEW_XDG && view->xdg_toplevel->base->current.configure_serial <
+			view->anchor_serial)
+		/* Still busy with the last size: a mouse sends far more events than a
+		 * client can draw frames. This one goes out when it has caught up. */
+		server->grab_resize_waiting = true;
 	else
 		resize_to(view, &target);
 	update_feedback(server);
+}
+
+void grab_resize_caught_up(struct view *view)
+{
+	struct server *server = view->server;
+	if (!server->grab_resize_waiting || server->grabbed_view != view ||
+			server->cursor_mode != CURSOR_RESIZE)
+		return;
+	server->grab_resize_waiting = false;
+	resize_to(view, &server->grab_target);
 }
 
 /* ---- pointer ------------------------------------------------------------ */
