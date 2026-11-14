@@ -237,7 +237,7 @@ or column where `iconPlacement` would start them, on the first monitor. Unlike m
 the box is as long as its icons need, up to `iconBoxSize` icons (default 10, or what
 fits on the edge), and gets a scroll bar from there. Without icons it is a tile the
 size of an icon with the mwc logo, which `iconBoxLogo` can replace with a PNG of your
-own (shown at up to 60×60). The box can't be moved or resized and has no window menu:
+own: its transparent margin is left out and the rest scaled to 64×64. The box can't be moved or resized and has no window menu:
 
 - its maximize button switches between the full length and what the icons need, its
   minimize button turns it into the logo tile, and a click on the tile brings it back

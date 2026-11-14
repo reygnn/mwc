@@ -37,7 +37,7 @@
 #include "mwc.h"
 #include "logo.h"
 
-#define LOGO_SIZE 60 /* the logo on its tile, which is ICON_W x ICON_H */
+#define LOGO_SIZE 64 /* the logo on its tile, which is ICON_W x ICON_H */
 #define SB 15        /* scroll bar */
 
 struct desk {
@@ -56,6 +56,7 @@ static struct {
 	bool focused;
 	long seq;        /* its place among the windows, see iconbox_cycle_takes() */
 	cairo_surface_t *logo_image; /* NULL: none could be read, an empty tile */
+	struct wlr_box logo_crop;    /* what of it isn't transparent */
 
 	/* The layout of the last arrange, for drawing and hit testing. */
 	bool shown;      /* the box, not the logo */
@@ -127,7 +128,49 @@ static cairo_surface_t *builtin_logo(void)
 	return image;
 }
 
+/* The part of the image that isn't transparent: a margin in the file would only make
+ * the logo smaller on its tile. */
+static struct wlr_box visible_part(cairo_surface_t *image)
+{
+	int w = cairo_image_surface_get_width(image);
+	int h = cairo_image_surface_get_height(image);
+	struct wlr_box all = { 0, 0, w, h };
+	if (cairo_image_surface_get_format(image) != CAIRO_FORMAT_ARGB32)
+		return all;
+	cairo_surface_flush(image);
+	const unsigned char *data = cairo_image_surface_get_data(image);
+	int stride = cairo_image_surface_get_stride(image);
+	int x0 = w, y0 = h, x1 = -1, y1 = -1;
+	for (int y = 0; y < h; y++) {
+		const uint32_t *row = (const uint32_t *)(data + y * stride);
+		for (int x = 0; x < w; x++) {
+			if ((row[x] >> 24) == 0)
+				continue;
+			if (x < x0)
+				x0 = x;
+			if (x > x1)
+				x1 = x;
+			if (y < y0)
+				y0 = y;
+			if (y > y1)
+				y1 = y;
+		}
+	}
+	if (x1 < 0)
+		return all;
+	return (struct wlr_box){ x0, y0, x1 - x0 + 1, y1 - y0 + 1 };
+}
+
+static void load_logo_file(void);
+
 static void load_logo(void)
+{
+	load_logo_file();
+	if (ib.logo_image)
+		ib.logo_crop = visible_part(ib.logo_image);
+}
+
+static void load_logo_file(void)
 {
 	if (ib.logo_image)
 		cairo_surface_destroy(ib.logo_image);
@@ -434,14 +477,16 @@ static void render_logo(void)
 	draw_bevel(cr, 0, 0, ICON_W, ICON_H, 2, s, false);
 	double lx = (ICON_W - LOGO_SIZE) / 2.0, ly = (ICON_H - LOGO_SIZE) / 2.0;
 	if (ib.logo_image) {
-		int iw = cairo_image_surface_get_width(ib.logo_image);
-		int ih = cairo_image_surface_get_height(ib.logo_image);
-		double scale = (double)LOGO_SIZE / (iw > ih ? iw : ih);
+		/* Its visible part as large as fits, in the middle. */
+		struct wlr_box c = ib.logo_crop;
+		double scale = (double)LOGO_SIZE / (c.width > c.height ? c.width : c.height);
 		cairo_save(cr);
-		cairo_translate(cr, lx + (LOGO_SIZE - iw * scale) / 2,
-			ly + (LOGO_SIZE - ih * scale) / 2);
+		cairo_translate(cr, lx + (LOGO_SIZE - c.width * scale) / 2,
+			ly + (LOGO_SIZE - c.height * scale) / 2);
 		cairo_scale(cr, scale, scale);
-		cairo_set_source_surface(cr, ib.logo_image, 0, 0);
+		cairo_rectangle(cr, 0, 0, c.width, c.height);
+		cairo_clip(cr);
+		cairo_set_source_surface(cr, ib.logo_image, -c.x, -c.y);
 		cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
 		cairo_paint(cr);
 		cairo_restore(cr);
