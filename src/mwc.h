@@ -1,9 +1,6 @@
 /*
- * mwc - a Motif-style Wayland compositor
- *
- * Shared types. The compositor follows the structure of wlroots' tinywl:
- * one global server struct, listeners embedded in the objects they belong
- * to, and the wlr_scene graph doing all the actual rendering.
+ * mwc - a Motif-style Wayland compositor. Shared types, tinywl's structure: one
+ * server, listeners embedded in their objects, wlr_scene doing the rendering.
  */
 #ifndef MWC_H
 #define MWC_H
@@ -27,15 +24,11 @@ struct wlr_xdg_surface;
 struct wlr_xdg_toplevel;
 struct wlr_xwayland_surface;
 
-/* background, bottom, top, overlay: the layers of wlr-layer-shell. */
-#define MWC_SHELL_LAYERS 4
+#define MWC_SHELL_LAYERS 4 /* background, bottom, top, overlay */
 
-/* Space left around and between tiled and snapped windows, so the desktop and its
- * root menu stay in reach. */
-#define MWC_GAP 8
+#define MWC_GAP 8 /* around tiled and snapped windows: the desktop stays in reach */
 
-/* Virtual desktops: a fixed number, the same on every output (desktop.c). */
-#define MWC_DESKTOPS 4
+#define MWC_DESKTOPS 4 /* shared by all outputs, see desktop.c */
 
 /* ---- theme ------------------------------------------------------------ */
 
@@ -43,39 +36,35 @@ struct mwc_color {
 	float r, g, b;
 };
 
-/* A Motif "3D colour set": background plus the two derived shadow colours. */
+/* Motif's 3D colour set. */
 struct mwc_shade {
 	struct mwc_color bg, top, bottom, fg;
 };
 
 struct mwc_theme {
 	struct mwc_shade active, inactive, menu;
-	struct mwc_color select; /* menu item armed background */
-	struct mwc_color root;   /* desktop background */
-	bool root_none;          /* draw no desktop colour, a tool does that */
-	/* Global title text colours from mwmrc, for clients with their own
-	 * background. Unset, the text is black or white by contrast. */
+	struct mwc_color select; /* armed menu item */
+	struct mwc_color root;
+	bool root_none;          /* a tool draws the desktop */
+	/* Title text for clients with their own background; unset: by contrast. */
 	struct mwc_color active_fg, inactive_fg;
 	bool has_active_fg, has_inactive_fg;
-	char *font;              /* pango font description */
-	int border;              /* resize border width */
-	int title_height;        /* title bar height */
+	char *font;              /* Pango name */
+	int border;
+	int title_height;
 	int menu_item_height;
-	int bevel;               /* shadow thickness */
+	int bevel;
 };
 
 extern struct mwc_theme theme;
 
-/* Reads the configuration, so config_load() goes first. */
-void theme_init(void);
+void theme_init(void); /* after config_load() */
 struct mwc_shade shade_from(struct mwc_color bg, struct mwc_color fg);
 struct mwc_color color_mix(struct mwc_color a, struct mwc_color b, float f);
 struct mwc_color color_contrast(struct mwc_color bg);
 void set_source(cairo_t *cr, struct mwc_color c);
-/* Raised (in == false) or sunken (in == true) Motif bevel. */
 void draw_bevel(cairo_t *cr, double x, double y, double w, double h,
 	int thickness, const struct mwc_shade *s, bool in);
-/* Etched-in groove line, as used for separators and resize corners. */
 void draw_groove_h(cairo_t *cr, double x, double y, double w,
 	const struct mwc_shade *s);
 void draw_groove_v(cairo_t *cr, double x, double y, double h,
@@ -83,10 +72,8 @@ void draw_groove_v(cairo_t *cr, double x, double y, double h,
 void draw_text(cairo_t *cr, const char *text, const char *font,
 	struct mwc_color color, double x, double y, double w, double h,
 	bool center);
-/* The size text takes in the font, in pixels. */
 void text_extent(const char *font, const char *text, int *w, int *h);
-/* The font by its Pango name, parsed once for as long as the name stays the same. Owned
- * here: don't free it. */
+/* Cached per name; not to be freed. */
 const PangoFontDescription *font_description(const char *font);
 
 /* ---- cairo-backed wlr_buffer --------------------------------------------- */
@@ -98,7 +85,7 @@ struct cairo_buffer {
 };
 
 struct cairo_buffer *cairo_buffer_create(int width, int height);
-/* Drops our reference; the scene keeps the buffer alive while shown. */
+/* The scene keeps it while shown. */
 void cairo_buffer_drop(struct cairo_buffer *buf);
 
 /* ---- views -------------------------------------------------------------- */
@@ -108,8 +95,7 @@ enum view_type {
 	VIEW_XWAYLAND,
 };
 
-/* What a window gets, as in Motif's clientDecoration/clientFunctions. The bits
- * are those of _MOTIF_WM_HINTS. */
+/* Motif's clientDecoration and clientFunctions, bits as in _MOTIF_WM_HINTS. */
 enum {
 	DECOR_BORDER = 1 << 1,
 	DECOR_RESIZEH = 1 << 2,
@@ -139,8 +125,7 @@ enum window_type {
 	WT_NOTIFICATION,
 };
 
-/* Snap positions. SNAP_MAXIMIZE is only a target: a window maximized that way
- * has SNAP_NONE and view.maximized. */
+/* SNAP_MAXIMIZE is only a target: the window ends up SNAP_NONE and maximized. */
 enum snap {
 	SNAP_NONE,
 	SNAP_LEFT,
@@ -159,23 +144,22 @@ enum snap_dir {
 	SNAP_DIR_DOWN,
 };
 
-/* Frame regions, used for hit testing, cursor shapes and button state. */
 enum frame_part {
 	PART_NONE = 0,
 	PART_CLIENT,
 	PART_TITLE,
-	PART_TAB,   /* the title of a group; see frame_tab_at() */
+	PART_TAB,   /* see frame_tab_at() */
 	PART_MENU_BUTTON,
 	PART_MINIMIZE_BUTTON,
 	PART_MAXIMIZE_BUTTON,
-	PART_RESIZE, /* see resize edges */
+	PART_RESIZE,
 };
 
 struct tab_group {
 	struct wl_list members; /* view.tab_link, in tab order */
 	struct view *shown;
-	bool busy;              /* switching: members are in between */
-	int first_visible;      /* with too many for the title bar, see frame.c */
+	bool busy;              /* switching */
+	int first_visible;      /* more than fit the title bar, see frame.c */
 };
 
 struct view {
@@ -187,51 +171,46 @@ struct view {
 		struct wlr_xwayland_surface *xsurface;
 	};
 
-	struct wlr_scene_tree *tree;         /* whole window incl. frame */
+	struct wlr_scene_tree *tree;         /* frame and client */
 	struct wlr_scene_tree *content_tree; /* the client's surfaces */
-	/* The frame in four strips around the client: top (border and title bar),
-	 * bottom, left, right. One buffer for the whole window would mostly be covered
-	 * by the client, and cost its full size on every redraw. */
+	/* Top (with the title bar), bottom, left, right: not one buffer the client
+	 * mostly covers. */
 	struct wlr_scene_buffer *frame_nodes[4];
-	/* The frame's colour behind the client, a plain rectangle that costs no memory:
-	 * it shows through what the client leaves transparent, and takes the clicks
-	 * outside its input region, as the frame window under an X11 client does. */
+	/* Behind the client: shows through transparency, takes clicks outside its input
+	 * region. */
 	struct wlr_scene_rect *frame_fill;
-	/* Black, the output's size, behind a fullscreen window that doesn't cover it or
-	 * isn't opaque: nothing else may show there (xdg-shell). */
-	struct wlr_scene_rect *backdrop;
-	int drawn_w, drawn_h;  /* the frame's size at the last frame_render() */
-	char *drawn_title;     /* the title then, see view_update_title() */
-	char *known_app_id;    /* app_id or WM_CLASS as last acted on */
-	struct wlr_scene_buffer *icon_node;  /* shown while minimized */
+	struct wlr_scene_rect *backdrop; /* black behind a fullscreen window (xdg-shell) */
+	int drawn_w, drawn_h;  /* at the last frame_render() */
+	char *drawn_title;     /* see view_update_title() */
+	char *known_app_id;    /* see view_app_id_changed() */
+	struct wlr_scene_buffer *icon_node;
 
-	/* Frame geometry: x/y is the outer top-left corner in layout coords,
-	 * width/height the client size. */
+	/* x, y: the frame's top left in the layout; width, height: the client's. */
 	int x, y, width, height;
 	bool mapped;
-	bool placed;    /* position chosen by the client, skip cascading */
-	bool ssd;       /* client accepted server-side decorations */
-	bool decorated; /* frame currently drawn: ssd && !fullscreen */
+	bool placed;    /* by the client: no cascading */
+	bool ssd;
+	bool decorated; /* ssd && !fullscreen */
 	enum window_type wtype;
 	unsigned decor, funcs; /* see view_update_properties() */
-	unsigned base_funcs;   /* the same, before tiling takes some away */
-	uint32_t wm_caps;      /* xdg wm_capabilities last sent, see xdg_publish_caps() */
-	uint32_t motif_flags, motif_funcs, motif_decor; /* X11 only */
-	/* Size limits of the client: 0 means none. */
+	unsigned base_funcs;   /* before tiling takes some away */
+	uint32_t wm_caps;      /* last sent, see xdg_publish_caps() */
+	uint32_t motif_flags, motif_funcs, motif_decor; /* X11 */
+	/* 0: no limit. */
 	int min_w, min_h, max_w, max_h, base_w, base_h, inc_w, inc_h;
 	float min_aspect, max_aspect;
 	int gravity;
-	bool hidden_with_parent; /* a dialog gone with its minimized window */
-	struct tab_group *group; /* NULL when alone; see tabs.c */
+	bool hidden_with_parent; /* a dialog of a minimized window */
+	struct tab_group *group; /* NULL: alone */
 	struct wl_list tab_link; /* tab_group.members */
-	bool tab_hidden;         /* in a group, and not the one shown */
-	int desktop;             /* 0 to MWC_DESKTOPS - 1, see desktop.c */
-	bool off_desktop;        /* on a desktop other than the current one */
-	bool attention;          /* asked for the focus there; see desktop_attention() */
-	bool all_desktops;       /* Mwm*NAME*allDesktops, read when it maps */
-	bool sticky;             /* "On All Desktops" from its window menu */
-	int tab_own_w, tab_own_h; /* the size it had before; 0: its own to choose */
-	void *deco;     /* xdg-decoration object, if any */
+	bool tab_hidden;
+	int desktop;             /* 0-based */
+	bool off_desktop;
+	bool attention;          /* see desktop_attention() */
+	bool all_desktops;       /* Mwm*NAME*allDesktops, read at map */
+	bool sticky;             /* "On All Desktops" */
+	int tab_own_w, tab_own_h; /* before joining; 0: its own choice */
+	void *deco;              /* xdg-decoration, or NULL */
 	bool activated;
 	bool maximized;
 	bool minimized;
@@ -239,37 +218,34 @@ struct view {
 	enum snap snap;
 	/* Tiling, see tile.c. */
 	bool tiled;
-	bool tile_main;  /* the main window on the right */
-	bool shaded;     /* in the stack, rolled up to its title bar */
-	bool auto_shaded; /* by the layout for lack of room, not by the user */
-	bool tile_back;  /* fullscreen from the layout: back into it after */
-	bool tile_nofit; /* this round: too big for its cell, floats */
-	bool no_tile;    /* DoNotTile or not in TileOnly: always floats */
-	long tile_seq;   /* layout order, lowest first (the main window) */
-	struct wlr_box tile; /* its cell: the frame's box */
-	struct mwc_shade shade_active, shade_inactive; /* frame and icon colours */
-	struct wlr_box saved;  /* geometry before maximize/snap/fullscreen */
-	double fit_px, fit_py; /* a point on the output its state fills */
-	/* xdg clients answer a size request later, possibly after the button
-	 * was released: these edges stay put until the client has caught up. */
+	bool tile_main;
+	bool shaded;      /* rolled up in the stack */
+	bool auto_shaded; /* by the layout, for lack of room */
+	bool tile_back;   /* back into the layout after fullscreen */
+	bool tile_nofit;  /* this round: too big for its cell */
+	bool no_tile;     /* DoNotTile, or not in TileOnly */
+	long tile_seq;    /* lowest: the main window */
+	struct wlr_box tile; /* the frame's cell */
+	struct mwc_shade shade_active, shade_inactive;
+	struct wlr_box saved;  /* before maximize, snap, fullscreen */
+	double fit_px, fit_py; /* on the output its state fills */
+	/* Edges kept until an xdg client has acked its new size. */
 	uint32_t anchor_edges;
 	int anchor_right, anchor_bottom;
-	uint32_t anchor_serial; /* last configure sent with a new size */
-	/* WLR_EDGE_RIGHT and/or _BOTTOM: placed from that edge by its mwmrc entry, it
-	 * keeps the edge when it changes size by itself. Over once the user moves or
-	 * resizes it, or it joins a group. */
+	uint32_t anchor_serial;
+	/* Right and/or bottom, from a geometry entry: kept as it resizes itself, until
+	 * moved, resized or grouped. */
 	uint32_t gravity_edges;
-	int gravity_extra_w, gravity_extra_h; /* the frame's size it was placed with */
-	int requested_w, requested_h; /* xdg: the client's size once it has caught up */
+	int gravity_extra_w, gravity_extra_h; /* the frame's size then */
+	int requested_w, requested_h; /* xdg */
 	int icon_x, icon_y;
 	bool icon_placed;
-	long icon_seq;   /* the order it first became an icon in, see icons_arrange() */
-	/* Its place in server.views as a number, higher towards the front, so the icon
-	 * box can have a place among the windows for Alt+Tab (see iconbox.c). Whatever
-	 * moves a view in that list sets it too. */
+	long icon_seq;   /* order of becoming an icon */
+	/* Its place in server.views, higher in front: the icon box's place in Alt+Tab
+	 * goes by it. Set wherever the list is reordered. */
 	long raise_seq;
 
-	enum frame_part pressed; /* button currently held down, for drawing */
+	enum frame_part pressed; /* held down */
 	bool pressed_inside;
 
 	struct wl_listener map;
@@ -284,7 +260,7 @@ struct view {
 	struct wl_listener request_show_window_menu;
 	struct wl_listener set_title;
 	struct wl_listener set_app_id; /* or WM_CLASS */
-	/* xwayland only */
+	/* X11 */
 	struct wl_listener associate;
 	struct wl_listener dissociate;
 	struct wl_listener request_configure;
@@ -292,7 +268,7 @@ struct view {
 	struct wl_listener set_decorations;
 	struct wl_listener focus_in;
 	bool been_mapped;
-	int unmap_x, unmap_y; /* the X window's place when it was withdrawn */
+	int unmap_x, unmap_y; /* where it was withdrawn */
 	struct wl_listener set_parent;
 	struct wl_listener set_window_type;
 	struct wl_listener set_strut_partial;
@@ -304,20 +280,18 @@ struct view {
 	struct wl_listener request_demands_attention;
 };
 
-/* Hidden by its own state, not by being on another desktop: what a dialog goes along
- * with, and what restoring undoes. */
+/* Not counting another desktop: what restoring undoes. */
 static inline bool view_hidden_by_state(const struct view *view)
 {
 	return view->minimized || view->hidden_with_parent || view->tab_hidden;
 }
 
-/* Not on the screen right now, whatever the reason. */
 static inline bool view_hidden(const struct view *view)
 {
 	return view_hidden_by_state(view) || view->off_desktop;
 }
 
-/* Unmanaged XWayland windows: override-redirect menus, tooltips, DnD icons. */
+/* Override-redirect X11 windows: menus, tooltips, drag icons. */
 struct unmanaged {
 	struct wl_list link;
 	struct server *server;
@@ -356,20 +330,20 @@ enum menu_action {
 	ACT_RAISE_TILED,
 	ACT_LOWER_TILED,
 	ACT_TOGGLE_STICKY,
-	ACT_TO_DESKTOP, /* ACT_TO_DESKTOP + n moves the window to desktop n */
+	ACT_TO_DESKTOP, /* + n: to desktop n */
 	ACT_TO_DESKTOP_LAST = ACT_TO_DESKTOP + MWC_DESKTOPS - 1,
-	ACT_RUN,      /* the item's command */
+	ACT_RUN,
 	ACT_RELOAD,
 	ACT_QUIT,
 };
 
 struct menu_item {
-	const char *label;     /* NULL means separator */
-	char mnemonic;         /* underlined letter, 0 for none */
-	const char *accel;     /* right-aligned accelerator text */
+	const char *label;     /* NULL: separator */
+	char mnemonic;         /* 0: none */
+	const char *accel;
 	enum menu_action action;
 	bool sensitive;
-	const char *command;   /* for ACT_RUN, owned by config.c */
+	const char *command;   /* ACT_RUN; config.c owns it */
 };
 
 #define MENU_MAX_ITEMS 32
@@ -379,14 +353,14 @@ struct menu {
 	const char *title;
 	struct menu_item items[MENU_MAX_ITEMS];
 	int n_items;
-	int armed;              /* highlighted item, -1 for none */
-	struct view *target;    /* window menu: the window it acts on */
+	int armed;              /* -1: none */
+	struct view *target;    /* window menu */
 	struct wlr_scene_buffer *node;
 	int x, y, width, height;
 	int item_y[MENU_MAX_ITEMS], item_h[MENU_MAX_ITEMS];
 	uint32_t opened_msec;
-	bool from_button;      /* opened by a click on the frame's menu button */
-	double open_x, open_y; /* pointer position when it opened */
+	bool from_button;      /* the frame's menu button */
+	double open_x, open_y;
 };
 
 /* ---- server ------------------------------------------------------------- */
@@ -395,8 +369,8 @@ enum cursor_mode {
 	CURSOR_PASSTHROUGH,
 	CURSOR_MOVE,
 	CURSOR_RESIZE,
-	CURSOR_BUTTON, /* a frame button is held down */
-	CURSOR_MENU,   /* a menu has the pointer grab */
+	CURSOR_BUTTON, /* a frame or icon box button held down */
+	CURSOR_MENU,
 };
 
 struct server {
@@ -410,21 +384,21 @@ struct server {
 	struct wlr_scene *scene;
 	struct wlr_scene_output_layout *scene_layout;
 
-	/* Stacking layers, bottom to top. */
+	/* Bottom to top. */
 	struct wlr_scene_tree *layer_bg;
 	struct wlr_scene_tree *layer_shell[MWC_SHELL_LAYERS]; /* see main() */
 	struct wlr_scene_tree *layer_icons;
-	struct wlr_scene_tree *layer_below; /* _NET_WM_STATE_BELOW */
+	struct wlr_scene_tree *layer_below;
 	struct wlr_scene_tree *layer_views;
-	struct wlr_scene_tree *layer_fullscreen; /* the focused fullscreen window */
+	struct wlr_scene_tree *layer_fullscreen; /* when focused */
 	struct wlr_scene_tree *layer_unmanaged;
 	struct wlr_scene_tree *layer_menu;
-	struct wlr_scene_tree *layer_feedback; /* outline and move/size box */
-	struct wlr_scene_tree *layer_drag; /* drag icons, follows the pointer */
+	struct wlr_scene_tree *layer_feedback; /* outline, move/size box */
+	struct wlr_scene_tree *layer_drag;
 
 	struct wl_listener new_layer_surface;
 	struct wlr_layer_surface_v1 *focused_layer;   /* has the keyboard */
-	struct wlr_layer_surface_v1 *exclusive_layer; /* keeps the keyboard */
+	struct wlr_layer_surface_v1 *exclusive_layer; /* insists on it */
 
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
@@ -459,13 +433,12 @@ struct server {
 	struct wl_listener request_start_drag;
 	struct wl_listener start_drag;
 	struct wl_listener keyboard_grab_end;
-	bool refocus_after_grab; /* a focus change the keyboard grab held back */
-	struct wl_event_source *pointer_refresh; /* pending, see input_pointer_changed_soon() */
-	/* Buttons a client has seen go down and not yet up. While there are any, the
-	 * pointer stays with that client: its implicit grab. */
+	bool refocus_after_grab; /* held back by a keyboard grab */
+	struct wl_event_source *pointer_refresh; /* see input_pointer_changed_soon() */
+	/* Down in a client, not yet up: its implicit grab. */
 	uint32_t forwarded_buttons[16];
 	int n_forwarded;
-	double grab_surface_x, grab_surface_y; /* the surface's origin in the layout */
+	double grab_surface_x, grab_surface_y; /* that surface's origin */
 	struct wl_list keyboards;
 
 	enum cursor_mode cursor_mode;
@@ -473,27 +446,26 @@ struct server {
 	double grab_x, grab_y;
 	struct wlr_box grab_geobox;
 	uint32_t resize_edges;
-	bool grab_until_click; /* move/size started from menu or keyboard */
-	uint32_t grab_button;  /* the press a drag or frame button goes by */
-	int grab_tab;          /* the tab pressed: shown if this doesn't become a drag */
-	struct view *grab_take; /* a drag taking only this window along, see input.c */
-	struct view *grab_drop; /* the window it would join, for the highlight */
-	int tab_wheel;         /* the wheel over tabs, in fractions of a step */
-	int icon_wheel;        /* the same over the icon box */
+	bool grab_until_click; /* from the menu or keyboard */
+	uint32_t grab_button;
+	int grab_tab;          /* shown unless this becomes a drag */
+	struct view *grab_take; /* the one window a drag takes along */
+	struct view *grab_drop; /* the window it would join */
+	int tab_wheel;         /* fractions of a wheel step */
+	int icon_wheel;
 	enum frame_part grab_part;
-	bool grab_outline;  /* wireframe: the window changes when the grab ends */
-	bool grab_detached; /* a move got going, past the drag threshold */
-	bool grab_changed;  /* the target differs from where the grab began */
-	bool grab_detaching; /* the grab itself is freeing the window right now */
-	double grab_px, grab_py;    /* pointer where the grab began */
-	struct wlr_box grab_orig;   /* x/y of the frame, client size: for Escape */
+	bool grab_outline;
+	bool grab_detached;  /* past the drag threshold */
+	bool grab_changed;
+	bool grab_detaching; /* the grab is freeing the window */
+	double grab_px, grab_py;
+	struct wlr_box grab_orig;   /* for Escape */
 	bool grab_orig_maximized;
 	enum snap grab_orig_snap;
-	enum snap grab_zone;        /* snap target under the pointer */
-	struct wlr_box grab_target; /* same, where the window is to go */
-	bool grab_resize_waiting;   /* opaque: grab_target not sent, the client is busy */
+	enum snap grab_zone;
+	struct wlr_box grab_target;
+	bool grab_resize_waiting;   /* opaque: not sent, the client is busy */
 
-	/* Double-click detection */
 	uint32_t last_click_msec;
 	struct view *last_click_view;
 	enum frame_part last_click_part;
@@ -506,25 +478,22 @@ struct server {
 	struct wl_listener layout_change;
 
 	int cascade;
-	long raise_hi, raise_lo; /* raise_seq counters, see view_raise_one() */
-	bool tiling;     /* tiling mode on */
-	int desktop;     /* the current one, see desktop.c */
-	long tile_front; /* tile_seq of the newest window, which leads */
+	long raise_hi, raise_lo; /* for raise_seq */
+	bool tiling;
+	int desktop;     /* current */
+	long tile_front; /* the newest window's tile_seq */
 	const char *terminal;
 	struct wlr_idle_notifier_v1 *idle_notifier;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wl_listener new_idle_inhibitor;
 	struct wl_listener output_power_set_mode;
-	/* wlr-output-management: tools such as wlr-randr, and VNC or RDP servers that
-	 * make the output as large as the viewer's window. */
-	struct wlr_output_manager_v1 *output_manager;
+	struct wlr_output_manager_v1 *output_manager; /* NULL unless outputManagement */
 	struct wl_listener output_manager_apply;
 	struct wl_listener output_manager_test;
 	struct wl_event_source *output_manager_idle; /* an update is due */
-	/* While output_manager_configure() places outputs one by one: the layout's
-	 * change is handled once, at the end, not for every half-placed step. */
+	/* output_manager_configure(): one layout change at the end, not per output. */
 	bool layout_batch, layout_dirty;
-	char *wallpaper; /* path of a readable PNG, NULL: plain desktop colour */
+	char *wallpaper; /* a readable PNG, or NULL */
 };
 
 struct output {
@@ -533,27 +502,20 @@ struct output {
 	struct wlr_output *wlr_output;
 	struct wl_list layers[MWC_SHELL_LAYERS]; /* layer_surface.link */
 	struct wlr_box usable; /* what panels leave free */
-	/* A panel's commits arrange at most once per ARRANGE_MS, see layer_commit(). */
-	struct wl_event_source *arrange_timer;
+	struct wl_event_source *arrange_timer; /* see arrange_soon() */
 	bool arrange_resting, arrange_due;
 	struct wlr_scene_rect *background;
-	struct wlr_scene_buffer *wallpaper; /* above background, may be NULL */
-	int wallpaper_w, wallpaper_h;       /* size it was rendered for */
-	/* What a client last set through wlr-output-management. It stays over a reload
-	 * and a switch off and on for as long as mwmrc says what it said then about this
-	 * output (managed_rc); a change there wins. NULL: mwmrc rules. */
+	struct wlr_scene_buffer *wallpaper; /* NULL: none */
+	int wallpaper_w, wallpaper_h;       /* rendered for */
+	/* Set by a wlr-output-management client; kept while mwmrc still says
+	 * managed_rc about this output. NULL: mwmrc rules. */
 	char *managed_rc;
 	struct wlr_output_head_v1_state managed;
-	/* Two ways to be off. dark: through wlr-output-power (DPMS), for the time
-	 * being; wlr-output-management clients still see it on, with what it will
-	 * come back with. client_off: a wlr-output-management client doesn't want it;
-	 * a power on leaves it off, only such a client brings it back. */
+	/* dark: off through wlr-output-power, clients of output management still see it
+	 * on. client_off: such a client wants it off; only such a client turns it on. */
 	bool dark, client_off;
-	/* Where a client_off output was: it leaves the layout, so the pointer and new
-	 * windows stay on the monitors that are there, and comes back here. */
-	struct wlr_box off_box;
-	/* Scratch for output_manager_configure(): where it was, and whether the
-	 * configuration names it. */
+	struct wlr_box off_box; /* where a client_off output comes back */
+	/* Scratch for output_manager_configure(). */
 	struct wlr_box box_before;
 	bool named;
 	struct wl_listener frame;
@@ -565,14 +527,12 @@ struct output {
 /* ---- view.c ------------------------------------------------------------- */
 
 void xdg_init(struct server *server);
-/* Remembers the scene tree of an xdg surface in its data, for popups to find, for
- * exactly as long as the tree lives: a surface can outlast its role. */
+/* In base->data for as long as the tree lives: a surface can outlast its role. */
 void xdg_surface_set_tree(struct wlr_xdg_surface *base, struct wlr_scene_tree *tree);
 void view_focus(struct view *view);
 void view_set_position(struct view *view, int x, int y);
 void view_set_geometry(struct view *view, int x, int y, int w, int h);
-/* Where the frame goes when the client changes from ow x oh to w x h by itself:
- * with view->gravity_edges, the right or bottom edge stays put. */
+/* Where the frame goes when the client resizes itself, keeping gravity_edges. */
 void view_gravity_place(struct view *view, int ow, int oh, int w, int h,
 	int *x, int *y);
 void view_close(struct view *view);
@@ -583,23 +543,20 @@ void view_minimize(struct view *view);
 void view_restore(struct view *view);
 void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	uint32_t edges, bool until_click);
-/* Back to its free size under the pointer, keeping the grab point proportional. */
+/* Free size again under the pointer, the grab point in proportion. */
 void view_drag_free(struct view *view);
-/* Snap to a position on the output at (px, py). SNAP_NONE goes back to the
- * geometry from before. */
+/* On the output at px, py. SNAP_NONE: the geometry from before. */
 void view_snap(struct view *view, enum snap s, double px, double py);
 void view_update_title(struct view *view);
-/* The frame's size changed: move the client and redraw. */
 void view_frame_changed(struct view *view);
-/* Colours or frame size changed: pick up the new theme and redraw. */
 void view_theme_changed(struct view *view);
 const char *view_title(struct view *view);
 const char *view_app_id(struct view *view);
-/* Whether it differs from the one last asked about; remembers the new one. */
+/* Since the last call. */
 bool view_app_id_changed(struct view *view);
 struct wlr_surface *view_surface(struct view *view);
 void view_cycle(struct server *server, bool backwards);
-/* Common setup after the type-specific part has filled in the client. */
+/* After the xdg or X11 part has set the client. */
 void view_init_common(struct view *view);
 void view_handle_map(struct view *view);
 void view_handle_unmap(struct view *view);
@@ -609,55 +566,45 @@ void view_set_activated(struct view *view, bool activated);
 struct view *view_at(struct server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy,
 	enum frame_part *part, uint32_t *edges, bool *on_icon);
-/* The output there, or else the first one; NULL when there are none. */
-/* Into the layout or out of it, back to its floating geometry or state if apply. */
+/* apply: back to its floating geometry or state. */
 void view_set_tiled(struct view *view, bool on, bool apply);
-/* Into its cell, as far as the client's limits allow. */
 void view_apply_tile(struct view *view);
 void view_focus_next(struct view *except);
-/* The topmost window that can take the focus gets it, or nobody. */
 void view_focus_top(struct server *server);
-/* The window that has the focus, or NULL. */
 struct view *view_focused(struct server *server);
-/* To the front of its scene layer, alone. */
+/* Without its dialogs. */
 void view_raise_one(struct view *view);
-/* Puts every window into its scene layer, by type, state and focus. */
 void views_update_layers(struct server *server);
+/* The output there, or else the first; NULL when there are none. */
 struct output *output_at(struct server *server, double lx, double ly);
-/* False for one a wlr-output-management client switched off: it left the layout. */
+/* False once a client switched it off. */
 bool output_in_layout(struct output *output);
-/* The oldest output in the layout, NULL if a client switched them all off. */
+/* The oldest in the layout; NULL if clients switched all off. */
 struct output *output_first(struct server *server);
 struct wlr_box output_usable_area(struct server *server, double lx, double ly);
 struct wlr_box output_full_area(struct server *server, double lx, double ly);
-/* Maximized windows and icons follow when panels come and go. */
 void views_usable_area_changed(struct server *server);
-/* Outputs came, went or changed: nothing may stay out of reach. */
 void views_layout_changed(struct server *server);
 
 /* ---- hints.c ------------------------------------------------------------ */
 
-/* Reads type and size limits from the client, derives decor and funcs. */
+/* Type and size limits from the client; decor and funcs from them. */
 void view_update_properties(struct view *view);
-/* xdg: wm_capabilities as funcs has them, sent only when they change. */
+/* wm_capabilities from funcs, sent on a change. */
 void xdg_publish_caps(struct view *view);
 void view_update_decorations(struct view *view);
 bool view_fixed(struct view *view);
 bool view_has_aspect(const struct view *view);
-/* The other side, as the client's aspect ratio wants it for the side given. */
 void view_aspect_follow(struct view *view, int *pw, int *ph, bool width_given);
 void view_apply_size_hints(struct view *view, int *w, int *h, bool incr);
-/* The frame's position when the client asks for x, y at the size w, h. */
 void view_gravity_to_frame(struct view *view, int x, int y, int w, int h, int *fx,
 	int *fy);
 struct view *view_parent(struct view *view);
-/* Hidden or shown, without any other consequence. */
+/* Nothing else follows from it. */
 void view_show(struct view *view, bool show);
 void view_show_content(struct view *view);
-/* Tells the client what it is: maximized, tiled, snapped. */
 void view_publish_state(struct view *view);
 void view_refit(struct view *view);
-/* The same around a point of its own choosing, for the monitor and the cell there. */
 void view_refit_at(struct view *view, double px, double py);
 void view_place(struct view *view);
 void view_parent_changed(struct view *view);
@@ -667,18 +614,15 @@ bool view_focusable(struct view *view);
 
 /* ---- main.c ------------------------------------------------------------- */
 
-/* The output settings in mwmrc changed: apply them to what is there. */
 void outputs_config_changed(struct server *server);
 
 /* ---- xwayland.c --------------------------------------------------------- */
 
 void xwayland_init(struct server *server);
-/* _NET_WM_STATE's sticky and shaded as mwc has them, for an X11 window. */
+/* Sticky and shaded into _NET_WM_STATE. */
 void xwayland_publish_state(struct view *view);
-/* _NET_FRAME_EXTENTS, for an X11 window whose frame changed. */
 void xwayland_publish_frame_extents(struct view *view);
-/* _MOTIF_WM_HINTS once more. Blocks on the X server. wlroots only tells of changes to
- * the decoration part, so this is for when the functions are about to matter. */
+/* Blocks on the X server. wlroots tells only of decoration changes. */
 void xwayland_read_motif_hints(struct view *view);
 
 /* ---- frame.c ------------------------------------------------------------ */
@@ -689,57 +633,50 @@ int frame_left(struct view *view);
 int frame_top(struct view *view);
 int frame_extra_w(struct view *view);
 int frame_extra_h(struct view *view);
-/* Where the pointer goes on a window opened at it, from the frame's top-left. */
+/* For a window opened at the pointer. */
 void frame_title_center(struct view *view, int *x, int *y);
-/* Outer frame height; a shaded window keeps only its title bar. */
 int frame_height(struct view *view);
 void frame_render(struct view *view);
-/* Only the title changed: the top strip, if the frame's size is still the same. */
+/* The top strip only, if the size is the same. */
 void frame_render_title(struct view *view);
 enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges);
-/* Which tab is at x in the frame: its index, or -1 for none. */
+/* -1: none. */
 int frame_tab_at(struct view *view, int fx);
 void icon_render(struct view *view);
 void icons_arrange(struct server *server);
-/* The icons of the current desktop, in the order they first became icons; NULL with
- * *n = 0 when there are none. The caller frees the array. */
+/* The current desktop's, by icon_seq; NULL with *n = 0 for none. Caller frees. */
 struct view **icons_in_order(struct server *server, int *n);
-/* A title bar button and its glyph, as mwm draws them. toggled: the maximize glyph
- * sunken, for a maximized window. */
+/* toggled: the maximize glyph sunken. */
 void draw_title_button(cairo_t *cr, enum frame_part part, int x, int y, int size,
 	const struct mwc_shade *s, bool down, bool toggled);
 #define ICON_W 72
 #define ICON_H 72
-#define ICON_MARGIN 8 /* from the edges of the usable area */
-/* Between two icons: none with iconPlacement's "tight". */
-int icon_gap(void);
+#define ICON_MARGIN 8 /* from the usable area's edges */
+int icon_gap(void); /* 0 with "tight" */
 
 /* ---- tabs.c ------------------------------------------------------------- */
 
 bool tabs_can_join(struct view *view);
-/* Whether one can join the other: not itself, not its own group, and they agree. */
 bool tabs_fit_together(struct view *view, struct view *target);
-/* The window Super+G would join, or NULL. */
+/* What Super+G joins, or NULL. */
 struct view *tabs_previous(struct view *view);
-struct view *tabs_nth(struct view *view, int n); /* NULL when there is none */
-/* The view takes the target's place, and is shown there, in its group. */
+struct view *tabs_nth(struct view *view, int n); /* or NULL */
+/* view takes target's place, shown, in its group. */
 bool tabs_join(struct view *view, struct view *target);
-/* Out of its group, as a window of its own. */
 void tabs_detach(struct view *view);
 void tabs_show(struct view *view);
-/* Shows it whatever the group is doing: an icon or fullscreen comes back first. */
+/* Also out of an icon or fullscreen. */
 void tabs_bring(struct view *view);
 void tabs_step(struct view *view, bool forward);
 void tabs_show_nth(struct view *view, int n);
-/* Being unmapped: the next one takes over without its help. */
+/* Unmapping: the next takes over without its help. */
 void tabs_view_gone(struct view *view);
-/* Its properties changed: it may not qualify any more. */
 void tabs_view_changed(struct view *view);
-/* The shown view has a new size: the others follow, so a switch needn't wait. */
+/* The others take the shown one's size, so a switch needn't wait. */
 void tabs_sync_sizes(struct view *view);
 void tabs_after_restore(struct view *view);
-int tabs_index(struct view *view); /* -1 when alone */
-/* The size it goes back to on leaving its group, or as it is when alone. */
+int tabs_index(struct view *view); /* -1: alone */
+/* The size it leaves its group with. */
 void tabs_own_size(struct view *view, int *w, int *h);
 
 /* ---- menu.c ------------------------------------------------------------- */
@@ -748,7 +685,7 @@ void menu_open_window(struct server *server, struct view *view, int x, int y);
 void menu_open_root(struct server *server, int x, int y);
 void menu_close(struct server *server);
 void menu_motion(struct server *server, double lx, double ly);
-/* Returns true when the event was consumed by the menu. */
+/* True when the menu took it. */
 bool menu_button(struct server *server, double lx, double ly, bool pressed,
 	uint32_t time_msec);
 bool menu_key(struct server *server, uint32_t keysym);
@@ -758,42 +695,33 @@ void run_action(struct server *server, enum menu_action action,
 /* ---- input.c ------------------------------------------------------------ */
 
 void input_init(struct server *server);
-/* The keyboard settings in mwmrc changed: new keymaps for real keyboards. */
 void input_config_changed(struct server *server);
-/* An xdg client answered the last size asked of it: during an opaque resize, the
- * size the pointer got to meanwhile goes out now. */
+/* Opaque resize: the size held back while the client was busy goes out. */
 void grab_resize_caught_up(struct view *view);
-/* After view_begin_interactive() set the grab up: show what it needs. */
 void grab_started(struct server *server);
-/* The grabbed window went away. */
 void grab_forget(struct server *server);
-/* The window's state changes under a grab, which has to give way: it ends, and the
- * window stays as it is now. Does nothing unless this window is being moved or
- * resized. */
+/* Its state changes under a move or resize: the grab ends, the window stays. */
 void grab_give_way(struct view *view);
 void input_add_device(struct server *server, struct wlr_input_device *dev);
-/* Lets clients type and click as the user (wayvnc, the tests). */
+/* Clients type and click as the user: wayrdp, the tests. */
 void input_virtual_init(struct server *server);
 void input_virtual_fini(void);
 void cursor_set_name(struct server *server, const char *name);
 void process_cursor_motion(struct server *server, uint32_t time);
-/* What is under the pointer may have changed without it moving. */
+/* What is under it changed without motion. */
 void input_pointer_changed(struct server *server);
-/* The same once wlroots is through with what it is doing, for a surface on its way out:
- * until then the scene may still find it under the pointer. */
+/* The same once wlroots is through: a surface going may still be in the scene. */
 void input_pointer_changed_soon(struct server *server);
-/* Whether a client may start a move now: only with a button down that it got. */
+/* A button down that a client got: it may start a move. */
 bool input_button_held(struct server *server);
-/* Whether the pointer is over this surface or one of its subsurfaces, as during the
- * press a move or resize request comes from. */
+/* Over it or its subsurfaces. */
 bool input_pointer_on(struct server *server, struct wlr_surface *surface);
-/* Gives the keyboard to a surface, without the keys mwc kept to itself. */
+/* Without the keys mwc kept. */
 void input_keyboard_enter(struct server *server, struct wlr_surface *surface);
-/* A client's open menu ends: its grab holds the keyboard wherever the focus goes,
- * also to nobody. Not during a drag, which has to run its course. */
+/* A client's menu holds the keyboard wherever the focus goes. Not during a drag. */
 void input_end_client_grab(struct server *server);
 void spawn(const char *cmd);
-/* The same for a program by its path, which needs no quoting. */
+/* No shell, no quoting. */
 void spawn_file(const char *path);
 
 /* ---- tile.c ------------------------------------------------------------- */
@@ -804,16 +732,14 @@ void tile_toggle(struct server *server);
 void tile_arrange(struct server *server);
 bool tile_can_shade(struct view *view);
 bool tile_has_stack(struct server *server);
-/* Minimize in the layout: the main window goes into the stack, its place taken by
- * the first stack window; a stack window shades or unshades. */
+/* Main window: into the stack. Stack window: roll up or down. */
 void tile_iconify(struct view *view);
-/* Maximize in the layout: a stack window trades places with the main window. */
+/* A stack window becomes the main one. */
 void tile_promote(struct view *view);
 void tile_unshade(struct view *view);
-/* 1 when the topmost visible window of the normal layer belongs to the layout, 0
- * when it floats; -1 when there are not both kinds. */
+/* 1: tiled on top, 0: floating on top, -1: not both kinds. */
 int tile_stacking(struct server *server);
-/* All tiled windows (with their dialogs) above or below all floating ones. */
+/* All tiled windows above or below all floating ones. */
 void tile_stack(struct server *server, bool raise);
 
 /* ---- snap.c ------------------------------------------------------------- */
@@ -822,9 +748,8 @@ struct wlr_box snap_rect(enum snap s, struct wlr_box area);
 const char *snap_name(enum snap s);
 enum snap snap_zone_at(struct view *view, double px, double py);
 void snap_preview(struct view *view, enum snap s, double px, double py);
-/* The same look around any box. */
 void snap_preview_box(struct view *view, struct wlr_box box);
-/* For a scene buffer that only shows something: the pointer goes through it. */
+/* point_accepts_input for buffers the pointer goes through. */
 bool scene_buffer_no_input(struct wlr_scene_buffer *buffer, double *sx, double *sy);
 void snap_preview_hide(void);
 bool snap_preview_get(struct wlr_box *box); /* false while hidden */
@@ -850,17 +775,16 @@ void layer_publish_workarea(struct server *server);
 void layer_output_gone(struct output *output);
 void layer_handle_click(struct server *server, struct wlr_surface *surface);
 bool layer_surface_is_desktop(struct wlr_surface *surface);
-/* Back to the layer surface that holds the keyboard, if one does. */
 bool layer_keyboard_back(struct server *server);
-/* The position of the layer surface at the root of this popup parent. */
+/* Of the layer surface this popup parent belongs to. */
 bool layer_root_coords(struct wlr_surface *surface, int *lx, int *ly);
 
 /* ---- wallpaper.c -------------------------------------------------------- */
 
-/* (Re)loads the image named by MWC_WALLPAPER or Mwm*wallpaper. */
+/* MWC_WALLPAPER or Mwm*wallpaper. */
 void wallpaper_init(struct server *server);
 void wallpaper_fini(struct server *server);
-/* Fits it to the output's current box; force redraws an unchanged size. */
+/* force: also at the same size. */
 void wallpaper_place(struct output *output, bool force);
 
 /* ---- config.c ----------------------------------------------------------- */
@@ -868,43 +792,37 @@ void wallpaper_place(struct output *output, bool force);
 void config_load(void);
 const char *config_get(const char *resource);
 const char *terminal_command(struct server *server);
-/* The value of Mwm*client*resource, NULL when unset. */
+/* Mwm*client*resource, or NULL. */
 const char *config_get_for(const char *client, const char *resource);
-/* The programs of the root menu, Mwm*rootMenuItem, in the order of the file. */
+/* Mwm*rootMenuItem, in file order. */
 #define CONFIG_MAX_ROOT_ITEMS 20
 int config_root_items(void);
 void config_root_item(int i, const char **label, const char **command);
 bool config_color(const char *value, struct mwc_color *out);
-/* 1 or 0, or -1 when value is unset or no boolean; name is for the log. */
+/* 1, 0, or -1 for unset or not a boolean; name for the log. */
 int config_bool(const char *name, const char *value);
 void config_view_shades(struct view *view);
-/* Whether the tiling layout may take it, from DoNotTile or TileOnly. */
+/* DoNotTile, TileOnly. */
 void config_view_tiling(struct view *view);
-/* Mwm*NAME*allDesktops: its windows are on every desktop, as panels are. */
 bool config_view_all_desktops(struct view *view);
-/* Where a program's mwmrc entry wants a new window. The distances are from the
- * left and top edges, or from the right and bottom ones. With at_pointer, the
- * middle of the title bar goes to the pointer instead. */
+/* Mwm*NAME*geometry. at_pointer: the title bar's middle at the pointer. */
 struct config_position {
 	int x, y;
 	bool from_right, from_bottom;
 	bool at_pointer;
 };
 bool config_view_position(struct view *view, struct config_position *out);
-/* A path from the environment or mwmrc, with a leading ~/ as the home directory. */
+/* A leading ~/ as $HOME. */
 void config_expand_home(const char *value, char *out, size_t size);
-/* Mwm*iconPlacement, "primary secondary [tight]" as in mwm: icons fill a row
- * (horizontal) or a column, starting from the given edges; tight leaves no
- * space between them. Default "left bottom". */
+/* Mwm*iconPlacement: "primary secondary [tight]", default "left bottom". */
 struct config_icon_placement {
 	bool horizontal;
 	bool from_right, from_bottom;
-	bool center; /* the icons stand as one block in the middle of the edge */
+	bool center; /* one block in the middle of the edge */
 	bool tight;
 };
 const struct config_icon_placement *config_icon_placement(void);
-/* "Reload" and SIGHUP: a Wayland compositor can't re-exec and keep its
- * clients, so this reads mwmrc again and applies it to what is running. */
+/* Reload and SIGHUP: mwmrc applied to what runs; no re-exec. */
 void config_reload(struct server *server);
 
 /* ---- testhook.c --------------------------------------------------------- */
@@ -913,85 +831,75 @@ void testhook_init(struct server *server);
 
 /* ---- desktop.c ------------------------------------------------------------ */
 
-/* Panels, desktop windows, notifications and splash screens are on all of them, and
- * so are their dialogs. */
 bool view_on_all_desktops(struct view *view);
-/* A window that maps goes to the current desktop, a dialog to its window's. */
 void desktop_view_mapped(struct view *view);
-/* Show desktop n (0-based): its windows and icons, and nothing of the others. */
+/* 0-based. */
 void desktop_switch(struct server *server, int n);
-/* Move a window there, with its dialogs and its tab group. */
+/* With its dialogs and tab group. */
 void view_set_desktop(struct view *view, int n);
-/* A window on another desktop asked for the focus. */
+/* It asked for the focus on another desktop. */
 void desktop_attention(struct view *view);
-/* Its type or the window it belongs to changed: where it is may change too. */
+/* Its type or parent changed. */
 void desktop_recheck(struct view *view);
-/* Does any window on desktop n want attention? */
 bool desktop_urgent(struct server *server, int n);
-/* "On All Desktops" from the window menu, or back to the desktop it is seen on. */
 void view_toggle_sticky(struct view *view);
-/* On all desktops by its type or the mwmrc, which the menu can't change. */
+/* By type or mwmrc: the menu can't change it. */
 bool view_sticky_by_rule(struct view *view);
-/* After a reload: allDesktops may have changed for windows that are there. */
 void desktop_config_changed(struct server *server);
 
 /* ---- workspace.c ---------------------------------------------------------- */
 
-/* ext-workspace-v1: the desktops for panels and switching tools. */
+/* ext-workspace-v1. */
 void workspace_init(struct server *server);
-/* The current desktop, or which ones are urgent, changed. */
 void workspace_update(struct server *server);
 struct wlr_output;
-/* A new output, for the workspace group's output_enter and output_leave. */
 void workspace_output_new(struct wlr_output *output);
-/* An output leaves the layout: its wl_output objects are about to go inert. */
+/* Before its wl_output objects go inert. */
 void workspace_output_leaving(struct wlr_output *output);
 
 /* ---- iconbox.c ------------------------------------------------------------ */
 
-/* Mwm*useIconBox: the icons in a box of their own, see iconbox.c. */
-bool iconbox_enabled(void);
+bool iconbox_enabled(void); /* Mwm*useIconBox */
 void iconbox_init(struct server *server);
-/* Places the box and the icons in it; icons_arrange() hands over to this. */
+/* For icons_arrange(). */
 void iconbox_arrange(struct server *server);
-/* The icon is the one chosen with the arrows, and the box has the keyboard. */
+/* Chosen with the arrows, and the box has the keyboard. */
 bool iconbox_selected(struct view *view);
 bool iconbox_has_focus(void);
 void iconbox_focus(struct server *server);
 void iconbox_blur(void);
 /* Before the desktop changes. */
 void iconbox_desktop_changed(void);
-/* mwmrc was read again, and the theme set up from it. */
+/* After theme_init(). */
 void iconbox_config_changed(struct server *server);
-/* Alt+Tab would give the focus to next: whether the box comes first. */
+/* Alt+Tab would go to next: whether the box comes first. */
 bool iconbox_cycle_takes(struct view *next, bool backwards);
-/* Alt+Shift+Tab sent it to the back. */
 void iconbox_lowered(struct server *server);
 bool iconbox_key(struct server *server, uint32_t mods, uint32_t sym);
 bool iconbox_contains(double lx, double ly);
 bool iconbox_title_at(double lx, double ly);
-/* double_click: the second click of one on its title bar. */
+/* double_click: on its title bar. */
 bool iconbox_press(struct server *server, uint32_t button, double lx, double ly,
 	bool double_click);
-/* One of its buttons is held down: CURSOR_BUTTON without a grabbed view. */
+/* CURSOR_BUTTON with no grabbed view. */
 void iconbox_button_motion(double lx, double ly);
 void iconbox_button_release(struct server *server);
 bool iconbox_scrollable_at(double lx, double ly);
-/* By whole icons, forward or back. */
+/* Whole icons. */
 void iconbox_scroll(int steps);
 void iconbox_icon_pressed(struct view *view);
-/* Where it is, for the tiling layout to leave free; false when there is none. */
+/* The box or its logo; false: none. */
 bool iconbox_rect(struct wlr_box *out);
 void iconbox_state(FILE *f);
 
 /* ---- fifo.c --------------------------------------------------------------- */
 
-/* wp_fifo_v1: updates that wait for the next refresh (SDL 3 wants it for Wayland). */
+/* wp_fifo_v1, which SDL 3 needs for Wayland. */
 void fifo_init(struct server *server);
 
 /* ---- shmalloc.c ----------------------------------------------------------- */
 
-/* wlroots' shm allocator, but one that tells who kept a buffer it is gone. */
+/* Tells who kept a buffer that it is gone. */
 struct wlr_allocator *shm_allocator_create(void);
 
 #endif
