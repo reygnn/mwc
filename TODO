@@ -85,13 +85,17 @@ TODO
     keinen Hauptmonitor; ein Mwm*iconBoxOutput: NAME nur, wenn es fehlt.
   - Höchstlänge in Icons, einstellbar, etwa Mwm*iconBoxSize: 10. Passt das
     nicht auf den Monitor, gilt die Kante des freien Bereichs.
-  - Ohne Icons zeigt sie nur ein Logo in Icongröße (72x72), ohne Rahmen.
-    Eigenes Logo im NeXTSTEP-Geist, kein Nachbau des NeXT-Würfels.
-  - Mit dem ersten Icon verschwindet das Logo, der Rahmen erscheint, und die
-    Box wächst mit jedem weiteren Icon um einen Platz, bis zur Höchstlänge.
+  - Ohne Icons zeigt sie nur das Logo: eine Kachel in Icongröße (72x72)
+    mit 2-px-Bevel in den Theme-Farben wie die Icons, wie die Kacheln im
+    NeXTSTEP-Dock, ohne Fensterrahmen und Titelleiste. Darauf das Logo als
+    PNG mit Transparenz, etwa 60x60, mittig. Eigenes Logo im
+    NeXTSTEP-Geist, kein Nachbau des NeXT-Würfels.
+  - Mit dem ersten Icon verschwindet das Logo, der Fensterrahmen erscheint,
+    und die Box wächst mit jedem weiteren Icon um einen Platz, bis zur
+    Höchstlänge.
     Danach ein Motif-Scrollbalken längs der Reihe, Mausrad scrollt mit.
-    Gehen Icons weg, schrumpft sie wieder, beim letzten zurück aufs Logo
-    ohne Rahmen.
+    Gehen Icons weg, schrumpft sie wieder, beim letzten zurück auf die
+    Logo-Kachel.
   - Rahmen: der normale Motif-Rahmen mit Titelleiste, aber ohne
     Größen-Griffe und ohne Fenstermenü (kein Menüknopf, kein btn3-Menü).
     Kein Verschieben, keine Größenänderung von Hand.
