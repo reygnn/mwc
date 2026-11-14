@@ -21,8 +21,14 @@
  *   badclient drop [APP]        accepts a drag
  *   badclient move-press [APP]  a press asks for xdg_toplevel.move
  *   badclient move-late [APP]   a release asks for it with the press's serial, too late
+ *
+ * On SIGUSR1 it does a roundtrip and says "synced N": everything mwc sent before then
+ * is in the log by now, so a test can tell that something did not come.
  */
 #define _GNU_SOURCE
+#include <errno.h>
+#include <poll.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -505,6 +511,58 @@ static const struct wl_data_device_listener dd_listener = {
 
 /* ---------------------------------------------------------------------------- */
 
+/* ---- the main loop, with a way to sync ------------------------------------------ */
+
+static int sync_pipe[2] = { -1, -1 };
+
+static void on_usr1(int sig)
+{
+	char c = 0;
+	(void)!write(sync_pipe[1], &c, 1);
+}
+
+/* As wl_display_dispatch() in a loop, which a signal would end. */
+static int run(void)
+{
+	static int synced;
+	if (pipe(sync_pipe) == 0) {
+		struct sigaction sa = { .sa_handler = on_usr1 };
+		sigaction(SIGUSR1, &sa, NULL);
+	}
+	struct pollfd fds[2] = {
+		{ .fd = wl_display_get_fd(display), .events = POLLIN },
+		{ .fd = sync_pipe[0], .events = POLLIN },
+	};
+	for (;;) {
+		while (wl_display_prepare_read(display) != 0)
+			wl_display_dispatch_pending(display);
+		wl_display_flush(display);
+		if (poll(fds, 2, -1) < 0) {
+			wl_display_cancel_read(display);
+			if (errno == EINTR)
+				continue;
+			return 1;
+		}
+		if (fds[0].revents & POLLIN) {
+			if (wl_display_read_events(display) != 0)
+				return 0;
+		} else {
+			wl_display_cancel_read(display);
+		}
+		if (fds[0].revents & (POLLERR | POLLHUP))
+			return 0;
+		if (wl_display_dispatch_pending(display) == -1)
+			return 0;
+		if (fds[1].revents & POLLIN) {
+			char c;
+			(void)!read(sync_pipe[0], &c, 1);
+			wl_display_roundtrip(display);
+			printf("synced %d\n", ++synced);
+			fflush(stdout);
+		}
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc < 2) {
@@ -618,7 +676,5 @@ int main(int argc, char *argv[])
 			make_popup(popup);
 		printf("done\n");
 	}
-	while (wl_display_dispatch(display) != -1) {
-	}
-	return 0;
+	return run();
 }

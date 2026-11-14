@@ -25,6 +25,7 @@ T=$(global theme title)
 client() { # name mode
 	WAYLAND_DISPLAY=wayland-0 build/badclient "$2" "$1" >"$SMOKE_DIR/$1.log" 2>&1 &
 	eval "PID_$1=$!"
+	eval "SYNCS_$1=1" # badclient syncs on SIGUSR1, see lacks()
 	check "$1 is mapped" "[ -n \"\$(get $1 x)\" ]"
 }
 x11() {
@@ -42,11 +43,24 @@ stop() {
 }
 settle() { sleep 0.45; }
 clear_log() { : >"$SMOKE_DIR/$1.log"; }
-# has <client> <line regex>, polling; lacks <client> <regex> after a moment.
+# has <client> <line regex>, polling; lacks <client> <regex> once all mwc sent has come.
 has() { grep -qE "$2" "$SMOKE_DIR/$1.log"; }
 saw() { wait_for "$1" has "$2" "$3"; }
 lacks() { # description client regex
-	sleep 0.2
+	local syncs="SYNCS_$2" pid="PID_$2" n
+	if [ -n "${!syncs-}" ]; then
+		# A roundtrip of the client's: what mwc sent before it is in the log after it.
+		n=$(grep -c '^synced' "$SMOKE_DIR/$2.log")
+		kill -USR1 "${!pid}" || fail "$1: $2 is gone"
+		local i
+		for ((i = 0; i < TIMEOUT * 25; i++)); do
+			[ "$(grep -c '^synced' "$SMOKE_DIR/$2.log")" -gt "$n" ] && break
+			sleep 0.04
+		done
+		[ "$(grep -c '^synced' "$SMOKE_DIR/$2.log")" -gt "$n" ] || fail "$1: $2 didn't sync"
+	else
+		sleep 0.2 # an X11 client: no way to ask it
+	fi
 	has "$2" "$3" && { cat "$SMOKE_DIR/$2.log"; fail "$1"; }
 	echo "ok: $1"
 }

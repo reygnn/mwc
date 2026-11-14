@@ -481,7 +481,19 @@ refresh
 TX=$((100 + B + T)) TY=$((100 + B)) TW=$(((600 - 3 * T) / 2))
 pixel_is "the other tab is in its own unfocused colour" $((TX + 8)) $((TY + 4)) aa0000
 pixel_is "the shown tab in the frame's" $((TX + TW + 8)) $((TY + 4)) 102030
-shot() { sleep 0.3; WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/shot.png"; }
+# shot_until <description> <condition>: screenshots into shot.png until the condition,
+# which reads them through px and count, holds; frames take a moment to be drawn.
+px() { build/pngtool pixel "$SMOKE_DIR/shot.png" "$1" "$2"; }
+count() { build/pngtool count "$SMOKE_DIR/shot.png" "$@"; }
+shot_until() {
+	local i
+	for ((i = 0; i < 50; i++)); do
+		WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/shot.png" 2>/dev/null && eval "$2" &&
+			{ echo "ok: $1"; return 0; }
+		sleep 0.1
+	done
+	fail "$1: never true: $2"
+}
 do_input key super+Tab
 shown "the other one" ta
 pixel_is "and now the colours change places" $((TX + TW + 8)) $((TY + 4)) 00aa00
@@ -523,6 +535,24 @@ do_input wheel 1
 do_input wheel 1
 shown "around the end" tb
 
+# The wheel over a group that doesn't have the focus: the tab shown takes the other's
+# place in the stacking order, its number included, which the icon box's place in
+# Alt+Tab goes by.
+x11 aside pos=800,450 size=200x100
+check "another window has the focus" "[ \"\$(get aside active)\" = 1 ]"
+refresh
+old_seq=$(get tb rseq)
+do_input move $((TX + 40)) $((TY + T / 2))
+do_input wheel 1
+check "the wheel shows the next tab, the focus stays" \
+	"[ \"\$(get ta tab_hidden)\" = 0 ] && [ \"\$(get aside active)\" = 1 ]"
+[ "$(get ta rseq)" = "$old_seq" ] ||
+	fail "the tab shown has stacking number $(get ta rseq), the one it replaced $old_seq"
+echo "ok: it takes the hidden tab's place in the stacking order"
+stop aside
+do_input wheel -1
+shown "back to the other tab" tb
+
 do_input move $((TX + 40)) $((TY + T / 2))
 sleep 0.5
 do_input click left
@@ -539,18 +569,15 @@ x11 sb size=300x200
 do_input key super+g
 x11 elsewhere pos=800,400 size=200x100
 TX=$((100 + B + T)) TY=$((100 + B))
-shot
-LEFT=$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + TW / 2)) "$TY")
-RIGHT=$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + TW + TW / 2)) "$TY")
-[ "$LEFT" != "$RIGHT" ] || fail "the shown tab looks like the other one"
+shot_until "the shown tab doesn't look like the other one" \
+	'LEFT=$(px $((TX + TW / 2)) "$TY"); RIGHT=$(px $((TX + TW + TW / 2)) "$TY");
+	 [ -n "$LEFT" ] && [ "$LEFT" != "$RIGHT" ]'
 do_input key alt+Tab
 do_input key super+Tab
 do_input key alt+Tab
-shot
-[ "$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + TW / 2)) "$TY")" = "$RIGHT" ] &&
-	[ "$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + TW + TW / 2)) "$TY")" = "$LEFT" ] ||
-	fail "the bevels don't change places with the shown tab"
-echo "ok: the shown tab is sunken, and the others raised"
+shot_until "the shown tab is sunken, and the others raised: they change places" \
+	'[ "$(px $((TX + TW / 2)) "$TY")" = "$RIGHT" ] &&
+	 [ "$(px $((TX + TW + TW / 2)) "$TY")" = "$LEFT" ]'
 stop sa
 stop sb
 stop elsewhere
@@ -562,13 +589,11 @@ do_input key super+g
 shown "with a hidden tab" tb
 refresh
 TY=$((100 + B)) TX=$((100 + B + T))
-shot
-BEFORE=$(build/pngtool count "$SMOKE_DIR/shot.png" $((TX + 3)) $((TY + 3)) $((TW - 6)) $((T - 6)) "$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + 3)) $((TY + 3)))")
+# How much of the hidden tab is its background colour: the text takes some of it.
+plain() { count $((TX + 3)) $((TY + 3)) $((TW - 6)) $((T - 6)) "$(px $((TX + 3)) $((TY + 3)))"; }
+shot_until "the hidden tab is drawn" 'BEFORE=$(plain); [ -n "$BEFORE" ]'
 wait_for "its title changes" said tn 'renamed'
-shot
-AFTER=$(build/pngtool count "$SMOKE_DIR/shot.png" $((TX + 3)) $((TY + 3)) $((TW - 6)) $((T - 6)) "$(build/pngtool pixel "$SMOKE_DIR/shot.png" $((TX + 3)) $((TY + 3)))")
-[ "$BEFORE" != "$AFTER" ] || fail "the tab of a hidden window keeps its old title"
-echo "ok: the tab of a hidden window shows its new title"
+shot_until "the tab of a hidden window shows its new title" '[ "$(plain)" != "$BEFORE" ]'
 stop tn
 stop tb
 
