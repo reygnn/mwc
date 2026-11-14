@@ -298,7 +298,7 @@ window-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 iconbox-test: mwc build/vinput build/pngtool build/xdgc build/workspacec build/layerc
 	tests/iconbox.sh
 
-layer-test: mwc build/vinput build/pngtool build/layerc
+layer-test: mwc build/vinput build/pngtool build/layerc build/xdgc
 	tests/layer.sh
 
 config-test: mwc build/vinput build/pngtool

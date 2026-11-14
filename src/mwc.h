@@ -533,6 +533,9 @@ struct output {
 	struct wlr_output *wlr_output;
 	struct wl_list layers[MWC_SHELL_LAYERS]; /* layer_surface.link */
 	struct wlr_box usable; /* what panels leave free */
+	/* A panel's commits arrange at most once per ARRANGE_MS, see layer_commit(). */
+	struct wl_event_source *arrange_timer;
+	bool arrange_resting, arrange_due;
 	struct wlr_scene_rect *background;
 	struct wlr_scene_buffer *wallpaper; /* above background, may be NULL */
 	int wallpaper_w, wallpaper_h;       /* size it was rendered for */

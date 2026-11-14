@@ -156,6 +156,41 @@ void layer_arrange(struct output *output)
 	}
 }
 
+/* Each arrange that changes the usable area refits every maximized and snapped
+ * window and the tiling layout: a panel changing its zone with every commit would
+ * keep the session busy. One goes at once, then at most one per ARRANGE_MS, about a
+ * refresh, with what was committed last. */
+#define ARRANGE_MS 16
+
+static int arrange_rested(void *data)
+{
+	struct output *output = data;
+	output->arrange_resting = false;
+	if (!output->arrange_due)
+		return 0;
+	output->arrange_due = false;
+	layer_arrange(output);
+	output->arrange_resting = true;
+	wl_event_source_timer_update(output->arrange_timer, ARRANGE_MS);
+	return 0;
+}
+
+static void arrange_soon(struct output *output)
+{
+	if (!output->arrange_timer)
+		output->arrange_timer = wl_event_loop_add_timer(output->server->event_loop,
+			arrange_rested, output);
+	if (output->arrange_resting && output->arrange_timer) {
+		output->arrange_due = true;
+		return;
+	}
+	layer_arrange(output);
+	if (output->arrange_timer) {
+		output->arrange_resting = true;
+		wl_event_source_timer_update(output->arrange_timer, ARRANGE_MS);
+	}
+}
+
 void layers_arrange_all(struct server *server)
 {
 	struct output *output;
@@ -342,7 +377,7 @@ static void layer_commit(struct wl_listener *listener, void *data)
 	bool layer_changed = wlr->current.layer != ls->layer;
 	if (layer_changed)
 		place_in_layer(ls, wlr->current.layer);
-	layer_arrange(ls->output);
+	arrange_soon(ls->output);
 	if (layer_changed || wlr->current.keyboard_interactive != ls->keyboard_interactive) {
 		ls->keyboard_interactive = wlr->current.keyboard_interactive;
 		update_keyboard(ls, false);
@@ -417,6 +452,9 @@ static void new_layer_surface(struct wl_listener *listener, void *data)
 
 void layer_output_gone(struct output *output)
 {
+	if (output->arrange_timer)
+		wl_event_source_remove(output->arrange_timer);
+	output->arrange_timer = NULL;
 	for (int layer = 0; layer < MWC_SHELL_LAYERS; layer++) {
 		struct layer_surface *ls, *tmp;
 		wl_list_for_each_safe(ls, tmp, &output->layers[layer], link)

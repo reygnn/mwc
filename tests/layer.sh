@@ -6,7 +6,7 @@ LOG=build/layer.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools foot xterm Xwayland grim
-for tool in build/vinput build/pngtool build/layerc; do
+for tool in build/vinput build/pngtool build/layerc build/xdgc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -239,6 +239,25 @@ layerc_stop high
 wait_for "when the overlay one goes, the waiting one gets it" has_event low keyboard-enter
 layerc_stop low
 check "with both gone, the window has it again" "[ \"\$(get foot kbfocus)\" = 1 ]"
+
+# A panel changing its zone with every commit: maximized windows follow, but not once
+# per commit. About one a refresh (16 ms) is the most they get.
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=maxw pre=max states=1 >"$SMOKE_DIR/maxw.events" 2>&1 &
+PID_maxw=$!
+check "a maximized window" "[ \"\$(get maxw max)\" = 1 ]"
+before=$(grep -c '^configure' "$SMOKE_DIR/maxw.events")
+layerc_start flicker layer=top anchor=top,left,right size=0x30 exclusive=30 repaint=2
+sleep 1
+layerc_stop flicker
+sleep 0.1
+after=$(grep -c '^configure' "$SMOKE_DIR/maxw.events")
+# At most one arrange per 16 ms: some 63 a second. Without the limit it is as many as
+# the window can answer, well over 100 on a test machine.
+[ $((after - before)) -le 80 ] ||
+	fail "a second of a flickering zone gave the window $((after - before)) configures"
+echo "ok: a flickering zone gives a maximized window $((after - before)) configures a second"
+kill "$PID_maxw"
+wait "$PID_maxw" 2>/dev/null
 
 # A panel reserving more than there is doesn't leave windows nowhere to go.
 layerc_start huge layer=top anchor=top,left,right size=0x30 exclusive=5000 color=444444
