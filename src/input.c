@@ -1379,6 +1379,10 @@ static void new_keyboard(struct server *server, struct wlr_input_device *dev)
 {
 	struct wlr_keyboard *wlr_kb = wlr_keyboard_from_input_device(dev);
 	struct keyboard *kb = calloc(1, sizeof(*kb));
+	if (!kb) {
+		wlr_log(WLR_ERROR, "out of memory: keyboard %s not used", dev->name);
+		return;
+	}
 	kb->server = server;
 	kb->wlr_keyboard = wlr_kb;
 

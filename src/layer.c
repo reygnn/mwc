@@ -377,6 +377,10 @@ static void new_layer_surface(struct wl_listener *listener, void *data)
 	wlr->output = output->wlr_output;
 
 	struct layer_surface *ls = calloc(1, sizeof(*ls));
+	if (!ls) {
+		wl_resource_post_no_memory(wlr->resource);
+		return;
+	}
 	ls->server = server;
 	ls->output = output;
 	ls->wlr = wlr;

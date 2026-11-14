@@ -132,6 +132,7 @@ static struct wlr_buffer *allocator_create_buffer(struct wlr_allocator *allocato
 	buffer->shm.fd = memfd_create("mwc-shm", MFD_CLOEXEC);
 	if (buffer->shm.fd < 0) {
 		wlr_log_errno(WLR_ERROR, "shm allocator: memfd_create");
+		wlr_buffer_finish(&buffer->base);
 		free(buffer);
 		return NULL;
 	}
@@ -140,6 +141,7 @@ static struct wlr_buffer *allocator_create_buffer(struct wlr_allocator *allocato
 		errno = err;
 		wlr_log_errno(WLR_ERROR, "shm allocator: no room for %dx%d", width, height);
 		close(buffer->shm.fd);
+		wlr_buffer_finish(&buffer->base);
 		free(buffer);
 		return NULL;
 	}
@@ -153,6 +155,7 @@ static struct wlr_buffer *allocator_create_buffer(struct wlr_allocator *allocato
 	if (buffer->data == MAP_FAILED) {
 		wlr_log_errno(WLR_ERROR, "shm allocator: mmap");
 		close(buffer->shm.fd);
+		wlr_buffer_finish(&buffer->base);
 		free(buffer);
 		return NULL;
 	}

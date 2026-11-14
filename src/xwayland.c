@@ -465,7 +465,7 @@ static void xw_set_override_redirect(struct wl_listener *listener, void *data)
 	xw_destroy(&view->destroy, NULL);
 
 	struct unmanaged *um = new_unmanaged(server, xs);
-	if (surface) {
+	if (um && surface) {
 		um_associate(&um->associate, NULL);
 		if (mapped)
 			um_map(&um->map, NULL);
@@ -475,6 +475,11 @@ static void xw_set_override_redirect(struct wl_listener *listener, void *data)
 static struct view *new_managed(struct server *server, struct wlr_xwayland_surface *xs)
 {
 	struct view *view = calloc(1, sizeof(*view));
+	if (!view) {
+		wlr_log(WLR_ERROR, "out of memory: X11 window 0x%x not managed",
+			xs->window_id);
+		return NULL;
+	}
 	view->server = server;
 	view->type = VIEW_XWAYLAND;
 	view->xsurface = xs;
@@ -619,7 +624,7 @@ static void um_set_override_redirect(struct wl_listener *listener, void *data)
 	um_destroy(&um->destroy, NULL);
 
 	struct view *view = new_managed(server, xs);
-	if (surface) {
+	if (view && surface) {
 		xw_associate(&view->associate, NULL);
 		if (mapped)
 			xw_map(&view->map, NULL);
@@ -630,6 +635,10 @@ static struct unmanaged *new_unmanaged(struct server *server,
 	struct wlr_xwayland_surface *xs)
 {
 	struct unmanaged *um = calloc(1, sizeof(*um));
+	if (!um) {
+		wlr_log(WLR_ERROR, "out of memory: X11 window 0x%x not shown", xs->window_id);
+		return NULL;
+	}
 	um->server = server;
 	um->xsurface = xs;
 	wl_list_insert(&server->unmanaged, &um->link);

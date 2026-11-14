@@ -101,19 +101,36 @@ static void add_rule(char *key, const char *value, int line)
 	if (ok && resource - key > (ptrdiff_t)prefix + 1) {
 		size_t len = resource - key - prefix - 2;
 		ok = len > 0;
-		if (ok)
+		if (ok) {
 			client = strndup(key + prefix + 1, len);
+			if (!client) {
+				wlr_log(WLR_ERROR, "%s:%d: out of memory, line skipped", path,
+					line);
+				return;
+			}
+		}
 	}
 	if (!ok) {
 		wlr_log(WLR_ERROR, "%s:%d: expected Mwm*resource or "
 			"Mwm*client*resource", path, line);
 		return;
 	}
-	rules = realloc(rules, sizeof(*rules) * (n_rules + 1));
+	struct rule *more = realloc(rules, sizeof(*rules) * (n_rules + 1));
+	char *res = strdup(resource), *val = strdup(value);
+	if (!more || !res || !val) {
+		wlr_log(WLR_ERROR, "%s:%d: out of memory, line skipped", path, line);
+		if (more)
+			rules = more;
+		free(client);
+		free(res);
+		free(val);
+		return;
+	}
+	rules = more;
 	rules[n_rules++] = (struct rule){
 		.client = client,
-		.resource = strdup(resource),
-		.value = strdup(value),
+		.resource = res,
+		.value = val,
 		.line = line,
 	};
 }
@@ -139,13 +156,23 @@ static void load_tile_filter(void)
 	if (!r)
 		return;
 	char *list = strdup(r->value), *save = NULL;
+	if (!list)
+		return;
 	for (char *tok = strtok_r(list, ",", &save); tok;
 			tok = strtok_r(NULL, ",", &save)) {
 		char *name = trim(tok);
 		if (!*name)
 			continue;
-		tile_names = realloc(tile_names, sizeof(*tile_names) * (n_tile_names + 1));
-		tile_names[n_tile_names++] = strdup(name);
+		char **more = realloc(tile_names, sizeof(*tile_names) * (n_tile_names + 1));
+		char *copy = strdup(name);
+		if (!more || !copy) {
+			if (more)
+				tile_names = more;
+			free(copy);
+			break;
+		}
+		tile_names = more;
+		tile_names[n_tile_names++] = copy;
 	}
 	free(list);
 	if (n_tile_names)
@@ -166,6 +193,8 @@ static void load_root_items(void)
 		if (rules[i].client || strcasecmp(rules[i].resource, "rootMenuItem"))
 			continue;
 		char *value = strdup(rules[i].value);
+		if (!value)
+			break;
 		char *colon = strchr(value, ':');
 		char *label = value, *command = colon ? colon + 1 : NULL;
 		if (colon)
@@ -179,8 +208,14 @@ static void load_root_items(void)
 			wlr_log(WLR_ERROR, "%s:%d: only the first %d of Mwm*rootMenuItem are used",
 				path, rules[i].line, CONFIG_MAX_ROOT_ITEMS);
 		} else {
-			root_items[n_root_items].label = strdup(label);
-			root_items[n_root_items++].command = strdup(command);
+			char *l = strdup(label), *c = strdup(command);
+			if (l && c) {
+				root_items[n_root_items].label = l;
+				root_items[n_root_items++].command = c;
+			} else {
+				free(l);
+				free(c);
+			}
 		}
 		free(value);
 	}
@@ -245,6 +280,8 @@ static bool parse_icon_placement(const char *value,
 {
 	*out = (struct config_icon_placement){ 0 };
 	char *copy = strdup(value), *save = NULL;
+	if (!copy)
+		return false;
 	int n = 0, have_h = 0, have_v = 0, have_c = 0;
 	bool ok = true;
 	for (char *tok = strtok_r(copy, " \t", &save); tok && ok;
@@ -421,7 +458,9 @@ bool config_color(const char *value, struct mwc_color *out)
 
 int config_bool(const char *name, const char *s)
 {
-	static const char *warned; /* log each bad value once, not per drag */
+	/* Each bad value once, not per drag. By its text: the rule it came from is freed
+	 * on a reload, and a new one may get the same address. */
+	static char warned[256];
 	if (!s || !*s)
 		return -1;
 	if (!strcasecmp(s, "true") || !strcasecmp(s, "on") ||
@@ -430,9 +469,11 @@ int config_bool(const char *name, const char *s)
 	if (!strcasecmp(s, "false") || !strcasecmp(s, "off") ||
 			!strcasecmp(s, "no") || !strcmp(s, "0"))
 		return 0;
-	if (s != warned) {
+	char key[sizeof(warned)];
+	snprintf(key, sizeof(key), "%s=%s", name, s);
+	if (strcmp(key, warned) != 0) {
 		wlr_log(WLR_ERROR, "ignoring %s value %s, not a boolean", name, s);
-		warned = s;
+		snprintf(warned, sizeof(warned), "%s", key);
 	}
 	return -1;
 }

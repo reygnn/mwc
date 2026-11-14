@@ -280,6 +280,10 @@ static void new_idle_inhibitor(struct wl_listener *listener, void *data)
 	struct server *server = wl_container_of(listener, server, new_idle_inhibitor);
 	struct wlr_idle_inhibitor_v1 *wlr_inhibitor = data;
 	struct idle_inhibitor *inhibitor = calloc(1, sizeof(*inhibitor));
+	if (!inhibitor) {
+		wl_resource_post_no_memory(wlr_inhibitor->resource);
+		return;
+	}
 	inhibitor->server = server;
 	inhibitor->destroy.notify = idle_inhibitor_destroy;
 	wl_signal_add(&wlr_inhibitor->events.destroy, &inhibitor->destroy);
@@ -477,6 +481,10 @@ static void new_output(struct wl_listener *listener, void *data)
 	}
 
 	struct output *output = calloc(1, sizeof(*output));
+	if (!output) {
+		wlr_log(WLR_ERROR, "out of memory: output %s not used", wlr_output->name);
+		return;
+	}
 	output->server = server;
 	output->wlr_output = wlr_output;
 	wlr_output->data = output;
@@ -706,6 +714,8 @@ static bool in_path(const char *prog)
 	if (!path)
 		return false;
 	char *dirs = strdup(path), *save = NULL;
+	if (!dirs)
+		return false;
 	bool found = false;
 	for (char *d = strtok_r(dirs, ":", &save); d && !found;
 			d = strtok_r(NULL, ":", &save)) {

@@ -115,6 +115,8 @@ static struct view **tiled_windows(struct server *server, int *n)
 	struct view **list = calloc(wl_list_length(&server->views) + 1, sizeof(*list));
 	struct view *v;
 	*n = 0;
+	if (!list)
+		return NULL;
 	wl_list_for_each(v, &server->views, link) {
 		if (v->tiled && !v->off_desktop)
 			list[(*n)++] = v;
@@ -308,7 +310,7 @@ static bool fits(struct server *server, struct view *view)
 	int n;
 	struct view **list = tiled_windows(server, &n);
 	bool overflow = false;
-	struct view *misfit = plan(server, list, n, &overflow);
+	struct view *misfit = n ? plan(server, list, n, &overflow) : view;
 	free(list);
 	view->tiled = false;
 	return misfit != view;
@@ -466,6 +468,8 @@ void tile_stack(struct server *server, bool raise)
 {
 	int count = wl_list_length(&server->views), n = 0;
 	struct view **order = calloc(count, sizeof(*order));
+	if (!order)
+		return;
 	/* Front to back: those that go on top first, each side in its own order. */
 	for (int pass = 0; pass < 2; pass++) {
 		struct view *v;

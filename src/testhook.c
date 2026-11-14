@@ -185,6 +185,8 @@ void testhook_init(struct server *server)
 	if (!env || !*env)
 		return;
 	state_path = strdup(env);
+	if (!state_path)
+		return;
 	/* It is for this process, not for what it starts. */
 	unsetenv("MWC_TEST_STATE");
 	wlr_log(WLR_INFO, "test hooks on, state file %s", state_path);

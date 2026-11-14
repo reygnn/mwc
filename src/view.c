@@ -290,6 +290,8 @@ static void view_raise(struct view *view)
 	view_raise_one(view);
 	int n = 0, count = wl_list_length(&server->views);
 	struct view **kids = calloc(count, sizeof(*kids));
+	if (!kids)
+		return;
 	struct view *v;
 	wl_list_for_each_reverse(v, &server->views, link) {
 		if (v->mapped && view_is_transient_of(v, view))
@@ -1047,7 +1049,7 @@ void view_cycle(struct server *server, bool backwards)
 		int count = wl_list_length(&server->views), n = 0;
 		struct view **group = calloc(count, sizeof(*group));
 		wl_list_for_each(v, &server->views, link) {
-			if (v != root && view_transient_root(v) == root)
+			if (group && v != root && view_transient_root(v) == root)
 				group[n++] = v;
 		}
 		for (int i = 0; i < n; i++)
@@ -1676,6 +1678,10 @@ static void new_xdg_toplevel(struct wl_listener *listener, void *data)
 	struct wlr_xdg_toplevel *toplevel = data;
 
 	struct view *view = calloc(1, sizeof(*view));
+	if (!view) {
+		wl_resource_post_no_memory(toplevel->resource);
+		return;
+	}
 	view->server = server;
 	view->type = VIEW_XDG;
 	view->xdg_toplevel = toplevel;
@@ -1744,6 +1750,11 @@ void xdg_surface_set_tree(struct wlr_xdg_surface *base, struct wlr_scene_tree *t
 	/* The scene destroys the tree when the surface goes, so the surface is always
 	 * still there for this. */
 	struct tree_link *link = calloc(1, sizeof(*link));
+	if (!link) {
+		/* Without the link, data would outlive the tree. Its popups go without. */
+		wl_resource_post_no_memory(base->resource);
+		return;
+	}
 	link->base = base;
 	link->destroy.notify = tree_link_destroy;
 	wl_signal_add(&tree->node.events.destroy, &link->destroy);
@@ -1832,6 +1843,10 @@ static void new_xdg_popup(struct wl_listener *listener, void *data)
 	struct server *server = wl_container_of(listener, server, new_xdg_popup);
 	struct wlr_xdg_popup *xdg_popup = data;
 	struct popup *popup = calloc(1, sizeof(*popup));
+	if (!popup) {
+		wl_resource_post_no_memory(xdg_popup->resource);
+		return;
+	}
 	popup->server = server;
 	popup->xdg_popup = xdg_popup;
 
@@ -1910,6 +1925,10 @@ static void new_xdg_decoration(struct wl_listener *listener, void *data)
 		return;
 
 	struct xdg_deco *deco = calloc(1, sizeof(*deco));
+	if (!deco) {
+		wl_resource_post_no_memory(wlr->resource);
+		return;
+	}
 	deco->wlr = wlr;
 	deco->view = view;
 	deco->request_mode.notify = deco_request_mode;
@@ -1962,6 +1981,10 @@ static void new_server_decoration(struct wl_listener *listener, void *data)
 		new_server_decoration);
 	struct wlr_server_decoration *wlr = data;
 	struct kde_deco *deco = calloc(1, sizeof(*deco));
+	if (!deco) {
+		wl_resource_post_no_memory(wlr->resource);
+		return;
+	}
 	deco->wlr = wlr;
 	deco->server = server;
 	deco->mode.notify = kde_deco_mode;
