@@ -73,3 +73,51 @@ TODO
   Mwm*outputManagement bleibt nötig. src/fifo.c fällt zugunsten von wlroots'
   wlr_fifo_manager_v1 weg (vorher prüfen, dass tests/fifo.sh weiter besteht).
   Ein eigener Branch, mit allen API-Änderungen von 0.19 auf 0.20.
+
+* Icon Box (Idee 2026-11-14), angelehnt an mwm's, aber wachsend. Heute
+  füllen die Icons den freien Bereich Reihe für Reihe (icons_arrange() in
+  src/frame.c); ist er voll, liegen die nächsten außerhalb des Bildschirms.
+  Mit Mwm*useIconBox: true (Vorgabe false, alles wie bisher) kommen sie
+  stattdessen in eine Box, eine einzige Reihe oder Spalte:
+  - Lage und Richtung wie die Icons ohne Box, aus Mwm*iconPlacement (bei
+    "left bottom" unten links, wächst nach rechts; vertikal eine Spalte).
+  - Monitor: der erste, wie beim Tiling (output_first(), tile.c). mwc hat
+    keinen Hauptmonitor; ein Mwm*iconBoxOutput: NAME nur, wenn es fehlt.
+  - Höchstlänge in Icons, einstellbar, etwa Mwm*iconBoxSize: 10. Passt das
+    nicht auf den Monitor, gilt die Kante des freien Bereichs.
+  - Ohne Icons zeigt sie nur ein Logo in Icongröße (72x72), ohne Rahmen.
+    Eigenes Logo im NeXTSTEP-Geist, kein Nachbau des NeXT-Würfels.
+  - Mit dem ersten Icon verschwindet das Logo, der Rahmen erscheint, und die
+    Box wächst mit jedem weiteren Icon um einen Platz, bis zur Höchstlänge.
+    Danach ein Motif-Scrollbalken längs der Reihe, Mausrad scrollt mit.
+    Gehen Icons weg, schrumpft sie wieder, beim letzten zurück aufs Logo
+    ohne Rahmen.
+  - Rahmen: der normale Motif-Rahmen mit Titelleiste, aber ohne
+    Größen-Griffe und ohne Fenstermenü (kein Menüknopf, kein btn3-Menü).
+    Kein Verschieben, keine Größenänderung von Hand.
+    Maximize schaltet zwischen voller Höchstlänge und der Länge, die die
+    Icons brauchen. Minimize zeigt das Logo (auch wenn Icons drin sind);
+    ein Klick aufs Logo zeigt die Box wieder.
+  - Tastatur: Cursortasten gehen von Icon zu Icon (scrollen mit), Enter holt
+    das Fenster des gewählten Icons zurück.
+  - Tab-Gruppen: ein Icon pro Gruppe, mit dem Bild des aktiven Fensters.
+  - Eine Box pro Desktop, gezeigt nur auf ihrem Desktop; weil alle Monitore
+    denselben Desktop zeigen, gibt es zu jeder Zeit genau eine.
+  - Beim Tiling steht sie außen vor wie heute die Icon-Reihe (tile.c).
+  - Gebaut in mwc, kein eigenes Programm (die Icons gibt es nur im
+    Compositor).
+  - Titel "Icons"; passt er nicht (eine senkrechte Box ist nur gut 72 px
+    breit), bleibt die Titelleiste leer.
+  - Fokus über Alt+Tab und einen Klick in die Box.
+  - Maximize gilt nicht über Desktopwechsel und Reload hinaus: die Box
+    beginnt immer in der Länge, die ihre Icons brauchen.
+  - iconPlacement "tight" und "center" wie ohne Box: tight ohne Abstand
+    zwischen den Icons, center stellt Box und Logo in die Mitte der Kante,
+    und die Box wächst nach beiden Seiten.
+  - Reload: useIconBox an holt die vorhandenen Icons sofort in die Box, aus
+    stellt sie wieder auf den Desktop.
+  - testhook-Zustand: Logo oder Box, Länge, Scrollstand, gewähltes Icon.
+  Abnahme: ein Test in tests/window.sh oder einem eigenen icons.sh, der
+  Logo, Wachsen, Scrollen, Schrumpfen, Maximize, Minimize, Tastatur,
+  Desktopwechsel und Reload abfährt, README unter Mouse und Configuration.
+  Eigener Branch feature/icon-box.
