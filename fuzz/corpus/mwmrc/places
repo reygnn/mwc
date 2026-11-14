@@ -1,0 +1,6 @@
+Mwm*pulseControl*geometry: -0-0
+Mwm*XTerm*geometry: +20-40
+Mwm*mrun*geometry: pointer
+Mwm*iconPlacement: center right
+Mwm*iconPlacement: top right tight
+Mwm*org.gnome.Terminal*geometry: +1000000+0

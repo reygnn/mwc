@@ -1,0 +1,12 @@
+Mwm*rootMenuItem: Firefox: firefox
+Mwm*rootMenuItem: Notes: xterm -e sh -c "vi ~/notes.txt"
+Mwm*rootMenuItem: :
+Mwm*DoNotTile: firefox, , XTerm
+Mwm*TileOnly:
+Mwm*tiling: on
+Mwm*moveOpaque: maybe
+Mwm*tileMainWidth: 70%
+Mwm**allDesktops: true
+! a comment
+Mwm.deskControl.allDesktops: yes
+missing colon

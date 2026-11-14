@@ -119,6 +119,29 @@ build/mwc-asan: $(SAN_OBJ)
 check: build/mwc-asan
 	MWC=build/mwc-asan MWC_SANITIZED=1 ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 \
 		UBSAN_OPTIONS=print_stacktrace=1 $(MAKE) test
+	@if command -v $(FUZZ_CC) >/dev/null; then $(MAKE) fuzz-replay; \
+	else echo "make check: no $(FUZZ_CC), the fuzz inputs in fuzz/ were not replayed"; fi
+
+# Fuzzing the mwmrc parser with libFuzzer, which comes with clang (see distrobox.ini).
+# make fuzz runs for FUZZ_TIME seconds, from the inputs kept in fuzz/corpus/mwmrc and
+# fuzz/findings; what it finds new goes to build/fuzz-corpus, a crash to build/ as
+# crash-*. A crash, once fixed, is kept in fuzz/findings, which fuzz-replay and make
+# check run again.
+FUZZ_CC = clang
+FUZZ_TIME ?= 60
+FUZZ_FLAGS = -g -O1 -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined
+
+build/fuzz-mwmrc: fuzz/mwmrc.c src/config.c src/mwc.h $(PROTO) | build
+	$(FUZZ_CC) $(MWC_CFLAGS) $(FUZZ_FLAGS) -Werror -o $@ fuzz/mwmrc.c \
+		$(shell $(PKG_CONFIG) --libs pango)
+
+fuzz: build/fuzz-mwmrc
+	mkdir -p build/fuzz-corpus
+	build/fuzz-mwmrc -max_total_time=$(FUZZ_TIME) -max_len=4096 \
+		-artifact_prefix=build/ build/fuzz-corpus fuzz/corpus/mwmrc fuzz/findings
+
+fuzz-replay: build/fuzz-mwmrc
+	build/fuzz-mwmrc -runs=0 fuzz/corpus/mwmrc fuzz/findings
 
 install: mwc
 	install -Dm755 mwc $(DESTDIR)$(PREFIX)/bin/mwc
@@ -361,4 +384,4 @@ clean:
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN) $(IDLEC_GEN) build/ext-workspace-v1-client.h \
 	build/ext-workspace-v1-code.c
-.PHONY: check iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: check fuzz fuzz-replay iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
