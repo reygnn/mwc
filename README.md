@@ -1,578 +1,444 @@
-# mwc — Motif-style Wayland compositor
+# mwc
 
-A small wlroots 0.19 compositor that draws the classic Motif window manager
-look server-side: 3D bevels, resize border with corner grooves, window menu
-button, minimize/maximize buttons, desktop icons and mwm's menus and key
-bindings. X11 applications (including real Motif apps) run through XWayland
-and get the same frame.
+mwc is a small Wayland compositor with the look and behaviour of the Motif window
+manager. Frames are drawn server side: bevelled borders with corner grooves, a window
+menu button, minimize and maximize, desktop icons, and mwm's menus and key bindings.
+X11 programs, Motif ones included, run through Xwayland and get the same frame. It is
+built on wlroots 0.19.
 
-## Build (Ubuntu 26.04)
+
+## Build
+
+On Ubuntu 26.04:
 
     sudo apt install build-essential pkg-config libwlroots-0.19-dev \
         wayland-protocols libwayland-dev libxkbcommon-dev libpixman-1-dev \
         libcairo2-dev libpango1.0-dev libxcb1-dev libxcb-icccm4-dev xwayland
     make
-    sudo make install   # /usr/local/bin/mwc + GDM session entry
+    sudo make install
+
+`make install` puts `mwc` in `/usr/local/bin` and adds a GDM session entry.
+
 
 ## Run
 
-- **Nested** inside the running GNOME session (opens as a window):
-  `./mwc -s xterm`
-- **Real session**: log out, pick "Mwc (Motif)" in GDM's gear menu, or start
-  `mwc` from a TTY.
+Nested in a running session, as a window:
 
-`~/.config/mwc/autostart` (executable) runs on startup unless `-s` is given.
+    ./mwc -s xterm
 
-- **Headless over RDP**: [docs/WAYLAND-RDP.md](docs/WAYLAND-RDP.md) moves a server from
-  mwm-x11 with xrdp to mwc served by [wayrdp](https://github.com/reygnn/wayrdp), and
-  [docs/wayland-rdp-upgrade.sh](docs/wayland-rdp-upgrade.sh) runs the steps.
+As a session: choose "Mwc (Motif)" in GDM, or start `mwc` from a TTY.
+`~/.config/mwc/autostart`, if executable, runs at startup unless `-s` is given.
 
-## Develop and test in a container
+`-d` logs debug output. `-v` prints the version, which is set in `src/version.h`.
 
-`distrobox.ini` defines a rootless box with all dependencies, so nothing has to
-be installed on the host except Podman and Distrobox:
+To serve mwc headless over RDP with [wayrdp](https://github.com/reygnn/wayrdp), see
+[docs/WAYLAND-RDP.md](docs/WAYLAND-RDP.md); [docs/wayland-rdp-upgrade.sh](docs/wayland-rdp-upgrade.sh)
+moves a server from mwm-x11 with xrdp.
+
+
+## Mouse
+
+| Where | Action |
+|---|---|
+| Title bar | drag: move; double click: maximize; button 2: lower; button 3: window menu |
+| Menu button | click: window menu; double click: close |
+| Border, corners | resize |
+| Icon | double click: restore; button 3: window menu |
+| Icon box | wheel: scroll; double click on the title: maximize; click on the logo: show the box |
+| Desktop | buttons 1 and 3: root menu; button 2: run dialog |
+| Alt + button 1, 2, 3 | move, lower, resize anywhere in the window |
+
+
+## Keys
+
+The mwm defaults:
+
+| Keys | Action |
+|---|---|
+| Alt+Tab, Alt+Shift+Tab, Alt+Esc | cycle windows |
+| Alt+Space, Shift+Esc | window menu |
+| Alt+F3, F4, F5 | lower, close, restore |
+| Alt+F7, F8 | move, size |
+| Alt+F9, F10, F11 | minimize, maximize, fullscreen |
+| Ctrl+Alt+Return, Super+Return | terminal |
+| Ctrl+Alt+Backspace | quit |
+| Ctrl+Alt+F1 to F12 | switch VT |
+
+Added by mwc:
+
+| Keys | Action |
+|---|---|
+| Super+arrows | snap, see Snapping |
+| Super+Shift+arrows | push a floating window against that edge; twice in a row: a corner |
+| Super+T | tiling on or off |
+| Super+G, Super+Tab, Super+1 to 9 | tabs, see Tabs |
+| Super+Esc | screen saver |
+| Print, Shift+Print | a rectangle or the screen to the clipboard; with Ctrl to a file |
+
+During a move or resize, the arrows nudge the window by 10 px, with Shift by 1 px.
+Return confirms, Escape cancels. Held arrows repeat in menus, during a move or resize,
+and in the icon box.
+
+
+## Configuration
+
+`~/.config/mwc/mwmrc` uses mwm's resource syntax, so a file from mwm-x11 can be copied.
+It is read at startup, on SIGHUP and on "Reload" in the root menu. A Wayland compositor
+cannot restart and keep its windows, so a reload applies the file to what is running.
+
+    ! global
+    Mwm*activeBackground:        #7387ad
+    Mwm*background:              #aeb2c3
+    Mwm*fontList:                Sans Bold 10
+    Mwm*wallpaper:               ~/pictures/desk.png
+
+    ! per program, by WM_CLASS or app_id
+    Mwm*XTerm*activeBackground:  #8a0303
+    Mwm*foot*activeBackground:   gold
+
+Lines starting with `!` are comments; a `!` after a value belongs to the value. Later
+lines win. Colours are `#rrggbb`, names such as `gold`, or `rgb:rr/gg/bb`. Programs are
+matched by an X11 window's `WM_CLASS` instance or class, or a Wayland `app_id`,
+ignoring case; an `app_id` may contain dots. `fontList` takes Pango names such as
+`Sans Bold 10`; other forms are logged and ignored, as are unknown resources.
+
+Global resources:
+
+| Resource | Meaning |
+|---|---|
+| `activeBackground` | frame colour while focused |
+| `background` | frame colour while unfocused; also menus and icons |
+| `activeForeground`, `foreground` | title text; default black or white, whichever contrasts |
+| `fontList` | font of titles and menus; title bars grow with it |
+| `rootBackground` | desktop colour, or `none` for a wallpaper tool such as swaybg |
+| `wallpaper` | PNG on the desktop, see below |
+| `moveOpaque` | `true`: move and resize the window itself instead of an outline |
+| `terminal` | for "New Window" and Super+Return; default the first of xterm, foot, alacritty and others found |
+| `rootMenuItem` | a program in the root menu, see Root menu |
+| `runDialog` | button 2 on the desktop; default `mrun` |
+| `screenSaver` | Super+Esc; default `displayOff --stars` |
+| `clipboardRectangleScreenshot`, `clipboardScreenshot`, `rectangleScreenshot`, `screenshot` | the Print keys, see Screenshots |
+| `tiling` | `true`: start in tiling mode |
+| `tileMainWidth` | the main tiled window's share of the width, 10 to 90 %, default 55 |
+| `DoNotTile`, `TileOnly` | programs that never tile, or the only ones that do |
+| `iconPlacement` | where icons go, see Icons |
+| `useIconBox`, `iconBoxSize` | the icon box, see Icons |
+| `keyboardLayout`, `keyboardVariant`, `keyboardOptions`, `keyboardModel` | see Keyboard and monitors |
+| `outputManagement` | `true`: offer wlr-output-management, see Keyboard and monitors |
+
+Per program:
+
+| Resource | Meaning |
+|---|---|
+| `activeBackground`, `background` | its frame colours; unfocused it defaults to a paler shade of its own |
+| `geometry` | where its windows appear, see below |
+| `allDesktops` | `true`: its windows are on every desktop |
+
+Per monitor, by name: `outputMode`, `outputScale`, `outputPosition`,
+`outputTransform`, see Keyboard and monitors.
+
+The environment overrides the global entries:
+
+| Variable | Default | |
+|---|---|---|
+| `MWC_ACTIVE` | `#7387ad` | focused frame colour |
+| `MWC_INACTIVE` | `#aeb2c3` | other frames, menus, icons |
+| `MWC_ROOT` | `#5b7792` | desktop colour, `none`: not drawn |
+| `MWC_WALLPAPER` | none | PNG on the desktop |
+| `MWC_FONT` | `Sans Bold 10` | font of titles and menus |
+| `MWC_MOVE_OPAQUE` | `0` | `1`: opaque move and resize |
+| `MWC_TILING` | `0` | `1`: start in tiling mode |
+| `MWC_TILE_MAIN_WIDTH` | `55` | main tiled window's share in % |
+| `MWC_TERMINAL` | see `terminal` | the terminal |
+| `MWC_VIRTUAL_INPUT` | `0` | `1`: virtual keyboard and pointer for clients such as wayrdp |
+
+The cursor comes from `XCURSOR_THEME` and `XCURSOR_SIZE`, the keyboard layout also
+from `XKB_DEFAULT_LAYOUT` and the like.
+
+The wallpaper is the path of a PNG; a leading `~/` is expanded. It is scaled to cover
+each monitor, keeping its aspect ratio and cutting off what sticks out evenly. If it
+cannot be read, the log says why and the desktop keeps its colour.
+
+### Placement
+
+`geometry` puts a program's windows in a fixed place when they appear, Wayland ones
+included. The value is a position as in X11's `-geometry`, without a size: `+` counts
+from the left or top edge of the usable area, `-` from the right or bottom one, to the
+frame. The monitor is the one under the pointer. `pointer` puts the middle of the title
+bar under the pointer instead, as far as the monitor allows.
+
+    Mwm*pulseControl*geometry:  -0-0
+    Mwm*XTerm*geometry:         +20-40
+    Mwm*mrun*geometry:          pointer
+
+The entry wins over a position the program asks for, but not for dialogs. It doesn't
+apply to a window that starts maximized or fullscreen, or to a client that sets its
+`app_id` only after the window has appeared. In tiling mode the layout decides, unless
+the program is in `DoNotTile`. A window placed from the right or bottom edge keeps that
+edge when it changes its size by itself, until it is moved or resized by hand. Hidden
+and shown again, a window returns to its entry's place, unless it is an X11 program
+with a position of its own.
+
+
+## Moving and resizing
+
+As in mwm, a window being moved or resized is shown as an outline, and changes once
+when the button is released. A box in the middle of the monitor shows the position, or
+the size in the program's units, such as 80 x 24 for a terminal. `moveOpaque` drags the
+window itself. Escape during a drag also restores a window that was dragged out of its
+maximized state.
+
+
+## Snapping
+
+A window dragged until the pointer touches an edge of the monitor snaps there on
+release. An outline in the window's colour shows where.
+
+| Pointer at | Window fills |
+|---|---|
+| left or right edge | that half |
+| a corner, within 64 px | that quarter |
+| top edge | the usable area: maximized |
+
+Halves and quarters keep 8 px from the edges and from each other, so the desktop stays
+in reach. Dragged away, a window gets its earlier size back under the pointer.
+
+Super+Left and Super+Right snap to a half; the other direction restores. Super+Up goes
+from a half to its top quarter, or maximizes. Super+Down goes from a half to its bottom
+quarter, from maximized to normal, and from normal to an icon.
+
+
+## Tiling
+
+Super+T, or "Tile Windows" in the root menu, switches tiling on. The main window takes
+the right part of the first monitor, 55 % or `tileMainWidth`, all of it while alone;
+the others stack on the left. A new window, or one back from an icon, becomes the main
+window. Tiled windows keep their frame but cannot be moved or resized; the title bar
+buttons do this instead:
+
+| Button | Main window | Stack window |
+|---|---|---|
+| Minimize | goes into the stack; the top stack window takes its place | rolls up to its title bar |
+| Maximize | nothing | becomes the main window |
+
+A click on a rolled up window, focusing it or Alt+F5 unrolls it. When the stack runs
+out of room its lower windows roll up, and then the oldest become icons. Dialogs,
+windows of a fixed size or too large for their place, and fullscreen and minimized
+windows float. The layout leaves the icons' strip free.
+
+`DoNotTile` keeps the listed programs floating; `TileOnly` tiles only those. Names are
+separated by commas; the later line wins, and an empty value switches the filter off.
+
+    Mwm*DoNotTile:  firefox
+    Mwm*TileOnly:   XTerm, foot
+
+While tiling is on, the root menu offers "Raise Tiled Windows" or "Lower Tiled
+Windows", which put all tiled windows above or below all floating ones. Switching
+tiling off puts every window back where it was.
+
+
+## Tabs
+
+Several windows can share one frame, with their titles as tabs in the title bar.
+
+| Keys or mouse | Action |
+|---|---|
+| Super+G | join the window that had the focus before |
+| Super+Shift+G | take the shown tab out |
+| Super+Tab, Super+Shift+Tab | next or previous tab |
+| Super+1 to Super+9 | the nth tab |
+| click or wheel on a tab | show it |
+| drag | move the group |
+| button 2 drag, Ctrl+button 1 drag | take one window: dropped on another it joins it, on the desktop it stands alone |
+
+A window taken out gets its own size back. A group counts as one window: one tiling
+cell, one icon, one place in Alt+Tab. Windows of a fixed size, dialogs and programs that
+draw their own title bar cannot be tabs. More in [docs/TABBED.md](docs/TABBED.md).
+
+
+## Virtual desktops
+
+There are four desktops, shared by all monitors. mwc binds no keys to them: a pager
+switches through ext-workspace-v1, where they are workspaces 1 to 4 of one group. A
+window opens on the current desktop, a dialog on its window's. "To Desktop" in the
+window menu moves a window with its dialogs and tab group; "On All Desktops" keeps it
+on every one. Panels, desktop windows, notifications, splash screens and programs with
+`allDesktops` are on all desktops. A window on another desktop that asks for the focus
+marks its desktop urgent instead.
+
+
+## Icons
+
+`iconPlacement` works as in mwm: `primary secondary [tight]`. The first word is the
+direction a row or column fills in, the second where the next one goes: `left`, `right`,
+`top`, `bottom`. One must be horizontal, the other vertical. `tight` leaves no space
+between icons. The default `left bottom` fills the bottom row from the left. `center` in
+place of the first word puts the icons in the middle of the edge the second names.
+
+    Mwm*iconPlacement:  top right
+    Mwm*iconPlacement:  center right
+
+`useIconBox` puts the icons of the current desktop into a box instead: one row or
+column where `iconPlacement` would start them, on the first monitor. It is as long as
+its icons need, up to `iconBoxSize` icons (default 10, or what fits), and scrolls from
+there. Empty, it shows the mwc logo on a tile. It cannot be moved or resized and has no
+window menu. Maximize switches between full length and what the icons need; minimize
+leaves the logo, a click on which brings the box back. A click into the box or Alt+Tab
+gives it the keyboard: the arrows choose an icon, Return restores it. Each desktop has
+its own box.
+
+    Mwm*useIconBox:   true
+    Mwm*iconBoxSize:  8
+
+
+## Root menu
+
+`rootMenuItem` adds a program to the top of the root menu. Every line counts, in the
+order of the file, up to 20. The label ends at the first colon; the rest is a shell
+command.
+
+    Mwm*rootMenuItem:  Firefox: firefox
+    Mwm*rootMenuItem:  Notes: xterm -e sh -c "vi ~/notes.txt"
+
+
+## Screenshots
+
+| Keys | Resource | Default |
+|---|---|---|
+| Print | `clipboardRectangleScreenshot` | `screenShot -c -r` |
+| Shift+Print | `clipboardScreenshot` | `screenShot -c` |
+| Ctrl+Print | `rectangleScreenshot` | `screenShot -r` |
+| Ctrl+Shift+Print | `screenshot` | `screenShot` |
+
+[screenShot](https://github.com/reygnn/screenShot) saves files under `Screenshots` in
+the pictures folder. Programs without a window, such as `wl-copy`, reach the clipboard
+through ext-data-control-v1 or wlr-data-control.
+
+
+## Panels and idle tools
+
+Programs using wlr-layer-shell work: panels, docks, launchers, wallpaper tools. Space a
+panel reserves stays free of maximized and new windows, icons and menus; a reservation
+leaving less than 100 px is ignored. The top layer stays above windows, but a focused
+fullscreen window covers it. A click on the background layer counts as a click on the
+desktop. A surface asking for the keyboard exclusively gets it, the one in the highest
+layer first; one asking on demand gets it when it appears or is clicked. While a surface
+holds the keyboard exclusively, the window bindings are off, except VT switching and
+Ctrl+Alt+Backspace.
+
+X11 panels work as well: a dock window with `_NET_WM_STRUT_PARTIAL` reserves space, and
+`_NET_WORKAREA` tells X11 programs what is free. The older `_NET_WM_STRUT` is not read.
+
+ext-idle-notify-v1, idle-inhibit-unstable-v1 and wlr-output-power-management-unstable-v1
+are there for tools such as [displayOff](https://github.com/reygnn/displayOff). A
+monitor that is off stays in the layout. A window inhibiting idle counts once it has
+appeared, also while minimized.
+
+
+## Keyboard and monitors
+
+    Mwm*keyboardLayout:             de
+    Mwm*keyboardVariant:            nodeadkeys
+    Mwm*keyboardOptions:            ctrl:nocaps
+    Mwm*DP-1*outputMode:            3440x1440@144
+    Mwm*DP-1*outputPosition:        0,0
+    Mwm*HDMI-A-1*outputScale:       1.5
+    Mwm*HDMI-A-1*outputTransform:   90
+
+| Resource | Meaning |
+|---|---|
+| `keyboardLayout`, `keyboardVariant`, `keyboardOptions`, `keyboardModel` | as in XKB; `XKB_DEFAULT_*` wins. Without them the layout is `us`, also in a GDM session |
+| `Name*outputMode` | `WIDTHxHEIGHT` or `WIDTHxHEIGHT@HZ`; default the preferred mode |
+| `Name*outputScale` | 0.1 to 10. Frames and menus are drawn at 1x, and X11 programs are not scaled |
+| `Name*outputPosition` | `X,Y` in the layout; default the next free place in the row |
+| `Name*outputTransform` | `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180`, `flipped-270` |
+
+The log names each monitor and its modes. All of this applies on reload too.
+
+Tools such as wlr-randr, kanshi and wdisplays, and VNC or RDP servers that size a
+headless monitor to the viewer's window, need wlr-output-management. It is offered with
+`Mwm*outputManagement: true`, read at startup only, and off by default: wlroots up to
+0.20 aborts when one client of the protocol has an object for a mode that another
+lacks, which any client can bring about, most easily on headless and nested monitors.
+The fix is on wlroots' master (commit 40640950). With it on, what a client set stays
+over a reload until mwmrc says something new about that monitor, and a monitor a client
+switched off leaves the layout and stays off until such a client switches it on.
+
+
+## Window behaviour
+
+Dialogs stay above their window, open centred over it and minimize with it. Size limits
+hold while resizing: minimum and maximum for all windows, steps, base size and aspect
+ratio from `WM_NORMAL_HINTS`. A window of a fixed size gets a thin border and no Size or
+Maximize. `_MOTIF_WM_HINTS` decide an X11 window's decorations and functions; functions
+it lacks are grey in its menu. `_NET_WM_WINDOW_TYPE` dialog, utility, splash, dock,
+desktop and notification are honoured, as are `_NET_WM_STATE` above, below, sticky,
+maximized and fullscreen; shaded is left to the tiling layout. X11 placement follows
+`USPosition`, `PPosition` and `win_gravity`.
+
+A fullscreen window smaller than the monitor sits in its middle, on black.
+
+An X11 program can activate or restore a window only while an X11 window or none has
+the focus, not a Wayland window, a panel or the icon box. Override-redirect windows that
+want the keyboard follow the same rule.
+
+Programs that wait for the refresh through wp_fifo_v1, as SDL 3 and Mesa's Vulkan FIFO
+mode do, get one update per refresh; minimized or on a monitor that is off, about one a
+second.
+
+X11 programs find `_NET_FRAME_EXTENTS`, `_NET_WORKAREA` and `_MOTIF_WM_INFO`. Xwayland
+starts on the first X11 connection, so a program asking before its window is mapped may
+miss them the first time.
+
+Clients that speak xdg-decoration (foot, Qt, alacritty, kitty, mpv) or KDE's server
+decoration protocol (GTK3) get a Motif frame. GTK4 and libadwaita programs always draw
+their own title bar and stay unframed.
+
+
+## How this is built
+
+mwc is developed with Claude (Anthropic) as a coding assistant. I set the scope and the
+architecture and review the changes; Claude writes most of the code and the tests. The
+checks:
+
+* `make test` runs headless tests; `make smoke` starts mwc and checks that a Wayland
+  and an X11 client connect, with a screenshot.
+* `make input-test` drives real clients with a simulated mouse and keyboard and checks
+  geometry and focus after every move, resize, maximize, minimize, menu and key binding.
+* What is open, and which protocols any client can use, is written down rather than
+  hidden: see TODO and Testing below.
+
+
+## Testing
+
+`distrobox.ini` defines a rootless box with all dependencies, so the host needs only
+Podman and Distrobox:
 
     sudo apt install podman distrobox uidmap
     distrobox assemble create --replace --file distrobox.ini
     distrobox enter mwc-dev
-    make test           # headless tests
-    ./mwc -s xterm      # nested, opens as a window
+    make test
 
-Without Distrobox, `tests/Containerfile` runs `make test` in a plain Podman
-container with the same packages; its header has the two commands.
+`tests/Containerfile` does the same in a plain Podman container. Inside the box the
+host's X server is not reachable; X11 programs run inside mwc only.
 
-`make smoke` starts mwc headless and checks that a Wayland client (foot) and an
-X11 client (xterm) connect, with a screenshot in `build/smoke.png`.
-
-`make input-test` drives the same two clients with a simulated mouse and
-keyboard (`tests/vinput.c`) and checks geometry and focus after each move,
-resize, maximize, minimize, menu and key binding. The simulated devices and the
-state file only exist when `MWC_TEST_STATE` is set (the devices also with
-`MWC_VIRTUAL_INPUT=1`, for wayrdp), because those protocols let any client type on
-the user's behalf. Other protocols are always on and open to every
-client, as in most wlroots compositors: `wlr-screencopy` and `ext-image-copy-capture-v1`
-let any of them read the screen, `ext-data-control-v1` and `wlr-data-control` let any of
-them read and set the clipboard, `wlr-layer-shell` lets any of them cover it, and
-`ext-workspace-v1` lets any of them switch the desktop.
-`wlr-output-management` is only there with `Mwm*outputManagement: true` (see Keyboard
-and monitors), and then lets any of them change the monitors' modes and places. A
-monitor that is off gives captures no frames until it is on again.
-
-`make wallpaper-test` renders generated images and checks pixels in screenshots,
-and `make config-test` does the same for `mwmrc`, including reloading it.
-`make layer-test` checks panels with a small layer-shell client
-(`tests/layerc.c`), and `make window-test` window behavior with clients that can
-ask for any hint (`tests/xclient.c`, `tests/xdgc.c`). `make move-test` checks the
-outline, the box and the keys during a move or resize, and `make snap-test` the
-snap zones and every way back out of them. `make outputs-test` runs on two outputs,
-`make tile-test` walks through tiling, `make pointer-test` checks who gets the mouse
-and keyboard when, including drag and drop, and `make crash-test` tries what used to
-end the session, which is worth running against a sanitizer build too:
+`make test` runs every script in `tests/`, each also on its own as `make NAME-test`
+(`make smoke` for the first): smoke, input, wallpaper, config, layer, window, move, snap, outputs, tile, crash,
+pointer, state, misc, session, tabs, fifo, rdp, desktop and iconbox. They run mwc on a
+headless output with small clients in `tests/` that can ask for any hint, and check the
+state mwc writes and pixels in screenshots. None of this tests real input hardware,
+DRM/KMS or VT switching; use a VM or a free TTY for those. A sanitizer build is worth
+running too:
 
     make clean
     CFLAGS="-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined" \
         LDFLAGS="-fsanitize=address,undefined" \
         ASAN_OPTIONS=detect_leaks=0 make test
 
-`make tabs-test` walks through tab groups, and `make state-test` tries orderings of window states, and `make misc-test` key bindings,
-autostart and settings the others don't reach. `make session-test` checks monitor and
-keyboard settings, monitors set and captured by a client (`tests/outputc.c`,
-`tests/capturec.c`) and the properties X11 programs look for.
-
-`make fifo-test` checks that updates held with `wp_fifo_v1` come one per refresh
-(`tests/fifoc.c`). `make rdp-test` does what an RDP server such as wayrdp does to mwc:
-its keyboard and pointer go with a key or a button down and in the middle of a
-move, a capture starts afresh on a still desktop after a size change or the
-monitor off and on, and the windows in every state follow the sizes connections
-ask for.
-
-`make desktop-test` switches desktops the way a tool does (`tests/workspacec.c`) and
-moves windows between them. `make iconbox-test` walks through the icon box.
-
-`make test` runs them all. None of this tests real input hardware, DRM/KMS or VT
-switching: use a VM or a free TTY for those.
-
-Inside the box, the host's X server isn't reachable: `/tmp/.X11-unix` is a
-private tmpfs because XWayland won't start without it. X11 apps only run inside
-mwc.
-
-## Mouse
-
-| Where              | Action                                              |
-|--------------------|-----------------------------------------------------|
-| Title bar          | drag: move · double-click: maximize · btn2: lower · btn3: menu |
-| Menu button        | click: window menu · double-click: close            |
-| Border / corners   | resize                                              |
-| Icon               | double-click: restore · btn3: window menu           |
-| Icon box           | wheel: scroll · title double-click: maximize · logo: show the box |
-| Desktop            | btn1/btn3: root menu · btn2: run dialog             |
-| Alt + btn1/2/3     | move / lower / resize anywhere in the window        |
-
-## Keys (mwm defaults)
-
-Alt+Tab / Alt+Shift+Tab (or Alt+Esc) cycle · Alt+Space or Shift+Esc window menu ·
-Alt+F3 lower · Alt+F4 close · Alt+F5 restore · Alt+F7 move · Alt+F8 size ·
-Alt+F9 minimize · Alt+F10 maximize · Alt+F11 fullscreen ·
-Ctrl+Alt+Return / Super+Return terminal · Ctrl+Alt+Backspace quit ·
-Super+arrows snap (see below) · Super+Shift+arrows push a floating window against
-that edge of the usable area (two in a row: a corner) · Super+T tiling on/off ·
-Super+Esc screen saver (see below) · Print / Shift+Print a rectangle / the screen to
-the clipboard, with Ctrl to a file (see below) · Super+G and more for tabs (see below).
-
-## Configuration
-
-`~/.config/mwc/mwmrc` uses the same Motif resource syntax as mwm-x11. Each
-program can get its own frame color, matched by an X11 window's `WM_CLASS`
-(instance or class name) or a Wayland client's `app_id`, ignoring case:
-
-```
-! ~/.config/mwc/mwmrc
-Mwm*XTerm*activeBackground:    #8a0303
-Mwm*foot*activeBackground:     gold
-
-! global defaults
-Mwm*activeBackground:          #7387ad
-Mwm*background:                #aeb2c3
-Mwm*fontList:                  Sans Bold 10
-Mwm*wallpaper:                 ~/pictures/desk.png
-```
-
-| Resource | Meaning |
-|---|---|
-| `activeBackground` | frame color while focused |
-| `background` | frame color while unfocused (globally: also menus and icons) |
-| `activeForeground`, `foreground` | title text; default is black or white, whichever contrasts |
-| `geometry` | where a program's windows appear, see below (per program only) |
-| `allDesktops` | `true`: a program's windows are on every desktop, as panels are, see Virtual desktops (per program only) |
-| `fontList` | Pango font name for titles and menus, title bars grow with it (global only) |
-| `rootBackground` | desktop color, or `none` to leave the desktop to a wallpaper tool such as `swaybg` (global only) |
-| `wallpaper` | PNG on the desktop, see below (global only) |
-| `moveOpaque` | `true`: drag windows themselves instead of an outline (global only) |
-| `tiling` | `true`: start in tiling mode (global only) |
-| `tileMainWidth` | share of the width for the main tiled window, `10` to `90` (`%` optional), default `55` (global only) |
-| `DoNotTile` | programs that always float in tiling mode, comma-separated (global only) |
-| `TileOnly` | the only programs that tile, comma-separated; the later of the two wins (global only) |
-| `iconPlacement` | where icons go, see below (global only) |
-
-Copying a file from mwm-x11 works, except that `fontList` takes Pango names
-like `Sans Bold 10`: anything else, like `Sans:bold:size=10` or `Sans-12`, is logged
-and ignored. Resources mwc doesn't know are ignored too.
-
-A program with its own `activeBackground` keeps its color when unfocused, in a
-paler shade (mixed with the global `background`), and so does its desktop icon.
-Set `Mwm*Name*background` to choose the unfocused color yourself. Colors are
-`#rrggbb`, names like `gold` or `firebrick`, or `rgb:rr/gg/bb`. Lines starting
-with `!` are comments; a `!` after a value is part of the value, so comments go
-on their own line. Later lines win.
-
-A program's `app_id` may contain dots: `Mwm*org.gnome.Terminal*activeBackground`.
-
-`geometry` puts a program's windows in a fixed place when they appear, also for
-Wayland clients, which have no say in that themselves. The value is a position as in
-X11's `-geometry`, without a size: `+` counts from the left or top edge of the usable
-area, `-` from the right or bottom one, and the distance is to the frame. The monitor
-is the one under the pointer.
-
-```
-! bottom right corner
-Mwm*pulseControl*geometry:  -0-0
-! 20 pixels from the left, 40 from the bottom
-Mwm*XTerm*geometry:         +20-40
-```
-
-`pointer` instead of a position puts the middle of the title bar under the pointer,
-moved back as far as needed to stay on the monitor. That suits a run dialog opened by a
-click on the desktop:
-
-```
-Mwm*mrun*geometry:  pointer
-```
-
-The entry goes before a position the program asks for itself, but not for dialogs and
-other secondary windows. Afterwards the window moves freely, and a reload moves
-nothing. In tiling mode the layout decides, unless the program is in `DoNotTile`.
-
-A window placed from the right or bottom edge keeps that edge when it changes its size
-by itself, as with X11's `win_gravity`: at `-0-0` it grows to the top left and stays in
-the corner. The same goes for its frame, when the program asks for one only once it is
-shown, or a reload makes the title bar taller. Once it is moved or resized by hand,
-pushed against an edge with Super+Shift+arrows, put into a tab group, or asks for a
-place of its own, it grows from wherever it is.
-
-Hidden and shown again, a window returns to its entry's place, unless it is an X11
-program with a position of its own: that one stays where it was. A tab taken out of
-its group cascades as usual. The entry doesn't count for a window that starts
-maximized or fullscreen, which then goes back to the top left, nor if a client sets
-its `app_id` only after the window has appeared.
-
-`iconPlacement` works as in mwm: `primary secondary`, optionally followed by `tight`.
-The first direction is the one a row or column of icons fills in, the second is the one
-the next row or column comes in: `left` is left to right, `right` right to left, `top`
-top to bottom, `bottom` bottom to top. One of them must be horizontal and the other
-vertical. `tight` leaves no space between the icons. The default `left bottom` fills the
-bottom row from the left.
-
-```
-! a column down the right edge, the next one to its left
-Mwm*iconPlacement:  top right
-```
-
-`center` in place of the first direction puts the icons of a monitor as one block in
-the middle of the edge the other word names: half of all of them above the middle,
-half below. They close up when one goes, and keep the order they first became icons
-in. A full row or column goes on in the next one, centred for itself. `center right`
-(or `right center`) is a column in the middle of the right edge, out of the way of
-tools in the corners; `center bottom` a row in the middle of the bottom.
-
-```
-! a column in the middle of the right edge
-Mwm*iconPlacement:  center right
-```
-
-In tiling mode the layout leaves out the strip the icons fill, up to their innermost
-row or column. A reload puts all icons in their places again.
-
-`useIconBox: true` puts the icons of the current desktop into a box instead, one row
-or column where `iconPlacement` would start them, on the first monitor. Unlike mwm's,
-the box is as long as its icons need, up to `iconBoxSize` icons (default 10, or what
-fits on the edge), and gets a scroll bar from there. Without icons it is a tile the
-size of an icon with the mwc logo. The box can't be moved or resized and has no window
-menu:
-
-- its maximize button switches between the full length and what the icons need, its
-  minimize button turns it into the logo tile, and a click on the tile brings it back
-- the wheel over it and the scroll bar's arrows and trough scroll it
-- a click into it, or Alt+Tab, gives it the keyboard: the arrows choose an icon,
-  Enter restores its window
-- each desktop has its own; the layout leaves its strip free in tiling mode
-
-```
-Mwm*useIconBox:   true
-Mwm*iconBoxSize:  8
-```
-
-The file is read at startup, on `SIGHUP` and on "Reload" in the root menu. A
-Wayland compositor can't restart and keep its windows, so "Reload" only
-applies the file to what is running.
-
-The environment overrides the global entries:
-
-| Variable          | Default        |                                  |
-|-------------------|----------------|----------------------------------|
-| `MWC_ACTIVE`      | `#7387ad`      | focused frame color              |
-| `MWC_INACTIVE`    | `#aeb2c3`      | other frames, menus, icons       |
-| `MWC_ROOT`        | `#5b7792`      | desktop color, `none`: not drawn |
-| `MWC_WALLPAPER`   | none           | PNG on the desktop, see below    |
-| `MWC_FONT`        | `Sans Bold 10` | Pango font for titles and menus  |
-| `MWC_MOVE_OPAQUE` | `0`            | `1`: opaque move/resize          |
-| `MWC_TILING`      | `0`            | `1`: start in tiling mode        |
-| `MWC_TILE_MAIN_WIDTH` | `55`       | main tiled window's share in %   |
-| `MWC_TERMINAL`    | first of xterm, foot, alacritty, … | "New Window" and Super+Return, also `Mwm*terminal` |
-| `MWC_VIRTUAL_INPUT` | `0`          | `1`: virtual keyboard and pointer for clients such as wayrdp |
-
-The cursor theme and size come from `XCURSOR_THEME` and `XCURSOR_SIZE`, the keyboard
-layout from `XKB_DEFAULT_LAYOUT` and the like. `-d` logs debug output, and `-v` prints
-the version, which is set in `src/version.h` and also opens the log.
-
-The wallpaper is the path of a PNG file; a leading `~/` is expanded. The image is
-scaled to cover each monitor: the aspect ratio stays and what sticks out is cut
-off evenly. If it can't be read, mwc logs why and shows the desktop color.
-
-## Panels and wallpaper tools
-
-Programs using `wlr-layer-shell` work: panels, docks, launchers and wallpaper
-tools. Space a panel reserves stays free of maximized and new windows, icons and
-menus, and maximized windows and icons follow when panels come and go.
-
-The top layer stays above windows, but a fullscreen window covers it while it has
-the focus. The overlay layer goes above everything. A click on the background
-layer counts as a click on the desktop, so a wallpaper tool doesn't cost the root
-menu. While a surface holds the keyboard exclusively, the window key bindings are
-off, except VT switching and Ctrl+Alt+Backspace.
-
-X11 panels work as well: a window of type dock with `_NET_WM_STRUT_PARTIAL`
-reserves space the same way, and `_NET_WORKAREA` tells X11 programs what is free.
-
-## Moving and resizing
-
-As in Motif mwm (`moveOpaque: False`), a window being moved or resized is shown as
-an outline that follows the pointer; the window itself moves and resizes once, when
-you let go. A box in the middle of the screen shows the position, or the size in the
-program's own units, such as 80 x 24 for a terminal. For opaque dragging put
-`Mwm*moveOpaque: true` in mwmrc or set `MWC_MOVE_OPAQUE=1`.
-
-During a move or resize, also a drag, the arrow keys nudge the window (Shift for
-1 px steps), Return confirms and Escape cancels, which also maximizes again a window
-that was dragged out of its maximized state. Alt+F7 and Alt+F8 start one from the
-keyboard.
-
-## Snapping (as in Windows 11)
-
-Drag a window by its title (or with Alt+btn1) until the pointer touches an edge of
-the monitor. An outline in the window's color shows where it will go, and it snaps
-there when you let go:
-
-| Pointer at …            | Window fills …                     |
-|-------------------------|------------------------------------|
-| left / right edge       | left / right half                  |
-| a corner (64 px zone)   | that quarter                       |
-| top edge                | the whole usable area (maximized)  |
-
-Halves and quarters keep 8 px to the monitor's edges and to each other, as tiled
-windows do, so the desktop and its root menu stay in reach; maximized fills the whole
-usable area. Dragging a snapped or maximized window away gives it back its previous
-size, still under the pointer, and Escape during the drag puts it back. Panels stay
-uncovered.
-
-Keyboard: Super+Left/Right snap to a half (pressing the other direction restores
-the window). Super+Up goes from a half to its top quarter, or maximizes. Super+Down
-goes from a half to its bottom quarter, from a maximized window back to normal, and
-from a normal window to its icon.
-
-## Tiling
-
-Super+T, or "Tile Windows" in the root menu, switches to tiling: the main window
-takes the right part of the screen (55 %, or `Mwm*tileMainWidth`; all of it while it
-is the only one), the other windows share the left part, one above the other. Gaps
-around and between them keep the desktop and its root menu within reach. A new
-window, or one back from an icon, becomes the main window.
-
-The decoration stays, but tiled windows cannot be moved or resized. The title bar
-buttons do this instead:
-
-| Button   | Main window (right)              | Stack window (left)            |
-|----------|----------------------------------|--------------------------------|
-| Minimize | goes into the stack; the top stack window takes its place (nothing while it is alone) | shades: rolls up to its title bar |
-| Maximize | nothing                          | becomes the main window        |
-
-A click on a shaded window, focusing it (Alt+Tab) or Restore (Alt+F5) unrolls it,
-and so does losing its title bar. When the stack runs out of room, its lower windows
-are shaded, and when even that is not enough the oldest become icons. The layout
-leaves the icons' row free, or their column (see `iconPlacement`). Dialogs, windows
-that cannot be resized, windows too large for their place, fullscreen and minimized
-windows float as usual; a window that leaves fullscreen joins the layout. The layout
-covers the first monitor.
-
-`Mwm*DoNotTile` in mwmrc keeps the listed programs out of the layout: they float
-above or between the tiled windows. `Mwm*TileOnly` is the reverse: only the listed
-programs tile. Programs go by `WM_CLASS` (instance or class name) or `app_id`,
-ignoring case, separated by commas. When both are set, the later line wins; an empty
-value switches the filter off.
-
-```
-! Firefox floats (app_id "firefox")
-Mwm*DoNotTile:   firefox
-
-! or the other way around: only these tile
-Mwm*TileOnly:    XTerm, foot
-```
-
-While tiling is on, the root menu offers "Raise Tiled Windows" when a floating window
-lies on top, and "Lower Tiled Windows" otherwise: all tiled windows (with their
-dialogs) go above or below all floating ones, each group keeping its own order, and
-the focus follows to the group on top. Switching tiling off puts every window back
-where it was. `Mwm*tiling: true` in mwmrc or `MWC_TILING=1` starts with tiling on,
-and reloading the configuration keeps the current choice.
-
-## Tabs
-
-Several windows can share one frame and one place on the screen, with their titles as
-tabs in the title bar. The shown tab is sunken, and each of the others keeps its own
-unfocused color, so it stays recognizable.
-
-| Key or gesture | Action |
-|---|---|
-| Super+G | Join the window that had the focus before this one |
-| Super+Shift+G | Take the shown tab out, as a window of its own |
-| Super+Tab, Super+Shift+Tab | Next or previous tab |
-| Super+1 to Super+9 | The n-th tab |
-| Click, wheel | Show a tab |
-| Drag | Move the whole group |
-| Middle drag, or Ctrl+left drag | Take just that window: dropped on another window it joins it, on the desktop it goes there on its own |
-| Middle click | Lower |
-
-A window taken out gets its own size back, as does the last one left. The window menu
-offers the same. A group takes one cell in the tiling layout and leaves
-one icon when minimized, and everything else also treats it as one window: Alt+Tab
-counts it once, and maximized, snapped and tiled carry over from tab to tab. A dialog of
-a hidden tab brings that tab to the front.
-
-Normal windows with a title bar from mwc can be tabs. Windows of a fixed size, dialogs
-and programs drawing their own title bar can't. In the layout, windows can't be dragged,
-so grouping works through the keys and the menu there. Hidden X11 programs count as
-iconified while they are hidden.
-
-## Virtual desktops
-
-There are four desktops, the same on every monitor: switching one changes what all of
-them show. mwc binds no keys for it. A pager or switching tool does it through
-`ext-workspace-v1`, where the desktops are four workspaces with the names and ids `1` to
-`4` in one group for all outputs; the only thing it can ask for is to activate one.
-
-- A window opens on the current desktop, a dialog on its window's. A window moves with
-  "To Desktop 1" to "To Desktop 4" in its window menu (its own desktop grayed out),
-  its dialogs and tab group along. A tab group never spans two desktops.
-- Panels, desktop windows, notifications and splash screens are on all desktops, and
-  so are their dialogs. So is a program with `allDesktops`, a switcher for one:
-
-  ```
-  Mwm*deskControl*allDesktops:   true
-  ```
-
-  A reload that drops the entry leaves its windows on the desktop they are seen on.
-- "On All Desktops" in a window menu does the same for one window, with its dialogs
-  and tab group; then the entry says "Only This Desktop" and takes it back to the
-  desktop it is seen on. Panels and programs with `allDesktops` show it grayed out, a
-  reload leaves the choice alone, and a window joining a tab group takes the group's.
-- Icons belong to their window's desktop and only show there; each desktop has its
-  own icon slots.
-- Focus, Alt+Tab and clicks stay on the current desktop. Tiling lays out its windows;
-  those of the others keep their place for when they come back.
-- A window on another desktop that asks for the focus, or a dialog that opens for one,
-  doesn't switch: its desktop is marked urgent for the tool until that window is seen
-  or closed.
-- A switch ends a move or resize and closes an open menu.
-- Clients aren't told: an X11 window on another desktop isn't iconified, and a
-  capture of a monitor sees the current desktop.
-
-## Programs in the root menu
-
-`Mwm*rootMenuItem` adds a program to the top of the root menu, above a separator. Unlike
-other resources, every line counts, in the order of the file:
-
-```
-Mwm*rootMenuItem:   Firefox: firefox
-Mwm*rootMenuItem:   Files: mfm
-Mwm*rootMenuItem:   Notes: xterm -e sh -c "vi ~/notes.txt"
-```
-
-The label ends at the first colon, and the rest is a shell command. Up to 20 are used;
-others are reported in the log, as are lines without a label or command. Each gets the
-first letter of its label that is still free as its key. A reload picks up changes.
-
-## Run dialog
-
-The middle button on the desktop runs `Mwm*runDialog`, by default
-[mrun](https://github.com/reygnn/mrun):
-
-```
-Mwm*runDialog:   mrun
-```
-
-## Screen saver and monitor power
-
-Super+Esc runs `Mwm*screenSaver`, by default `displayOff --stars`:
-
-```
-Mwm*screenSaver:   displayOff --stars
-```
-
-mwc offers `ext-idle-notify-v1`, `idle-inhibit-unstable-v1` and
-`wlr-output-power-management-unstable-v1`, for tools that switch monitors off when nobody
-is there, such as [displayOff](https://github.com/reygnn/displayOff). A monitor that is
-off stays in the layout, so windows keep their places. Any window asking not to be idle,
-such as a video player, counts, also when it is minimized.
-
-## Screenshots
-
-Print takes a rectangle you drag with the mouse to the clipboard, Ctrl+Print to a
-file; with Shift, the whole screen instead. Each runs an entry of its own, by default
-[screenShot](https://github.com/reygnn/screenShot), whose files go to `Screenshots`
-under the pictures folder:
-
-| Keys | Entry | Default |
-|---|---|---|
-| Print | `Mwm*clipboardRectangleScreenshot` | `screenShot -c -r` |
-| Shift+Print | `Mwm*clipboardScreenshot` | `screenShot -c` |
-| Ctrl+Print | `Mwm*rectangleScreenshot` | `screenShot -r` |
-| Ctrl+Shift+Print | `Mwm*screenshot` | `screenShot` |
-
-Programs without a window, such as `screenShot -c`, `wl-copy` and `wl-paste`, reach
-the clipboard through `ext-data-control-v1` or `wlr-data-control`, which mwc both
-offers.
-
-## Keyboard and monitors
-
-mwc reads these from mwmrc as well, which also reaches a session started from GDM. In
-such a session nothing else sets the layout, so without them you get us:
-
-```
-Mwm*keyboardLayout:         de
-Mwm*keyboardVariant:        nodeadkeys
-Mwm*keyboardOptions:        ctrl:nocaps
-Mwm*DP-1*outputMode:        3440x1440@144
-Mwm*DP-1*outputPosition:    0,0
-Mwm*HDMI-A-1*outputScale:   1.5
-Mwm*HDMI-A-1*outputTransform: 90
-```
-
-| Resource | Meaning |
-|---|---|
-| `keyboardLayout`, `keyboardVariant`, `keyboardOptions`, `keyboardModel` | as in XKB; `XKB_DEFAULT_*` in the environment wins. A layout that doesn't exist falls back to us, and the log says so |
-| `Name*outputMode` | `WIDTHxHEIGHT` or `WIDTHxHEIGHT@HZ`; default the monitor's preferred mode |
-| `Name*outputScale` | scale factor from 0.1 to 10. Frames and menus are drawn at 1x and look soft on a scaled monitor, and X11 programs are not scaled by themselves |
-| `Name*outputPosition` | `X,Y` in the layout, up to ±1000000; default the next free place in the row |
-| `Name*outputTransform` | `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180`, `flipped-270` |
-
-mwc logs each monitor's name and modes when it appears. All of this also applies on
-"Reload" and `SIGHUP`.
-
-Tools like `wlr-randr`, `kanshi` and `wdisplays`, and VNC or RDP servers that make a
-headless monitor as large as the viewer's window, need `wlr-output-management`. mwc
-offers it with
-
-```
-Mwm*outputManagement:       true
-```
-
-read at startup only. It is off by default: wlroots up to 0.20 aborts in its own code
-when one client of the protocol has an object for a monitor's mode that another lacks,
-which any client can bring about, and headless and nested monitors, the ones a VNC or
-RDP server uses, are the ones that run into it. The fix is on wlroots' master (commit
-40640950). With it on:
-
-- What a client set stays over a reload until mwmrc says something new about that
-  monitor. A monitor that goes away, also for a VT switch, comes back with what mwmrc
-  says.
-- A monitor a client switched off leaves the layout, so the pointer and new windows
-  stay on the others, and comes back where it was. It stays off when a tool such as
-  `wlopm` switches the monitors on after an idle spell; only such a client switches it
-  back on.
-- A monitor that is off for the time being, through `wlr-output-power`, still counts as
-  on for these clients, with what it will come back with. What a client sets for it
-  then waits until it is on again.
-
-## Window behavior
-
-- **Dialogs** stay above the window they belong to and minimize with it, without
-  an icon of their own. They open centered over it, without Minimize and Maximize.
-- **Size limits** hold while resizing: minimum and maximum size for all windows,
-  resize steps, base size and aspect ratio from `WM_NORMAL_HINTS` for X11 ones. A
-  window with a fixed size gets a thin border and no Size or Maximize.
-- **`_MOTIF_WM_HINTS`** decide which decorations and functions an X11 window gets.
-  Functions it doesn't have are gray in its menu and their keys do nothing.
-- **`_NET_WM_WINDOW_TYPE`**: dialog, utility/toolbar/menu, splash, dock, desktop,
-  notification. Docks and notifications stay above normal windows, desktop windows
-  below them, none of the three takes the focus. `_NET_WM_STATE_ABOVE` and `BELOW`
-  work too, as do programs that ask to start maximized or fullscreen.
-- **Placement** of X11 windows follows `USPosition`, `PPosition` and `win_gravity`.
-  An X11 window that takes no input focus (`WM_HINTS`) only comes to the front.
-
-- **`wp_fifo_v1`**: programs that wait for the refresh this way, as SDL 3 does and
-  Vulkan's FIFO mode in Mesa, get an update on the screen per refresh. Without it
-  SDL 3 prefers X11 and runs through Xwayland. A minimized window, or one on a
-  monitor that is off, gets about one update a second.
-
-Only `_NET_WM_STRUT_PARTIAL` counts for X11 panels, not the older `_NET_WM_STRUT`,
-because that is what wlroots reads.
-
-X11 programs find `_NET_FRAME_EXTENTS`, `_NET_WORKAREA` and `_MOTIF_WM_INFO`. Xwayland
-starts on the first X11 connection, so a program that asks for those before its window
-is mapped may miss them the very first time.
-
-## Decorations
-
-Frames are server-side. Clients that speak `xdg-decoration` (foot, Qt,
-alacritty, kitty, mpv, …) or KDE's server-decoration protocol (GTK3) get a
-Motif frame. GTK4/libadwaita apps (Nautilus, Ptyxis, GNOME Text Editor)
-always draw their own title bar and therefore stay unframed.
+The state file and the virtual input devices exist only with `MWC_TEST_STATE` set (the
+devices also with `MWC_VIRTUAL_INPUT=1`, for wayrdp), because those protocols let a
+client type for the user. Other protocols are open to every client, as in most wlroots
+compositors: wlr-screencopy and ext-image-copy-capture-v1 let it read the screen,
+ext-data-control-v1 and wlr-data-control read and set the clipboard, wlr-layer-shell
+cover the screen, and ext-workspace-v1 switch the desktop. wlr-output-management, when
+switched on, lets it change and switch off the monitors.
