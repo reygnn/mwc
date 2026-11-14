@@ -115,6 +115,8 @@ static void add_rule(char *key, const char *value, int line)
 		}
 	}
 	if (!ok) {
+		/* NULL here; freed all the same, which gcc -fanalyzer can follow. */
+		free(client);
 		wlr_log(WLR_ERROR, "%s:%d: expected Mwm*resource or "
 			"Mwm*client*resource", path, line);
 		return;

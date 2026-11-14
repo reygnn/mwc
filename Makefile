@@ -122,6 +122,17 @@ check: build/mwc-asan
 	@if command -v $(FUZZ_CC) >/dev/null; then $(MAKE) fuzz-replay; \
 	else echo "make check: no $(FUZZ_CC), the fuzz inputs in fuzz/ were not replayed"; fi
 
+# make analyze: GCC's static analyzer over every source file, findings as errors:
+# NULL dereferences, use after free, double free, leaks on a path. Clean today, so a
+# new finding stops it. At -O0: optimizing first lets GCC drop the very paths that
+# dereference NULL. clang's analyzer is left out: wayland's list macros make it
+# report what isn't there.
+analyze: $(PROTO) build/logo.h
+	@for f in $(SRC); do \
+		echo "analyze $$f"; \
+		$(CC) $(MWC_CFLAGS) -O0 -fanalyzer -Werror -c $$f -o /dev/null || exit 1; \
+	done
+
 # make valgrind: the tests against mwc in valgrind's memcheck (tests/valgrind-mwc),
 # for what the sanitizers don't see: reads of uninitialized memory, and errors inside
 # wlroots, Pango and cairo, which aren't built with them. Many times slower, so not
@@ -397,4 +408,4 @@ clean:
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN) $(IDLEC_GEN) build/ext-workspace-v1-client.h \
 	build/ext-workspace-v1-code.c
-.PHONY: valgrind check fuzz fuzz-replay iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: analyze valgrind check fuzz fuzz-replay iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
