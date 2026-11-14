@@ -509,6 +509,10 @@ void process_cursor_motion(struct server *server, uint32_t time)
 		return;
 	case CURSOR_BUTTON: {
 		struct view *v = server->grabbed_view;
+		if (!v) {
+			iconbox_button_motion(server->cursor->x, server->cursor->y);
+			return;
+		}
 		uint32_t edges;
 		bool inside = frame_hit(v, server->cursor->x - v->x,
 			server->cursor->y - v->y, &edges) == v->pressed;
@@ -593,9 +597,10 @@ static bool is_double_click(struct server *server, struct view *view,
 	bool dbl = server->last_click_view == view &&
 		server->last_click_part == part &&
 		time - server->last_click_msec < DOUBLE_CLICK_MS;
-	/* A double click must not chain into a triple click. */
+	/* A double click must not chain into a triple click, also not on the icon box,
+	 * which goes by no view. */
 	server->last_click_view = dbl ? NULL : view;
-	server->last_click_part = part;
+	server->last_click_part = dbl ? PART_NONE : part;
 	server->last_click_msec = time;
 	return dbl;
 }
@@ -627,9 +632,9 @@ static bool handle_press(struct server *server, uint32_t button,
 
 	/* The icon box's frame, scroll bar and logo; its icons are the views' own. Its
 	 * title bar counts as a part of no window for double clicks. */
-	if (!view && !surface && iconbox_contains(server, cx, cy)) {
+	if (!view && !surface && iconbox_contains(cx, cy)) {
 		bool dbl = button == BTN_LEFT && is_double_click(server, NULL,
-			iconbox_title_at(server, cx, cy) ? PART_TITLE : PART_NONE, time);
+			iconbox_title_at(cx, cy) ? PART_TITLE : PART_NONE, time);
 		if (iconbox_press(server, button, cx, cy, dbl))
 			return true;
 	}
@@ -637,7 +642,7 @@ static bool handle_press(struct server *server, uint32_t button,
 	if (!view) {
 		/* A panel or an X11 popup menu: not ours to handle. */
 		if (surface) {
-			iconbox_blur(server);
+			iconbox_blur();
 			layer_handle_click(server, surface);
 			return false;
 		}
@@ -853,17 +858,21 @@ static void cursor_button(struct wl_listener *listener, void *data)
 		}
 		return;
 	case CURSOR_BUTTON:
-		if (!pressed && event->button == server->grab_button)
-			handle_button_release(server);
+		/* A frame button, or with no window one of the icon box's. */
+		if (!pressed && event->button == server->grab_button) {
+			if (server->grabbed_view) {
+				handle_button_release(server);
+			} else {
+				iconbox_button_release(server);
+				process_cursor_motion(server, event->time_msec);
+			}
+		}
 		return;
 	case CURSOR_PASSTHROUGH:
 		break;
 	}
 
 	if (!pressed) {
-		/* A button of the icon box acts on its release. */
-		if (!client_saw_it && iconbox_release(server, event->button, cx, cy))
-			return;
 		/* The implicit grab is over, the pointer may be somewhere else by now. */
 		if (client_saw_it && server->n_forwarded == 0)
 			process_cursor_motion(server, event->time_msec);
@@ -900,6 +909,16 @@ static void cursor_button(struct wl_listener *listener, void *data)
 		event->state);
 }
 
+/* Whole wheel steps from discrete values, which may come in fractions of one; the
+ * rest waits in *acc for the next event. */
+static int wheel_steps(int *acc, int32_t discrete)
+{
+	*acc += discrete;
+	int steps = *acc / WLR_POINTER_AXIS_DISCRETE_STEP;
+	*acc -= steps * WLR_POINTER_AXIS_DISCRETE_STEP;
+	return steps;
+}
+
 static void cursor_axis(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server, cursor_axis);
@@ -917,19 +936,18 @@ static void cursor_axis(struct wl_listener *listener, void *data)
 		bool on_icon;
 		struct view *view = view_at(server, server->cursor->x, server->cursor->y,
 			&surface, &sx, &sy, &part, &edges, &on_icon);
-		if ((!view || on_icon) && !surface && iconbox_wheel(server,
-				server->cursor->x, server->cursor->y, event->delta_discrete))
+		/* Over the icon box, its icons included, the wheel scrolls it. */
+		if ((!view || on_icon) && !surface &&
+				iconbox_scrollable_at(server->cursor->x, server->cursor->y)) {
+			iconbox_scroll(wheel_steps(&server->icon_wheel, event->delta_discrete));
 			return;
+		}
 		if (view && part == PART_TAB) {
-			server->tab_wheel += event->delta_discrete;
-			while (server->tab_wheel >= WLR_POINTER_AXIS_DISCRETE_STEP) {
-				server->tab_wheel -= WLR_POINTER_AXIS_DISCRETE_STEP;
+			int steps = wheel_steps(&server->tab_wheel, event->delta_discrete);
+			for (; steps > 0; steps--)
 				tabs_step(view->group->shown, true);
-			}
-			while (server->tab_wheel <= -WLR_POINTER_AXIS_DISCRETE_STEP) {
-				server->tab_wheel += WLR_POINTER_AXIS_DISCRETE_STEP;
+			for (; steps < 0; steps++)
 				tabs_step(view->group->shown, false);
-			}
 			return;
 		}
 	}

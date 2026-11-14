@@ -21,9 +21,9 @@
  *   stacking order: the arrows choose an icon, Enter restores its window.
  * - The icons stay the views' own scene buffers, placed into the box; only those
  *   in sight are enabled. Scrolling goes by whole icons.
+ * - Its buttons work as a window's: CURSOR_BUTTON with no grabbed view, see input.c.
  */
 #define _POSIX_C_SOURCE 200809L
-#include <limits.h>
 #include <linux/input-event-codes.h>
 #include <pango/pangocairo.h>
 #include <stdio.h>
@@ -40,33 +40,6 @@
 #define LOGO_SIZE 64 /* the logo on its tile, which is ICON_W x ICON_H */
 #define SB 15        /* scroll bar */
 
-struct desk {
-	bool minimized; /* the logo stands for the box */
-	int scroll;     /* the first icon in sight */
-	int sel;        /* the chosen icon, for the keyboard */
-};
-
-static struct {
-	struct server *server;
-	struct wlr_scene_tree *tree;
-	struct wlr_scene_buffer *chrome; /* frame, title bar, scroll bar */
-	struct wlr_scene_buffer *logo;
-	struct desk desk[MWC_DESKTOPS];
-	bool maximized;
-	bool focused;
-	long seq;        /* its place among the windows, see iconbox_cycle_takes() */
-	cairo_surface_t *logo_image; /* NULL: none could be read, an empty tile */
-	struct wlr_box logo_crop;    /* what of it isn't transparent */
-
-	/* The layout of the last arrange, for drawing and hit testing. */
-	bool shown;      /* the box, not the logo */
-	struct wlr_box box, logo_box;
-	struct view **icons; /* in the order they became icons */
-	int n, cap, visible;
-	bool scrolls;
-	int pressed;     /* a button or scroll part held down, see enum part */
-} ib;
-
 enum part {
 	P_NONE,
 	P_TITLE,
@@ -80,11 +53,42 @@ enum part {
 	P_INSIDE,    /* between the icons */
 };
 
+enum arrow { ARROW_LEFT, ARROW_RIGHT, ARROW_UP, ARROW_DOWN };
+
+struct desk {
+	bool minimized; /* the logo stands for the box */
+	int scroll;     /* the first icon in sight */
+	int sel;        /* the chosen icon, for the keyboard */
+};
+
+static struct {
+	struct server *server;
+	bool enabled;    /* Mwm*useIconBox, as of the last load or reload */
+	int title_w;     /* "Icons" in the theme's font */
+	struct wlr_scene_tree *tree;
+	struct wlr_scene_buffer *chrome; /* frame, title bar, scroll bar */
+	struct wlr_scene_buffer *logo;   /* the tile, drawn once per load */
+	struct desk desk[MWC_DESKTOPS];
+	bool maximized;
+	bool focused;
+	long seq;        /* its place among the windows, see iconbox_cycle_takes() */
+	struct wl_event_source *refocus; /* pending, see refocus_idle() */
+
+	/* The layout of the last arrange, for drawing and hit testing. */
+	bool shown;      /* the box, not the logo */
+	struct wlr_box box, logo_box;
+	struct view **icons; /* in the order they became icons */
+	int n, cap, visible;
+	bool scrolls;
+	enum part pressed;   /* minimize or maximize, held down */
+	bool pressed_inside; /* and the pointer still on it */
+} ib;
+
 /* ---- settings ------------------------------------------------------------ */
 
 bool iconbox_enabled(void)
 {
-	return config_bool("useIconBox", config_get("useIconBox")) == 1;
+	return ib.enabled;
 }
 
 static int max_icons(void)
@@ -128,8 +132,7 @@ static cairo_surface_t *builtin_logo(void)
 	return image;
 }
 
-/* The part of the image that isn't transparent: a margin in the file would only make
- * the logo smaller on its tile. */
+/* The part of the image that isn't transparent. */
 static struct wlr_box visible_part(cairo_surface_t *image)
 {
 	int w = cairo_image_surface_get_width(image);
@@ -161,40 +164,22 @@ static struct wlr_box visible_part(cairo_surface_t *image)
 	return (struct wlr_box){ x0, y0, x1 - x0 + 1, y1 - y0 + 1 };
 }
 
-static void load_logo_file(void);
-
-static void load_logo(void)
+/* Mwm*iconBoxLogo, or the built-in one if it is unset or can't be read. */
+static cairo_surface_t *read_logo(void)
 {
-	load_logo_file();
-	if (ib.logo_image)
-		ib.logo_crop = visible_part(ib.logo_image);
-}
-
-static void load_logo_file(void)
-{
-	if (ib.logo_image)
-		cairo_surface_destroy(ib.logo_image);
-	ib.logo_image = NULL;
 	const char *value = config_get("iconBoxLogo");
-	if (!value || !*value) {
-		ib.logo_image = builtin_logo();
-		return;
-	}
+	if (!value || !*value)
+		return builtin_logo();
 	char path[4096];
-	const char *home = getenv("HOME");
-	if (strncmp(value, "~/", 2) == 0 && home)
-		snprintf(path, sizeof(path), "%s/%s", home, value + 2);
-	else
-		snprintf(path, sizeof(path), "%s", value);
+	config_expand_home(value, path, sizeof(path));
 	cairo_surface_t *image = cairo_image_surface_create_from_png(path);
 	if (cairo_surface_status(image) != CAIRO_STATUS_SUCCESS) {
 		wlr_log(WLR_ERROR, "cannot load Mwm*iconBoxLogo %s: %s", path,
 			cairo_status_to_string(cairo_surface_status(image)));
 		cairo_surface_destroy(image);
-		ib.logo_image = builtin_logo();
-		return;
+		return builtin_logo();
 	}
-	ib.logo_image = image;
+	return image;
 }
 
 /* ---- geometry ------------------------------------------------------------- */
@@ -204,14 +189,9 @@ static int border(void)
 	return theme.bevel + 1; /* a frame without resize handles */
 }
 
-static int gap(void)
-{
-	return config_icon_placement()->tight ? 0 : 8;
-}
-
 static int pad(void)
 {
-	return gap() / 2;
+	return icon_gap() / 2;
 }
 
 static struct desk *cur(void)
@@ -219,36 +199,24 @@ static struct desk *cur(void)
 	return &ib.desk[ib.server->desktop];
 }
 
-static int by_icon_seq(const void *a, const void *b)
+static void forget_icons(void)
 {
-	const struct view *x = *(struct view *const *)a, *y = *(struct view *const *)b;
-	return (x->icon_seq > y->icon_seq) - (x->icon_seq < y->icon_seq);
+	free(ib.icons);
+	ib.icons = NULL;
+	ib.n = 0;
 }
 
 static void collect(void)
 {
 	free(ib.icons);
-	ib.icons = NULL;
-	ib.n = 0;
-	struct view *v;
-	int count = wl_list_length(&ib.server->views);
-	if (!count)
-		return;
-	ib.icons = calloc(count, sizeof(*ib.icons));
-	if (!ib.icons)
-		return;
-	wl_list_for_each(v, &ib.server->views, link) {
-		if (v->mapped && v->minimized && !v->off_desktop)
-			ib.icons[ib.n++] = v;
-	}
-	qsort(ib.icons, ib.n, sizeof(*ib.icons), by_icon_seq);
+	ib.icons = icons_in_order(ib.server, &ib.n);
 }
 
 /* Along the row or column: the length of k icons, and of the frame around them. */
 static int run_len(int k, bool horizontal)
 {
 	int size = horizontal ? ICON_W : ICON_H;
-	return k * size + (k > 0 ? (k - 1) * gap() : 0);
+	return k * size + (k > 0 ? (k - 1) * icon_gap() : 0);
 }
 
 static int frame_along(bool horizontal)
@@ -256,13 +224,12 @@ static int frame_along(bool horizontal)
 	return 2 * border() + 2 * pad() + (horizontal ? 0 : theme.title_height);
 }
 
-/* Where something w x h goes in the area, as iconPlacement puts the first icon,
- * 8 px in from the edges as the icons are. */
+/* Where something w x h goes in the area, as iconPlacement puts the first icon. */
 static void anchor(struct wlr_box a, int w, int h, int *x, int *y)
 {
 	const struct config_icon_placement *p = config_icon_placement();
-	*x = p->from_right ? a.x + a.width - 8 - w : a.x + 8;
-	*y = p->from_bottom ? a.y + a.height - 8 - h : a.y + 8;
+	*x = p->from_right ? a.x + a.width - ICON_MARGIN - w : a.x + ICON_MARGIN;
+	*y = p->from_bottom ? a.y + a.height - ICON_MARGIN - h : a.y + ICON_MARGIN;
 	if (p->center) {
 		if (p->horizontal)
 			*x = a.x + (a.width - w) / 2;
@@ -275,7 +242,7 @@ static void anchor(struct wlr_box a, int w, int h, int *x, int *y)
 static void slot_pos(int k, int *x, int *y)
 {
 	const struct config_icon_placement *p = config_icon_placement();
-	int B = border(), P = pad(), T = theme.title_height, G = gap();
+	int B = border(), P = pad(), T = theme.title_height, G = icon_gap();
 	if (p->horizontal) {
 		*y = ib.box.y + B + T + P;
 		*x = p->from_right && !p->center ?
@@ -300,46 +267,28 @@ static bool forward_is_positive(void)
 
 /* ---- drawing ------------------------------------------------------------- */
 
-static int text_width(const char *text)
-{
-	cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
-	cairo_t *cr = cairo_create(s);
-	PangoLayout *layout = pango_cairo_create_layout(cr);
-	PangoFontDescription *desc = pango_font_description_from_string(theme.font);
-	pango_layout_set_font_description(layout, desc);
-	pango_font_description_free(desc);
-	pango_layout_set_text(layout, text, -1);
-	int w, h;
-	pango_layout_get_pixel_size(layout, &w, &h);
-	g_object_unref(layout);
-	cairo_destroy(cr);
-	cairo_surface_destroy(s);
-	return w;
-}
-
-static void draw_arrow(cairo_t *cr, double x, double y, double size, int dir,
+static void draw_arrow(cairo_t *cr, double x, double y, double size, enum arrow dir,
 	const struct mwc_shade *s)
 {
-	/* dir: 0 left, 1 right, 2 up, 3 down */
 	double m = size / 4, c = size / 2;
 	set_source(cr, s->fg);
 	switch (dir) {
-	case 0:
+	case ARROW_LEFT:
 		cairo_move_to(cr, x + m, y + c);
 		cairo_line_to(cr, x + size - m, y + m);
 		cairo_line_to(cr, x + size - m, y + size - m);
 		break;
-	case 1:
+	case ARROW_RIGHT:
 		cairo_move_to(cr, x + size - m, y + c);
 		cairo_line_to(cr, x + m, y + m);
 		cairo_line_to(cr, x + m, y + size - m);
 		break;
-	case 2:
+	case ARROW_UP:
 		cairo_move_to(cr, x + c, y + m);
 		cairo_line_to(cr, x + m, y + size - m);
 		cairo_line_to(cr, x + size - m, y + size - m);
 		break;
-	default:
+	case ARROW_DOWN:
 		cairo_move_to(cr, x + c, y + size - m);
 		cairo_line_to(cr, x + m, y + m);
 		cairo_line_to(cr, x + size - m, y + m);
@@ -415,16 +364,14 @@ static void render_chrome(void)
 	title_parts(&tp);
 	draw_bevel(cr, tp.title.x, tp.title.y, tp.title.width, tp.title.height, 1, s,
 		false);
-	const char *title = "Icons";
-	if (text_width(title) <= tp.title.width - 8)
-		draw_text(cr, title, theme.font, s->fg, tp.title.x + 4, tp.title.y + 1,
+	/* The whole word or nothing, too narrow a column has an empty title bar. */
+	if (ib.title_w <= tp.title.width - 8)
+		draw_text(cr, "Icons", theme.font, s->fg, tp.title.x + 4, tp.title.y + 1,
 			tp.title.width - 8, T - 2, true);
-	draw_bevel(cr, tp.min.x, tp.min.y, T, T, 1, s, ib.pressed == P_MINIMIZE);
-	draw_bevel(cr, tp.min.x + (T - 5) / 2, tp.min.y + (T - 5) / 2, 5, 5, 1, s, false);
-	draw_bevel(cr, tp.max.x, tp.max.y, T, T, 1, s, ib.pressed == P_MAXIMIZE);
-	int g = T * 11 / 20;
-	draw_bevel(cr, tp.max.x + (T - g) / 2, tp.max.y + (T - g) / 2, g, g, 1, s,
-		ib.maximized);
+	draw_title_button(cr, PART_MINIMIZE_BUTTON, tp.min.x, tp.min.y, T, s,
+		ib.pressed == P_MINIMIZE && ib.pressed_inside, false);
+	draw_title_button(cr, PART_MAXIMIZE_BUTTON, tp.max.x, tp.max.y, T, s,
+		ib.pressed == P_MAXIMIZE && ib.pressed_inside, ib.maximized);
 
 	/* The well the icons stand in. */
 	int wx = B, wy = B + T, ww = W - 2 * B, wh = H - 2 * B - T;
@@ -445,18 +392,16 @@ static void render_chrome(void)
 		cairo_fill(cr);
 		draw_bevel(cr, l.trough.x, l.trough.y, l.trough.width, l.trough.height, 1, s,
 			true);
-		bool fwd_high = forward_is_positive();
-		bool low_down = ib.pressed == (fwd_high ? P_BACK : P_FORWARD);
-		bool high_down = ib.pressed == (fwd_high ? P_FORWARD : P_BACK);
 		set_source(cr, s->bg);
 		cairo_rectangle(cr, l.low.x, l.low.y, SB, SB);
 		cairo_rectangle(cr, l.high.x, l.high.y, SB, SB);
 		cairo_rectangle(cr, l.slider.x, l.slider.y, l.slider.width, l.slider.height);
 		cairo_fill(cr);
-		draw_bevel(cr, l.low.x, l.low.y, SB, SB, 1, s, low_down);
-		draw_bevel(cr, l.high.x, l.high.y, SB, SB, 1, s, high_down);
-		draw_arrow(cr, l.low.x, l.low.y, SB, p->horizontal ? 0 : 2, s);
-		draw_arrow(cr, l.high.x, l.high.y, SB, p->horizontal ? 1 : 3, s);
+		draw_bevel(cr, l.low.x, l.low.y, SB, SB, 1, s, false);
+		draw_bevel(cr, l.high.x, l.high.y, SB, SB, 1, s, false);
+		draw_arrow(cr, l.low.x, l.low.y, SB, p->horizontal ? ARROW_LEFT : ARROW_UP, s);
+		draw_arrow(cr, l.high.x, l.high.y, SB, p->horizontal ? ARROW_RIGHT : ARROW_DOWN,
+			s);
 		draw_bevel(cr, l.slider.x, l.slider.y, l.slider.width, l.slider.height, 1, s,
 			false);
 	}
@@ -465,7 +410,9 @@ static void render_chrome(void)
 	wlr_scene_node_set_position(&ib.chrome->node, ib.box.x, ib.box.y);
 }
 
-static void render_logo(void)
+/* The tile with the logo's visible part as large as fits, in the middle. A margin in
+ * the file would only make it smaller. image may be NULL: an empty tile. */
+static void render_logo(cairo_surface_t *image)
 {
 	struct cairo_buffer *buf = cairo_buffer_create(ICON_W, ICON_H);
 	if (!buf)
@@ -476,9 +423,8 @@ static void render_logo(void)
 	cairo_paint(cr);
 	draw_bevel(cr, 0, 0, ICON_W, ICON_H, 2, s, false);
 	double lx = (ICON_W - LOGO_SIZE) / 2.0, ly = (ICON_H - LOGO_SIZE) / 2.0;
-	if (ib.logo_image) {
-		/* Its visible part as large as fits, in the middle. */
-		struct wlr_box c = ib.logo_crop;
+	if (image) {
+		struct wlr_box c = visible_part(image);
 		double scale = (double)LOGO_SIZE / (c.width > c.height ? c.width : c.height);
 		cairo_save(cr);
 		cairo_translate(cr, lx + (LOGO_SIZE - c.width * scale) / 2,
@@ -486,7 +432,7 @@ static void render_logo(void)
 		cairo_scale(cr, scale, scale);
 		cairo_rectangle(cr, 0, 0, c.width, c.height);
 		cairo_clip(cr);
-		cairo_set_source_surface(cr, ib.logo_image, -c.x, -c.y);
+		cairo_set_source_surface(cr, image, -c.x, -c.y);
 		cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
 		cairo_paint(cr);
 		cairo_restore(cr);
@@ -497,12 +443,46 @@ static void render_logo(void)
 
 /* ---- arranging ----------------------------------------------------------- */
 
+/* A button held down on a box that changes under it: nothing comes of the release. */
+static void cancel_button(void)
+{
+	if (ib.pressed == P_NONE)
+		return;
+	ib.pressed = P_NONE;
+	struct server *server = ib.server;
+	if (server->cursor_mode == CURSOR_BUTTON && !server->grabbed_view)
+		server->cursor_mode = CURSOR_PASSTHROUGH;
+}
+
 static void hide_all(void)
 {
+	cancel_button();
 	wlr_scene_node_set_enabled(&ib.chrome->node, false);
 	wlr_scene_node_set_enabled(&ib.logo->node, false);
 	ib.shown = false;
 	ib.box = ib.logo_box = (struct wlr_box){ 0 };
+}
+
+/* The box had the keyboard and lost it by going away: once what made it go is through,
+ * a window gets it, unless one has by then (a window restored from the box). */
+static void refocus_idle(void *data)
+{
+	struct server *server = data;
+	ib.refocus = NULL;
+	if (!ib.focused && !view_focused(server) && !server->focused_layer)
+		view_focus_top(server);
+}
+
+static void set_focused(bool focused);
+
+static void lose_focus(void)
+{
+	if (!ib.focused)
+		return;
+	set_focused(false);
+	if (!ib.refocus)
+		ib.refocus = wl_event_loop_add_idle(ib.server->event_loop, refocus_idle,
+			ib.server);
 }
 
 static void clamp_scroll(struct desk *d)
@@ -520,7 +500,6 @@ static void clamp_scroll(struct desk *d)
 
 void iconbox_arrange(struct server *server)
 {
-	ib.server = server;
 	collect();
 	struct desk *d = cur();
 	struct view *v;
@@ -539,24 +518,23 @@ void iconbox_arrange(struct server *server)
 	if (ib.n == 0 || d->minimized) {
 		if (ib.n == 0)
 			d->minimized = false;
-		if (ib.focused)
-			iconbox_blur(server);
+		cancel_button();
+		lose_focus();
 		ib.shown = false;
 		ib.box = (struct wlr_box){ 0 };
 		wlr_scene_node_set_enabled(&ib.chrome->node, false);
 		int x, y;
 		anchor(a, ICON_W, ICON_H, &x, &y);
 		ib.logo_box = (struct wlr_box){ x, y, ICON_W, ICON_H };
-		render_logo();
 		wlr_scene_node_set_position(&ib.logo->node, x, y);
 		wlr_scene_node_set_enabled(&ib.logo->node, true);
 		return;
 	}
 
-	/* How many fit along the edge, with the 8 px margins. */
-	int along = (hz ? a.width : a.height) - 16 - frame_along(hz);
+	/* How many fit along the edge, with the margins. */
+	int along = (hz ? a.width : a.height) - 2 * ICON_MARGIN - frame_along(hz);
 	int size = hz ? ICON_W : ICON_H;
-	int fit = (along + gap()) / (size + gap());
+	int fit = (along + icon_gap()) / (size + icon_gap());
 	if (fit < 1)
 		fit = 1;
 	ib.cap = max_icons() < fit ? max_icons() : fit;
@@ -569,12 +547,13 @@ void iconbox_arrange(struct server *server)
 	if (hz) {
 		w = 2 * B + 2 * P + run_len(ib.visible, true);
 		h = 2 * B + T + 2 * P + ICON_H + (ib.scrolls ? SB : 0);
-		if (w < 2 * B + 3 * T)
-			w = 2 * B + 3 * T;
 	} else {
 		w = 2 * B + 2 * P + ICON_W + (ib.scrolls ? SB : 0);
 		h = 2 * B + T + 2 * P + run_len(ib.visible, false);
 	}
+	/* Room for the buttons and some title, also with a large font. */
+	if (w < 2 * B + 3 * T)
+		w = 2 * B + 3 * T;
 	int x, y;
 	anchor(a, w, h, &x, &y);
 	ib.box = (struct wlr_box){ x, y, w, h };
@@ -601,7 +580,7 @@ void iconbox_arrange(struct server *server)
 
 bool iconbox_selected(struct view *view)
 {
-	if (!iconbox_enabled() || !ib.focused || !ib.shown)
+	if (!ib.enabled || !ib.focused || !ib.shown)
 		return false;
 	struct desk *d = cur();
 	return d->sel >= 0 && d->sel < ib.n && ib.icons[d->sel] == view;
@@ -621,19 +600,19 @@ static void set_focused(bool focused)
 	}
 }
 
-bool iconbox_focusable(struct server *server)
+static bool focusable(void)
 {
-	return iconbox_enabled() && ib.shown && ib.n > 0;
+	return ib.enabled && ib.shown && ib.n > 0;
 }
 
-bool iconbox_has_focus(struct server *server)
+bool iconbox_has_focus(void)
 {
 	return ib.focused;
 }
 
 void iconbox_focus(struct server *server)
 {
-	if (!iconbox_focusable(server))
+	if (!focusable())
 		return;
 	struct view *prev = view_focused(server);
 	if (prev)
@@ -646,24 +625,36 @@ void iconbox_focus(struct server *server)
 	set_focused(true);
 }
 
-void iconbox_blur(struct server *server)
+void iconbox_blur(void)
 {
 	set_focused(false);
 }
 
-void iconbox_desktop_changed(struct server *server)
+void iconbox_desktop_changed(void)
 {
 	ib.maximized = false;
+	cancel_button();
 	set_focused(false);
 }
 
 void iconbox_config_changed(struct server *server)
 {
+	bool was = ib.enabled;
+	ib.enabled = config_bool("useIconBox", config_get("useIconBox")) == 1;
 	ib.maximized = false;
-	load_logo();
-	if (!iconbox_enabled()) {
-		set_focused(false);
-		hide_all();
+	if (ib.enabled) {
+		int h;
+		text_extent(theme.font, "Icons", &ib.title_w, &h);
+		cairo_surface_t *image = read_logo();
+		render_logo(image);
+		if (image)
+			cairo_surface_destroy(image);
+		return;
+	}
+	set_focused(false);
+	hide_all();
+	forget_icons();
+	if (was) {
 		/* The icons go back onto the desktop, those of this one in sight. */
 		struct view *v;
 		wl_list_for_each(v, &server->views, link)
@@ -675,9 +666,9 @@ void iconbox_config_changed(struct server *server)
 /* Alt+Tab: the box has a place among the windows, as if it were one. Forward, the
  * bottom one comes to the front: that is the box when it is below next. Backward,
  * the current one goes to the back and the top one gets the focus. */
-bool iconbox_cycle_takes(struct server *server, struct view *next, bool backwards)
+bool iconbox_cycle_takes(struct view *next, bool backwards)
 {
-	if (ib.focused || !iconbox_focusable(server))
+	if (ib.focused || !focusable())
 		return false;
 	if (!next)
 		return true;
@@ -689,7 +680,7 @@ void iconbox_lowered(struct server *server)
 	ib.seq = --server->raise_lo;
 }
 
-static void scroll_by(int steps)
+void iconbox_scroll(int steps)
 {
 	struct desk *d = cur();
 	int before = d->scroll;
@@ -792,20 +783,25 @@ static enum part part_at(double lx, double ly)
 	return P_INSIDE;
 }
 
-bool iconbox_contains(struct server *server, double lx, double ly)
+bool iconbox_contains(double lx, double ly)
 {
-	return iconbox_enabled() && (in_box(ib.box, lx, ly) || in_box(ib.logo_box, lx, ly));
+	return ib.enabled && (in_box(ib.box, lx, ly) || in_box(ib.logo_box, lx, ly));
 }
 
-bool iconbox_title_at(struct server *server, double lx, double ly)
+bool iconbox_title_at(double lx, double ly)
 {
-	return iconbox_enabled() && part_at(lx, ly) == P_TITLE;
+	return ib.enabled && part_at(lx, ly) == P_TITLE;
+}
+
+bool iconbox_scrollable_at(double lx, double ly)
+{
+	return ib.enabled && ib.shown && in_box(ib.box, lx, ly);
 }
 
 bool iconbox_press(struct server *server, uint32_t button, double lx, double ly,
 	bool double_click)
 {
-	if (!iconbox_enabled())
+	if (!ib.enabled)
 		return false;
 	if (!ib.shown && in_box(ib.logo_box, lx, ly)) {
 		/* The tile shows the box again, if there is anything in it. */
@@ -828,6 +824,8 @@ bool iconbox_press(struct server *server, uint32_t button, double lx, double ly,
 	case P_MAXIMIZE:
 		/* As on a window: it acts on the release, if that is still on it. */
 		ib.pressed = part;
+		ib.pressed_inside = true;
+		server->cursor_mode = CURSOR_BUTTON;
 		render_chrome();
 		break;
 	case P_TITLE:
@@ -838,16 +836,16 @@ bool iconbox_press(struct server *server, uint32_t button, double lx, double ly,
 		}
 		break;
 	case P_BACK:
-		scroll_by(-1);
+		iconbox_scroll(-1);
 		break;
 	case P_FORWARD:
-		scroll_by(1);
+		iconbox_scroll(1);
 		break;
 	case P_PAGE_BACK:
-		scroll_by(-ib.visible);
+		iconbox_scroll(-ib.visible);
 		break;
 	case P_PAGE_FORWARD:
-		scroll_by(ib.visible);
+		iconbox_scroll(ib.visible);
 		break;
 	default:
 		break;
@@ -855,20 +853,29 @@ bool iconbox_press(struct server *server, uint32_t button, double lx, double ly,
 	return true;
 }
 
-bool iconbox_release(struct server *server, uint32_t button, double lx, double ly)
+void iconbox_button_motion(double lx, double ly)
 {
-	if (ib.pressed == P_NONE || button != BTN_LEFT)
-		return false;
+	bool inside = part_at(lx, ly) == ib.pressed;
+	if (inside != ib.pressed_inside) {
+		ib.pressed_inside = inside;
+		render_chrome();
+	}
+}
+
+void iconbox_button_release(struct server *server)
+{
 	enum part part = ib.pressed;
+	bool inside = ib.pressed_inside;
 	ib.pressed = P_NONE;
-	if (part_at(lx, ly) != part) {
+	server->cursor_mode = CURSOR_PASSTHROUGH;
+	if (!inside) {
 		if (ib.shown)
 			render_chrome();
-		return true;
+		return;
 	}
 	if (part == P_MINIMIZE) {
 		cur()->minimized = true;
-		iconbox_blur(server);
+		set_focused(false);
 		/* The keyboard goes back to a window. */
 		view_focus_top(server);
 	} else if (part == P_MAXIMIZE) {
@@ -876,31 +883,12 @@ bool iconbox_release(struct server *server, uint32_t button, double lx, double l
 	}
 	iconbox_arrange(server);
 	tile_arrange(server);
-	return true;
-}
-
-/* The wheel over the box goes through the icons, one per step. */
-bool iconbox_wheel(struct server *server, double lx, double ly, int32_t discrete)
-{
-	static int acc;
-	if (!iconbox_enabled() || !ib.shown || !in_box(ib.box, lx, ly))
-		return false;
-	acc += discrete;
-	while (acc >= WLR_POINTER_AXIS_DISCRETE_STEP) {
-		acc -= WLR_POINTER_AXIS_DISCRETE_STEP;
-		scroll_by(1);
-	}
-	while (acc <= -WLR_POINTER_AXIS_DISCRETE_STEP) {
-		acc += WLR_POINTER_AXIS_DISCRETE_STEP;
-		scroll_by(-1);
-	}
-	return true;
 }
 
 /* A click on one of its icons: it is the chosen one, and the box has the keyboard. */
 void iconbox_icon_pressed(struct view *view)
 {
-	if (!iconbox_enabled() || !ib.shown)
+	if (!ib.enabled || !ib.shown)
 		return;
 	struct server *server = view->server;
 	for (int i = 0; i < ib.n; i++) {
@@ -913,19 +901,19 @@ void iconbox_icon_pressed(struct view *view)
 }
 
 /* What the tiling layout leaves free for it, as for the icon row: the box or tile. */
-bool iconbox_rect(struct server *server, struct wlr_box *out)
+bool iconbox_rect(struct wlr_box *out)
 {
-	if (!iconbox_enabled())
+	if (!ib.enabled)
 		return false;
 	*out = ib.shown ? ib.box : ib.logo_box;
 	return out->width > 0;
 }
 
-void iconbox_state(struct server *server, FILE *f)
+void iconbox_state(FILE *f)
 {
 	struct desk *d = cur();
 	fprintf(f, "iconbox on=%d shown=%d logo=%d x=%d y=%d w=%d h=%d n=%d visible=%d "
-		"scroll=%d sel=%d focused=%d max=%d min=%d\n", iconbox_enabled(), ib.shown,
+		"scroll=%d sel=%d focused=%d max=%d min=%d\n", ib.enabled, ib.shown,
 		!ib.shown && ib.logo_box.width > 0, ib.shown ? ib.box.x : ib.logo_box.x,
 		ib.shown ? ib.box.y : ib.logo_box.y,
 		ib.shown ? ib.box.width : ib.logo_box.width,
@@ -942,6 +930,6 @@ void iconbox_init(struct server *server)
 	wlr_scene_node_set_enabled(&ib.chrome->node, false);
 	wlr_scene_node_set_enabled(&ib.logo->node, false);
 	/* Below every window, as if it had been lowered: Alt+Tab reaches it last. */
-	ib.seq = LONG_MIN / 2;
-	load_logo();
+	iconbox_lowered(server);
+	iconbox_config_changed(server);
 }

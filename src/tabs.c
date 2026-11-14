@@ -148,6 +148,7 @@ static void switch_to(struct tab_group *g, struct view *to, struct view *from, b
 	/* It goes where the other one was, not to the back or the front. */
 	wl_list_remove(&to->link);
 	wl_list_insert(&from->link, &to->link);
+	to->raise_seq = from->raise_seq;
 	wlr_scene_node_reparent(&to->tree->node, from->tree->node.parent);
 	wlr_scene_node_place_above(&to->tree->node, &from->tree->node);
 

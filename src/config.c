@@ -299,6 +299,17 @@ const struct config_icon_placement *config_icon_placement(void)
 	return &icon_placement;
 }
 
+void config_expand_home(const char *value, char *out, size_t size)
+{
+	/* A shell expands ~ only in some places: a display manager's session
+	 * environment, a quoted value or mwmrc still have it. */
+	const char *home = getenv("HOME");
+	if (strncmp(value, "~/", 2) == 0 && home)
+		snprintf(out, size, "%s/%s", home, value + 2);
+	else
+		snprintf(out, size, "%s", value);
+}
+
 void config_load(void)
 {
 	for (int i = 0; i < n_rules; i++) {
@@ -535,6 +546,7 @@ void config_reload(struct server *server)
 	menu_close(server);
 	config_load();
 	theme_init();
+	iconbox_config_changed(server);
 	wallpaper_init(server);
 	input_config_changed(server);
 	outputs_config_changed(server);
@@ -554,7 +566,6 @@ void config_reload(struct server *server)
 			view->all_desktops = config_view_all_desktops(view);
 	}
 	desktop_config_changed(server);
-	iconbox_config_changed(server);
 	/* iconPlacement may have changed: every icon finds its slot anew. */
 	wl_list_for_each(view, &server->views, link)
 		view->icon_placed = false;

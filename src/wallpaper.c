@@ -29,14 +29,8 @@ void wallpaper_init(struct server *server)
 	if (!value || !*value)
 		return;
 
-	/* A shell expands ~ only in some places: a display manager's session
-	 * environment, a quoted value or mwmrc still have it. */
 	char path[4096];
-	const char *home = getenv("HOME");
-	if (strncmp(value, "~/", 2) == 0 && home)
-		snprintf(path, sizeof(path), "%s/%s", home, value + 2);
-	else
-		snprintf(path, sizeof(path), "%s", value);
+	config_expand_home(value, path, sizeof(path));
 
 	/* Only the path is kept: decoded, a large image would stay in memory for the
 	 * whole session. It is read again when an output needs it. */

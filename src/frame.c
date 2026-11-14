@@ -261,10 +261,9 @@ static void draw_tabs(cairo_t *cr, struct view *view, const struct title_layout 
 
 /* ---- the frame ------------------------------------------------------------ */
 
-static void draw_button(cairo_t *cr, struct view *view, enum frame_part part,
-	int x, int y, int size, const struct mwc_shade *s)
+void draw_title_button(cairo_t *cr, enum frame_part part, int x, int y, int size,
+	const struct mwc_shade *s, bool down, bool toggled)
 {
-	bool down = view->pressed == part && view->pressed_inside;
 	draw_bevel(cr, x, y, size, size, 1, s, down);
 
 	/* Glyphs are themselves little raised bevels, as in mwm. */
@@ -284,11 +283,19 @@ static void draw_button(cairo_t *cr, struct view *view, enum frame_part part,
 	case PART_MAXIMIZE_BUTTON:
 		g = size * 11 / 20;
 		draw_bevel(cr, x + (size - g) / 2, y + (size - g) / 2,
-			g, g, 1, s, view->maximized && !view->tiled);
+			g, g, 1, s, toggled);
 		break;
 	default:
 		break;
 	}
+}
+
+static void draw_button(cairo_t *cr, struct view *view, enum frame_part part,
+	int x, int y, int size, const struct mwc_shade *s)
+{
+	draw_title_button(cr, part, x, y, size, s,
+		view->pressed == part && view->pressed_inside,
+		view->maximized && !view->tiled);
 }
 
 /* The whole W x H frame, in frame coordinates: each strip draws all of it, and cairo
@@ -512,8 +519,8 @@ static bool icon_slot_taken(struct server *server, struct view *self,
 /* Where slot k of a row or column starts, along it, from one end. */
 static int along_pos(int start, int len, int size, int gap, int k, bool from_end)
 {
-	return from_end ? start + len - 8 - size - k * (size + gap) :
-		start + 8 + k * (size + gap);
+	return from_end ? start + len - ICON_MARGIN - size - k * (size + gap) :
+		start + ICON_MARGIN + k * (size + gap);
 }
 
 /* How many icons a row or column holds. */
@@ -522,7 +529,7 @@ static int icons_per_line(const struct config_icon_placement *p, struct wlr_box 
 {
 	int along = p->horizontal ? area.width : area.height;
 	int size = p->horizontal ? ICON_W : ICON_H;
-	int n = (along - 16 + gap) / (size + gap);
+	int n = (along - 2 * ICON_MARGIN + gap) / (size + gap);
 	return n < 1 ? 1 : n;
 }
 
@@ -532,7 +539,7 @@ static int icons_per_line(const struct config_icon_placement *p, struct wlr_box 
 static void icon_slot(struct wlr_box area, int i, int *x, int *y)
 {
 	const struct config_icon_placement *p = config_icon_placement();
-	int gap = p->tight ? 0 : 8;
+	int gap = icon_gap();
 	int per_line = icons_per_line(p, area, gap);
 	int k = i % per_line, line = i / per_line;
 	if (p->horizontal) {
@@ -550,31 +557,49 @@ static int by_icon_seq(const void *a, const void *b)
 	return (x->icon_seq > y->icon_seq) - (x->icon_seq < y->icon_seq);
 }
 
+struct view **icons_in_order(struct server *server, int *n)
+{
+	*n = 0;
+	struct view *v;
+	int count = 0;
+	wl_list_for_each(v, &server->views, link)
+		count += v->minimized && !v->off_desktop;
+	if (!count)
+		return NULL;
+	struct view **list = calloc(count, sizeof(*list));
+	if (!list)
+		return NULL;
+	wl_list_for_each(v, &server->views, link) {
+		if (v->minimized && !v->off_desktop)
+			list[(*n)++] = v;
+	}
+	qsort(list, *n, sizeof(*list), by_icon_seq);
+	return list;
+}
+
+int icon_gap(void)
+{
+	return config_icon_placement()->tight ? 0 : ICON_MARGIN;
+}
+
 /* With center: the icons in sight on each output stand as one block in the middle of
  * its edge, in the order they first became icons; a full row or column goes on in the
  * next one, which is centred for itself. They close up when one goes. */
 static void icons_arrange_centred(struct server *server)
 {
 	const struct config_icon_placement *p = config_icon_placement();
-	int gap = p->tight ? 0 : 8;
+	int gap = icon_gap();
 	int size = p->horizontal ? ICON_W : ICON_H;
-	int n = 0;
+	int n;
 	struct view *v;
-	wl_list_for_each(v, &server->views, link)
-		n += v->minimized && !v->off_desktop;
-	if (!n)
+	struct view **list = icons_in_order(server, &n);
+	if (!list)
 		return;
-	struct view **list = calloc(n, sizeof(*list));
 	struct wlr_box *areas = calloc(n, sizeof(*areas));
 	bool *done = calloc(n, sizeof(*done));
-	if (!list || !areas || !done)
+	if (!areas || !done)
 		goto out;
-	int i = 0;
-	wl_list_for_each(v, &server->views, link) {
-		if (v->minimized && !v->off_desktop)
-			list[i++] = v;
-	}
-	qsort(list, n, sizeof(*list), by_icon_seq);
+	int i;
 	for (i = 0; i < n; i++)
 		areas[i] = output_usable_area(server, list[i]->x + 1, list[i]->y + 1);
 	for (i = 0; i < n; i++) {

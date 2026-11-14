@@ -273,7 +273,7 @@ void view_set_activated(struct view *view, bool activated)
 {
 	/* A window with the keyboard: the icon box doesn't have it any more. */
 	if (activated)
-		iconbox_blur(view->server);
+		iconbox_blur();
 	view->activated = activated;
 	if (view->type == VIEW_XDG)
 		wlr_xdg_toplevel_set_activated(view->xdg_toplevel, activated);
@@ -1010,13 +1010,13 @@ void view_cycle(struct server *server, bool backwards)
 	}
 	if (!top) {
 		/* Every window an icon: the box is all there is to go to. */
-		if (iconbox_cycle_takes(server, NULL, backwards))
+		if (iconbox_cycle_takes(NULL, backwards))
 			iconbox_focus(server);
 		return;
 	}
 	if (backwards) {
 		/* The icon box goes to the back as a window does. */
-		if (iconbox_has_focus(server)) {
+		if (iconbox_has_focus()) {
 			iconbox_lowered(server);
 			focus_next(server, NULL);
 			return;
@@ -1043,7 +1043,7 @@ void view_cycle(struct server *server, bool backwards)
 				break;
 			}
 		}
-		if (iconbox_cycle_takes(server, next, true))
+		if (iconbox_cycle_takes(next, true))
 			iconbox_focus(server);
 		else if (had_successor)
 			focus_next(server, root);
@@ -1052,7 +1052,7 @@ void view_cycle(struct server *server, bool backwards)
 	}
 	wl_list_for_each_reverse(v, &server->views, link) {
 		if (view_focusable(v)) {
-			if (iconbox_cycle_takes(server, v, false))
+			if (iconbox_cycle_takes(v, false))
 				iconbox_focus(server);
 			else
 				view_focus(v);
@@ -1211,6 +1211,7 @@ void view_init_common(struct view *view)
 	wlr_scene_node_set_enabled(&view->icon_node->node, false);
 	wlr_scene_node_set_enabled(&view->tree->node, false);
 	wl_list_insert(&server->views, &view->link);
+	view->raise_seq = ++server->raise_hi;
 	view->shade_active = theme.active;
 	view->shade_inactive = theme.inactive;
 	view->decor = DECOR_ALL;

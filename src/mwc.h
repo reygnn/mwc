@@ -82,6 +82,8 @@ void draw_groove_v(cairo_t *cr, double x, double y, double h,
 void draw_text(cairo_t *cr, const char *text, const char *font,
 	struct mwc_color color, double x, double y, double w, double h,
 	bool center);
+/* The size text takes in the font, in pixels. */
+void text_extent(const char *font, const char *text, int *w, int *h);
 
 /* ---- cairo-backed wlr_buffer --------------------------------------------- */
 
@@ -251,7 +253,10 @@ struct view {
 	int icon_x, icon_y;
 	bool icon_placed;
 	long icon_seq;   /* the order it first became an icon in, see icons_arrange() */
-	long raise_seq;  /* higher: raised later; for the icon box in Alt+Tab, see iconbox.c */
+	/* Its place in server.views as a number, higher towards the front, so the icon
+	 * box can have a place among the windows for Alt+Tab (see iconbox.c). Whatever
+	 * moves a view in that list sets it too. */
+	long raise_seq;
 
 	enum frame_part pressed; /* button currently held down, for drawing */
 	bool pressed_inside;
@@ -460,6 +465,7 @@ struct server {
 	struct view *grab_take; /* a drag taking only this window along, see input.c */
 	struct view *grab_drop; /* the window it would join, for the highlight */
 	int tab_wheel;         /* the wheel over tabs, in fractions of a step */
+	int icon_wheel;        /* the same over the icon box */
 	enum frame_part grab_part;
 	bool grab_outline;  /* wireframe: the window changes when the grab ends */
 	bool grab_detached; /* a move got going, past the drag threshold */
@@ -669,8 +675,18 @@ enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges);
 int frame_tab_at(struct view *view, int fx);
 void icon_render(struct view *view);
 void icons_arrange(struct server *server);
+/* The icons of the current desktop, in the order they first became icons; NULL with
+ * *n = 0 when there are none. The caller frees the array. */
+struct view **icons_in_order(struct server *server, int *n);
+/* A title bar button and its glyph, as mwm draws them. toggled: the maximize glyph
+ * sunken, for a maximized window. */
+void draw_title_button(cairo_t *cr, enum frame_part part, int x, int y, int size,
+	const struct mwc_shade *s, bool down, bool toggled);
 #define ICON_W 72
 #define ICON_H 72
+#define ICON_MARGIN 8 /* from the edges of the usable area */
+/* Between two icons: none with iconPlacement's "tight". */
+int icon_gap(void);
 
 /* ---- tabs.c ------------------------------------------------------------- */
 
@@ -840,6 +856,8 @@ struct config_position {
 	bool at_pointer;
 };
 bool config_view_position(struct view *view, struct config_position *out);
+/* A path from the environment or mwmrc, with a leading ~/ as the home directory. */
+void config_expand_home(const char *value, char *out, size_t size);
 /* Mwm*iconPlacement, "primary secondary [tight]" as in mwm: icons fill a row
  * (horizontal) or a column, starting from the given edges; tight leaves no
  * space between them. Default "left bottom". */
@@ -903,29 +921,33 @@ void iconbox_init(struct server *server);
 void iconbox_arrange(struct server *server);
 /* The icon is the one chosen with the arrows, and the box has the keyboard. */
 bool iconbox_selected(struct view *view);
-bool iconbox_focusable(struct server *server);
-bool iconbox_has_focus(struct server *server);
+bool iconbox_has_focus(void);
 void iconbox_focus(struct server *server);
-void iconbox_blur(struct server *server);
-void iconbox_desktop_changed(struct server *server);
-/* After a reload, before icons_arrange(). */
+void iconbox_blur(void);
+/* Before the desktop changes. */
+void iconbox_desktop_changed(void);
+/* mwmrc was read again, and the theme set up from it. */
 void iconbox_config_changed(struct server *server);
 /* Alt+Tab would give the focus to next: whether the box comes first. */
-bool iconbox_cycle_takes(struct server *server, struct view *next, bool backwards);
+bool iconbox_cycle_takes(struct view *next, bool backwards);
 /* Alt+Shift+Tab sent it to the back. */
 void iconbox_lowered(struct server *server);
 bool iconbox_key(struct server *server, uint32_t mods, uint32_t sym);
-bool iconbox_contains(struct server *server, double lx, double ly);
-bool iconbox_title_at(struct server *server, double lx, double ly);
+bool iconbox_contains(double lx, double ly);
+bool iconbox_title_at(double lx, double ly);
 /* double_click: the second click of one on its title bar. */
 bool iconbox_press(struct server *server, uint32_t button, double lx, double ly,
 	bool double_click);
-bool iconbox_release(struct server *server, uint32_t button, double lx, double ly);
-bool iconbox_wheel(struct server *server, double lx, double ly, int32_t discrete);
+/* One of its buttons is held down: CURSOR_BUTTON without a grabbed view. */
+void iconbox_button_motion(double lx, double ly);
+void iconbox_button_release(struct server *server);
+bool iconbox_scrollable_at(double lx, double ly);
+/* By whole icons, forward or back. */
+void iconbox_scroll(int steps);
 void iconbox_icon_pressed(struct view *view);
 /* Where it is, for the tiling layout to leave free; false when there is none. */
-bool iconbox_rect(struct server *server, struct wlr_box *out);
-void iconbox_state(struct server *server, FILE *f);
+bool iconbox_rect(struct wlr_box *out);
+void iconbox_state(FILE *f);
 
 /* ---- fifo.c --------------------------------------------------------------- */
 

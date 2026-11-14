@@ -107,7 +107,7 @@ static const char *usable_font(const char *font, const char *where)
 	return font;
 }
 
-static int font_height(const char *font)
+void text_extent(const char *font, const char *text, int *w, int *h)
 {
 	cairo_surface_t *tmp = cairo_image_surface_create(
 		CAIRO_FORMAT_ARGB32, 1, 1);
@@ -116,12 +116,17 @@ static int font_height(const char *font)
 	PangoFontDescription *desc = pango_font_description_from_string(font);
 	pango_layout_set_font_description(layout, desc);
 	pango_font_description_free(desc);
-	pango_layout_set_text(layout, "Xg", -1);
-	int w, h;
-	pango_layout_get_pixel_size(layout, &w, &h);
+	pango_layout_set_text(layout, text, -1);
+	pango_layout_get_pixel_size(layout, w, h);
 	g_object_unref(layout);
 	cairo_destroy(cr);
 	cairo_surface_destroy(tmp);
+}
+
+static int font_height(const char *font)
+{
+	int w, h;
+	text_extent(font, "Xg", &w, &h);
 	return h;
 }
 

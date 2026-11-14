@@ -194,6 +194,29 @@ static struct wlr_box layout_area(struct server *server)
 	return output_first(server)->usable;
 }
 
+/* What the layout may use of the area, edge by edge. */
+struct strip {
+	int left, right, top, bottom;
+};
+
+/* The edge the icons pile up from moves in past b. */
+static void leave_free(struct strip *st, const struct config_icon_placement *p,
+	struct wlr_box b)
+{
+	if (p->horizontal && p->from_bottom) {
+		if (b.y < st->bottom)
+			st->bottom = b.y;
+	} else if (p->horizontal) {
+		if (b.y + b.height > st->top)
+			st->top = b.y + b.height;
+	} else if (p->from_right) {
+		if (b.x < st->right)
+			st->right = b.x;
+	} else if (b.x + b.width > st->left) {
+		st->left = b.x + b.width;
+	}
+}
+
 /* Cells for list[0..n), main window first. Returns a window that can't fit its
  * cell, or NULL; *overflow says the stack column is full even with every window in
  * it shaded. */
@@ -206,36 +229,25 @@ static struct view *plan(struct server *server, struct view **list, int n,
 	 * pile up from, up to the innermost row or column of them (they keep their
 	 * own 8 px margin). */
 	const struct config_icon_placement *p = config_icon_placement();
-	int left = a.x, right = a.x + a.width, top_edge = a.y, bottom = a.y + a.height;
+	struct strip strip = { a.x, a.x + a.width, a.y, a.y + a.height };
 	struct view *v;
 	struct wlr_box ibox;
-	if (iconbox_rect(server, &ibox)) {
+	if (iconbox_enabled()) {
 		/* The icon box, or its logo, the same way. */
-		if (p->horizontal && p->from_bottom && ibox.y < bottom)
-			bottom = ibox.y;
-		else if (p->horizontal && !p->from_bottom && ibox.y + ibox.height > top_edge)
-			top_edge = ibox.y + ibox.height;
-		else if (!p->horizontal && p->from_right && ibox.x < right)
-			right = ibox.x;
-		else if (!p->horizontal && !p->from_right && ibox.x + ibox.width > left)
-			left = ibox.x + ibox.width;
+		if (iconbox_rect(&ibox))
+			leave_free(&strip, p, ibox);
+	} else {
+		wl_list_for_each(v, &server->views, link) {
+			if (!v->minimized || v->off_desktop || !v->icon_placed ||
+					v->icon_x < a.x || v->icon_x >= a.x + a.width ||
+					v->icon_y < a.y || v->icon_y >= a.y + a.height)
+				continue;
+			leave_free(&strip, p, (struct wlr_box){ v->icon_x, v->icon_y,
+				ICON_W, ICON_H });
+		}
 	}
-	wl_list_for_each(v, &server->views, link) {
-		if (iconbox_enabled())
-			break;
-		if (!v->minimized || v->off_desktop || !v->icon_placed || v->icon_x < a.x ||
-				v->icon_x >= a.x + a.width || v->icon_y < a.y ||
-				v->icon_y >= a.y + a.height)
-			continue;
-		if (p->horizontal && p->from_bottom && v->icon_y < bottom)
-			bottom = v->icon_y;
-		else if (p->horizontal && !p->from_bottom && v->icon_y + ICON_H > top_edge)
-			top_edge = v->icon_y + ICON_H;
-		else if (!p->horizontal && p->from_right && v->icon_x < right)
-			right = v->icon_x;
-		else if (!p->horizontal && !p->from_right && v->icon_x + ICON_W > left)
-			left = v->icon_x + ICON_W;
-	}
+	int left = strip.left, right = strip.right, top_edge = strip.top,
+		bottom = strip.bottom;
 	int min = 2 * TILE_GAP + 1;
 	a.x = left;
 	a.width = right - left > min ? right - left : min;

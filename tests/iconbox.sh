@@ -125,12 +125,17 @@ check "and goes on to the window" "[ \"\$(box focused)\" = 0 ] && [ \"\$(get two
 
 # ---- maximize and minimize ------------------------------------------------------------
 
-# Two icons left, so that maximize has room to grow into. Not so soon after the last
-# click on the title bar that this one makes a double click.
-sleep 0.6
-click_at $(title_bar)
+# Two icons left, so that maximize has room to grow into. A click on an icon chooses it
+# and gives the box the keyboard.
+for app in one two three four; do
+	[ "$(get $app icon_shown)" = 1 ] && break
+done
+click_at $(($(get $app icon_x) + 30)) $(($(get $app icon_y) + 30))
+check "a click on an icon chooses it" \
+	"[ \"\$(box focused)\" = 1 ] && [ \"\$(get $app min)\" = 1 ]"
 do_input key Return
-check "two icons left" "[ \"\$(box n)\" = 2 ] && [ \"\$(box visible)\" = 2 ]"
+check "two icons left" "[ \"\$(box n)\" = 2 ] && [ \"\$(box visible)\" = 2 ] && \
+	[ \"\$(get $app min)\" = 0 ]"
 W2=$(box w)
 W3=$((2 * B + 2 * P + 3 * ICON + 16))
 click_at $(max_button)
@@ -156,6 +161,17 @@ check "another desktop: its own, empty box" "[ \"\$(box logo)\" = 1 ] && [ \"\$(
 ws activate 1 >/dev/null || fail "activating desktop 1"
 check "back: the icons, maximize forgotten" \
 	"[ \"\$(box shown)\" = 1 ] && [ \"\$(box n)\" = 2 ] && [ \"\$(box max)\" = 0 ]"
+
+# A button held down while the desktop changes: its release does nothing.
+do_input move $(min_button)
+do_input down left
+check "minimize held down" "[ \"\$(global cursor mode)\" != 0 ]"
+ws activate 2 >/dev/null || fail "activating desktop 2"
+check "the desktop switch lets go of it" "[ \"\$(global cursor mode)\" = 0 ]"
+ws activate 1 >/dev/null || fail "activating desktop 1"
+do_input up left
+check "and the release doesn't minimize the box" \
+	"[ \"\$(box shown)\" = 1 ] && [ \"\$(box min)\" = 0 ]"
 
 # ---- tiling ----------------------------------------------------------------------------
 
@@ -189,6 +205,34 @@ sed -i 's/useIconBox: false/useIconBox: true/' "$RC"
 kill -HUP "$pid"
 check "switched on again: the icons go into the box" \
 	"[ \"\$(box shown)\" = 1 ] && [ \"\$(box n)\" = 2 ]"
+
+# ---- a column with a large font -------------------------------------------------------
+
+cat >>"$RC" <<'EOF2'
+Mwm*iconPlacement: top right
+Mwm*fontList: Sans Bold 26
+EOF2
+kill -HUP "$pid"
+check "a large font" "[ \"\$(global theme title)\" -ge 40 ]"
+T=$(global theme title)
+check "the column is wide enough for its buttons and a title" \
+	"[ \"\$(box shown)\" = 1 ] && [ \"\$(box w)\" -ge $((2 * B + 3 * T)) ]"
+refresh
+click_at $(title_bar)
+click_at $(title_bar)
+check "its title bar takes a double click" "[ \"\$(box max)\" = 1 ]"
+
+# ---- the box has the keyboard when its last icon goes ------------------------------------
+
+click_at $(title_bar)
+check "the box has the keyboard" "[ \"\$(box focused)\" = 1 ] && [ \"\$(global focus any)\" = 0 ]"
+for app in one two three four; do
+	[ "$(get $app min)" = 1 ] || continue
+	var="PID_$app"
+	kill "${!var}"
+done
+check "its programs quit: the logo, and a window has the keyboard" \
+	"[ \"\$(box logo)\" = 1 ] && [ \"\$(box focused)\" = 0 ] && [ \"\$(global focus any)\" = 1 ]"
 
 stop_vinput
 stop_mwc
