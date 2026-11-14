@@ -191,6 +191,10 @@ static void xw_map(struct wl_listener *listener, void *data)
 	/* Snapped stays, as maximized does. */
 	if (!view->fullscreen && !view->tiled && view->snap != SNAP_NONE)
 		view_refit(view);
+	/* On all desktops, as it asked, if mwmrc doesn't decide that already. */
+	if (xs->sticky && !view_on_all_desktops(view))
+		view_toggle_sticky(view);
+	xwayland_publish_state(view);
 	/* Not an icon any longer, whatever the properties still say... */
 	wlr_xwayland_surface_set_minimized(xs, view->hidden_with_parent);
 	/* ... unless it asks for that: xterm -iconic and friends. */
@@ -255,6 +259,9 @@ static void xw_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&view->request_below.link);
 	wl_list_remove(&view->set_override_redirect.link);
 	wl_list_remove(&view->set_app_id.link);
+	wl_list_remove(&view->request_sticky.link);
+	wl_list_remove(&view->request_shaded.link);
+	wl_list_remove(&view->request_demands_attention.link);
 	view_handle_destroy(view);
 }
 
@@ -374,6 +381,46 @@ static void xw_request_minimize(struct wl_listener *listener, void *data)
 	 * Coming back takes the focus, see x11_may_take_focus(). */
 	else if (view_hidden_by_state(view) && x11_may_take_focus(view->server))
 		view_restore(view);
+}
+
+void xwayland_publish_state(struct view *view)
+{
+	if (view->type != VIEW_XWAYLAND || !view->mapped)
+		return;
+	struct wlr_xwayland_surface *xs = view->xsurface;
+	bool sticky = view_on_all_desktops(view);
+	if (xs->sticky != sticky)
+		wlr_xwayland_surface_set_sticky(xs, sticky);
+	if (xs->shaded != view->shaded)
+		wlr_xwayland_surface_set_shaded(xs, view->shaded);
+}
+
+/* wlroots writes a state a client asks for into _NET_WM_STATE before telling mwc:
+ * what mwc does or doesn't do about it has to be written back. */
+static void xw_request_sticky(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, request_sticky);
+	if (!view->mapped)
+		return;
+	if (view->xsurface->sticky != view_on_all_desktops(view))
+		view_toggle_sticky(view); /* not one that is everywhere by its type or mwmrc */
+	xwayland_publish_state(view);
+}
+
+/* Rolled up is the tiling layout's to decide, for lack of room. */
+static void xw_request_shaded(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, request_shaded);
+	xwayland_publish_state(view);
+}
+
+/* On another desktop, that desktop is marked; here, the property stays until the
+ * window gets the focus. */
+static void xw_request_demands_attention(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, request_demands_attention);
+	if (view->mapped && view->xsurface->demands_attention)
+		desktop_attention(view);
 }
 
 static void xw_request_fullscreen(struct wl_listener *listener, void *data)
@@ -528,6 +575,10 @@ static struct view *new_managed(struct server *server, struct wlr_xwayland_surfa
 	LISTEN(request_below, request_below, xw_request_below);
 	LISTEN(set_override_redirect, set_override_redirect, xw_set_override_redirect);
 	LISTEN(set_class, set_app_id, xw_set_class);
+	LISTEN(request_sticky, request_sticky, xw_request_sticky);
+	LISTEN(request_shaded, request_shaded, xw_request_shaded);
+	LISTEN(request_demands_attention, request_demands_attention,
+		xw_request_demands_attention);
 #undef LISTEN
 	read_initial_state(view);
 	return view;

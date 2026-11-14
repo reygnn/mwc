@@ -208,6 +208,7 @@ void view_toggle_sticky(struct view *view)
 		if (r == v)
 			v->sticky = on;
 		v->desktop = server->desktop;
+		xwayland_publish_state(v);
 	}
 }
 

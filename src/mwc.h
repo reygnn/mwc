@@ -197,6 +197,9 @@ struct view {
 	 * it shows through what the client leaves transparent, and takes the clicks
 	 * outside its input region, as the frame window under an X11 client does. */
 	struct wlr_scene_rect *frame_fill;
+	/* Black, the output's size, behind a fullscreen window that doesn't cover it or
+	 * isn't opaque: nothing else may show there (xdg-shell). */
+	struct wlr_scene_rect *backdrop;
 	int drawn_w, drawn_h;  /* the frame's size at the last frame_render() */
 	char *drawn_title;     /* the title then, see view_update_title() */
 	struct wlr_scene_buffer *icon_node;  /* shown while minimized */
@@ -294,6 +297,9 @@ struct view {
 	struct wl_listener request_above;
 	struct wl_listener request_below;
 	struct wl_listener set_override_redirect;
+	struct wl_listener request_sticky;
+	struct wl_listener request_shaded;
+	struct wl_listener request_demands_attention;
 };
 
 /* Hidden by its own state, not by being on another desktop: what a dialog goes along
@@ -658,6 +664,8 @@ void outputs_config_changed(struct server *server);
 /* ---- xwayland.c --------------------------------------------------------- */
 
 void xwayland_init(struct server *server);
+/* _NET_WM_STATE's sticky and shaded as mwc has them, for an X11 window. */
+void xwayland_publish_state(struct view *view);
 /* _NET_FRAME_EXTENTS, for an X11 window whose frame changed. */
 void xwayland_publish_frame_extents(struct view *view);
 /* _MOTIF_WM_HINTS once more. Blocks on the X server. wlroots only tells of changes to

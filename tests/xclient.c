@@ -46,7 +46,8 @@
  *     rehide_ms=MS        wait that long before each, default 700
  *     rehide_drop=1       delete _NET_WM_STATE while withdrawn, as a client may
  *     script=+v,-h,...    once mapped, _NET_WM_STATE messages one at a time about the
- *                         vertical or horizontal axis; says "sent N" each time
+ *                         vertical or horizontal axis, or s for sticky, r for shaded
+ *                         (rolled up); says "sent N" each time
  *     focus_main=1        once mapped, give the focus from the dialog to the main window
  *     motif_later=FUNCS   once mapped, _MOTIF_WM_HINTS with only the functions set
  *     popup=X,Y           once mapped, an override-redirect window of 120x100 at X,Y,
@@ -341,8 +342,10 @@ static void print_frame_extents(Window win)
 static void print_net_state(Window win)
 {
 	Atom type, vert = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False),
-		horz = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-	int format, v = 0, h = 0;
+		horz = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False),
+		sticky = XInternAtom(dpy, "_NET_WM_STATE_STICKY", False),
+		shaded = XInternAtom(dpy, "_NET_WM_STATE_SHADED", False);
+	int format, v = 0, h = 0, st = 0, sh = 0;
 	unsigned long n = 0, after;
 	unsigned char *data = NULL;
 	if (XGetWindowProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STATE", False), 0, 32,
@@ -350,11 +353,14 @@ static void print_net_state(Window win)
 		for (unsigned long i = 0; i < n; i++) {
 			v |= ((Atom *)data)[i] == vert;
 			h |= ((Atom *)data)[i] == horz;
+			st |= ((Atom *)data)[i] == sticky;
+			sh |= ((Atom *)data)[i] == shaded;
 		}
 	}
 	if (data)
 		XFree(data);
 	printf("net-state vert=%d horz=%d\n", v, h);
+	printf("net-more sticky=%d shaded=%d\n", st, sh);
 }
 
 /* What a toolkit asks before it believes _NET_FRAME_EXTENTS. */
@@ -708,8 +714,11 @@ int main(int argc, char *argv[])
 			e.xclient.message_type = XInternAtom(dpy, "_NET_WM_STATE", False);
 			e.xclient.format = 32;
 			e.xclient.data.l[0] = s[0] == '+';
-			e.xclient.data.l[1] = XInternAtom(dpy, s[1] == 'v' ?
-				"_NET_WM_STATE_MAXIMIZED_VERT" : "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+			e.xclient.data.l[1] = XInternAtom(dpy,
+				s[1] == 'v' ? "_NET_WM_STATE_MAXIMIZED_VERT" :
+				s[1] == 's' ? "_NET_WM_STATE_STICKY" :
+				s[1] == 'r' ? "_NET_WM_STATE_SHADED" :
+				"_NET_WM_STATE_MAXIMIZED_HORZ", False);
 			XSendEvent(dpy, DefaultRootWindow(dpy), False,
 				SubstructureRedirectMask | SubstructureNotifyMask, &e);
 			XSync(dpy, False);

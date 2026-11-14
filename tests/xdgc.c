@@ -20,6 +20,8 @@
  *     grow=WxH     after mapping, take that size of its own accord; says "grown"
  *     grow_ms=MS   wait that long before, default 1000
  *     dialog=NAME  also open a child toplevel with this app_id
+ *     own_size=1   keep its own size whatever a configure says, as a game with a
+ *                  fixed resolution does
  *     clear=1      draw nothing (fully transparent) and take no clicks: an empty
  *                  input region
  *     viewport=1   a 1x1 buffer, stretched to the window's size by wp_viewporter:
@@ -154,12 +156,14 @@ static const struct xdg_surface_listener xdg_listener = {
 	.configure = xdg_configure,
 };
 
+static bool own_size; /* keeps its size, whatever a configure says */
+
 static void toplevel_configure(void *data, struct xdg_toplevel *t, int32_t w,
 	int32_t h, struct wl_array *states)
 {
 	struct window *win = data;
-	win->w = w > 0 ? w : win->natural_w;
-	win->h = h > 0 ? h : win->natural_h;
+	win->w = w > 0 && !own_size ? w : win->natural_w;
+	win->h = h > 0 && !own_size ? h : win->natural_h;
 	if (log_states) {
 		bool maximized = false;
 		uint32_t *state;
@@ -322,6 +326,8 @@ int main(int argc, char *argv[])
 			log_states = atoi(v);
 		else if (!strcmp(argv[i], "clear"))
 			clear = atoi(v);
+		else if (!strcmp(argv[i], "own_size"))
+			own_size = atoi(v);
 		else if (!strcmp(argv[i], "viewport"))
 			use_viewport = atoi(v);
 		else if (!strcmp(argv[i], "late_app"))

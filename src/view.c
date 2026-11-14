@@ -89,6 +89,23 @@ struct wlr_box output_usable_area(struct server *server, double lx, double ly)
 static void view_update_content_pos(struct view *view)
 {
 	int x = frame_left(view), y = frame_top(view);
+	struct wlr_scene_rect *backdrop = view->backdrop;
+	if (view->fullscreen && view->mapped) {
+		struct wlr_box a = output_full_area(view->server, view->x + 1, view->y + 1);
+		wlr_scene_rect_set_size(backdrop, a.width, a.height);
+		wlr_scene_node_set_position(&backdrop->node, a.x - view->x, a.y - view->y);
+		wlr_scene_node_set_enabled(&backdrop->node, true);
+		/* Smaller than the output: in its middle (xdg-shell). An X11 window is where
+		 * its configure put it, which has to agree with this. */
+		if (view->type == VIEW_XDG) {
+			if (view->width < a.width)
+				x += a.x - view->x + (a.width - view->width) / 2;
+			if (view->height < a.height)
+				y += a.y - view->y + (a.height - view->height) / 2;
+		}
+	} else {
+		wlr_scene_node_set_enabled(&backdrop->node, false);
+	}
 	if (view->type == VIEW_XDG) {
 		x -= view->xdg_toplevel->base->geometry.x;
 		y -= view->xdg_toplevel->base->geometry.y;
@@ -275,10 +292,14 @@ void view_set_activated(struct view *view, bool activated)
 	if (activated)
 		iconbox_blur();
 	view->activated = activated;
-	if (view->type == VIEW_XDG)
+	if (view->type == VIEW_XDG) {
 		wlr_xdg_toplevel_set_activated(view->xdg_toplevel, activated);
-	else
+	} else {
 		wlr_xwayland_surface_activate(view->xsurface, activated);
+		/* It has what it wanted the user's attention for. */
+		if (activated && view->xsurface->demands_attention)
+			wlr_xwayland_surface_set_demands_attention(view->xsurface, false);
+	}
 	views_update_layers(view->server);
 	frame_render(view);
 }
@@ -552,6 +573,8 @@ static void view_lower_one(struct view *view)
 	wl_list_remove(&view->link);
 	wl_list_insert(server->views.prev, &view->link);
 	view->raise_seq = --server->raise_lo;
+	if (view->type == VIEW_XWAYLAND)
+		wlr_xwayland_surface_restack(view->xsurface, NULL, XCB_STACK_MODE_BELOW);
 }
 
 /* Whether anything could take the focus from it. If not it keeps it, even when it
@@ -670,6 +693,7 @@ void view_set_tiled(struct view *view, bool on, bool apply)
 	view_publish_snap(view);
 	if (!on && apply)
 		view_apply_floating(view);
+	xwayland_publish_state(view);
 	frame_render(view);
 }
 
@@ -698,6 +722,7 @@ void view_apply_tile(struct view *view)
 		view->anchor_right = r.x + r.width;
 	}
 	view_show_content(view);
+	xwayland_publish_state(view);
 	/* Rolled up or out, the frame changes height with the client's size the same. */
 	if (!in_place || view->drawn_h != frame_height(view))
 		frame_render(view);
@@ -1223,6 +1248,9 @@ void view_init_common(struct view *view)
 	struct server *server = view->server;
 	view->tree = wlr_scene_tree_create(server->layer_views);
 	view->tree->node.data = view;
+	view->backdrop = wlr_scene_rect_create(view->tree, 0, 0,
+		(const float[4]){ 0, 0, 0, 1 });
+	wlr_scene_node_set_enabled(&view->backdrop->node, false);
 	view->frame_fill = wlr_scene_rect_create(view->tree, 0, 0,
 		(const float[4]){ 0, 0, 0, 1 });
 	wlr_scene_node_set_enabled(&view->frame_fill->node, false);

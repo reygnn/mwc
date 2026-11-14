@@ -892,6 +892,35 @@ check "the keyboard stays with the Wayland window" "[ \"\$(get wfront kbfocus)\"
 stop orwin
 stop wfront
 
+# ---- fullscreen that doesn't cover the output ---------------------------------------------
+
+# A program keeping its own size, as a game with a fixed resolution: in the middle of
+# the output, with black around it, not the desktop (xdg-shell).
+wayland fixedres size=400x300 own_size=1 pre=full
+mapped fixedres
+check "it is fullscreen" "[ \"\$(get fixedres full)\" = 1 ] && [ \"\$(get fixedres w)\" = 400 ]"
+pixel_is "black around it" 5 5 000000
+pixel_is "black beside it" 300 360 000000
+pixel_is "the window itself in the middle" 640 360 808080
+stop fixedres
+
+# ---- X11 states that wlroots offers ----------------------------------------------------------
+
+more_is() { [ "$(grep '^net-more' "$SMOKE_DIR/$1.events" | tail -1)" = "net-more $2" ]; }
+x11 stick size=300x200 netstate=1 script=+s
+mapped stick
+saw "it asks to be sticky" stick '^sent 1'
+check "it is on all desktops" "[ \"\$(get stick everywhere)\" = 1 ] && more_is stick 'sticky=1 shaded=0'"
+stop stick
+# Rolled up is the tiling layout's to decide: the request is written back at once, so
+# the client sees no change. Sticky afterwards shows what the state says by then.
+x11 roll size=300x200 netstate=1 script=+r,+s
+mapped roll
+saw "it asks to be shaded, then sticky" roll '^sent 2'
+wait_for "shaded is taken back, sticky kept" more_is roll 'sticky=1 shaded=0'
+check "and it isn't rolled up" "[ \"\$(get roll shaded)\" = 0 ]"
+stop roll
+
 stop_vinput
 stop_mwc
 echo "PASS: window"
