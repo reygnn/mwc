@@ -11,7 +11,7 @@ test tools. `distrobox enter mwc-dev -- bash -lc 'cd ~/data/C-Projects/mwc && ..
 | Target | |
 |---|---|
 | `make` | mwc |
-| `make test` | the 22 headless scripts in `tests/`; one alone: `make NAME-test`, log in `build/NAME.log` |
+| `make test` | the scripts in `tests/`; one alone: `make NAME-test`, log in `build/NAME.log` |
 | `make check` | the same under ASan and UBSan with `-Werror`, then the kept fuzz inputs |
 | `make analyze` | `gcc -fanalyzer` over the sources, findings as errors |
 | `make lint` | C lines over 100 columns, tabs as 8 |

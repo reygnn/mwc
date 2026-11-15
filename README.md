@@ -438,11 +438,12 @@ host's X server is not reachable; X11 programs run inside mwc only.
 
 `make test` runs every script in `tests/`, each also on its own as `make NAME-test`
 (`make smoke` for the first): smoke, input, wallpaper, config, layer, window, move,
-snap, outputs, tile, crash, pointer, state, misc, session, tabs, fifo, rdp, desktop and
-iconbox. They run mwc on a
-headless output with small clients in `tests/` that can ask for any hint, and check the
-state mwc writes and pixels in screenshots. None of this tests real input hardware,
-DRM/KMS or VT switching; use a VM or a free TTY for those.
+snap, outputs, tile, crash, pointer, state, misc, session, tabs, fifo, rdp, desktop,
+iconbox, dock and build. All but build run mwc on a headless output with small clients
+in `tests/` that can ask for any hint, and check the state mwc writes and pixels in
+screenshots; build checks the Makefile with dry runs and an install into a scratch
+directory. None of this tests real input hardware, DRM/KMS or VT switching; use a VM or
+a free TTY for those.
 
 `make check` runs the same tests against a build with AddressSanitizer and
 UndefinedBehaviorSanitizer, `build/mwc-asan`, beside the normal one, where warnings
