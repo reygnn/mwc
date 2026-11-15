@@ -14,7 +14,7 @@
 Mwm*rootBackground:                    #388E8E
 
 ! Terminal for New Window and Super+Return. A set MWC_TERMINAL takes precedence.
-Mwm*terminal:                          mwt
+Mwm*terminal:                          mwt -a indigo
 Mwm*mwt*activeBackground:              #2e5e3e
 
 ! Tiling: only these tile, everything else floats.
@@ -35,14 +35,14 @@ Mwm*rootMenuItem:                      Ausführen: mrun
 Mwm*rootMenuItem:                      Starfield: displayOff --stars
 Mwm*rootMenuItem:                      Display Off: displayOff --now
 
-! pulseControl: bottom right corner, on every desktop
-Mwm*pulseControl*geometry:     -0-0
-Mwm*pulseControl*allDesktops:  true
-
-! deskControl switches the desktops: on every one of them, top right. Start it from
-! ~/.config/mwc/autostart, with a line "deskControl &".
-Mwm*deskControl*allDesktops:   true
-Mwm*deskControl*geometry:      -0+0
+! The dock, bottom right: digitalClock in the corner, then pulseControl, osDisplay
+! and deskControl to its left, in the order of these lines. Docked windows are on
+! every desktop. Start them from ~/.config/mwc/autostart, one line "NAME &" each.
+Mwm*digitalClock*dock:         true
+Mwm*pulseControl*dock:         true
+Mwm*osDisplay*dock:            true
+Mwm*deskControl*dock:          true
+Mwm*dockPlacement:             right bottom
 
 ! mrun (middle button, root menu) opens at the pointer. Needs mwc 0.4.3.
 Mwm*mrun*geometry:          pointer
@@ -54,6 +54,9 @@ Mwm*clipboardScreenshot:            screenShot -c
 Mwm*rectangleScreenshot:            screenShot -r
 Mwm*screenshot:                     screenShot
 
-! Icons: a column in the middle of the right edge, clear of deskControl and
-! pulseControl in the corners.
-Mwm*iconPlacement:   center right
+! Icons: a column down from the top right corner.
+Mwm*iconPlacement:   top right
+
+! The icons in a box of their own, at most 10 long; the mwc logo while it is empty.
+Mwm*useIconBox:      true
+Mwm*iconBoxSize:     10
