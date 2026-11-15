@@ -173,10 +173,10 @@ bar under the pointer instead, as far as the monitor allows.
     Mwm*mrun*geometry:          pointer
 
 The entry wins over a position the program asks for, but not for dialogs. In tiling
-mode the layout decides, unless the program is in `DoNotTile`. A window placed from the right or bottom edge keeps that
-edge when it changes its size by itself, until it is moved or resized by hand. Hidden
-and shown again, a window returns to its entry's place, unless it is an X11 program
-with a position of its own.
+mode the layout decides, unless the program is in `DoNotTile`. A window placed from the
+right or bottom edge keeps that edge when it changes its size by itself, until it is
+moved or resized by hand. Hidden and shown again, a window returns to its entry's
+place, unless it is an X11 program with a position of its own.
 
 
 ## Moving and resizing
