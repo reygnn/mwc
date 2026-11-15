@@ -169,8 +169,12 @@ static int dump_state(int signal, void *data)
 	fprintf(f, "feedback text=%s x=%d y=%d\n", label, box.x, box.y);
 	fprintf(f, "theme border=%d title=%d\n", theme.border,
 		theme.title_height);
-	fprintf(f, "cursor x=%d y=%d mode=%d\n", (int)server->cursor->x,
-		(int)server->cursor->y, server->cursor_mode);
+	/* A client's own cursor image, while it is shown: its buffer and scale. */
+	struct wlr_surface *cs = server->cursor_name ? NULL : server->client_cursor;
+	fprintf(f, "cursor x=%d y=%d mode=%d cw=%d ch=%d cscale=%d\n",
+		(int)server->cursor->x, (int)server->cursor->y, server->cursor_mode,
+		cs ? cs->current.buffer_width : 0, cs ? cs->current.buffer_height : 0,
+		cs ? cs->current.scale : 0);
 	fprintf(f, "seat pointer=%s keyboard=%s\n",
 		surface_owner(server, server->seat->pointer_state.focused_surface),
 		surface_owner(server, server->seat->keyboard_state.focused_surface));

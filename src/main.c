@@ -1061,6 +1061,7 @@ int main(int argc, char *argv[])
 	wl_list_remove(&server.cursor_frame.link);
 	wl_list_remove(&server.new_input.link);
 	wl_list_remove(&server.request_cursor.link);
+	wl_list_remove(&server.client_cursor_destroy.link);
 	wl_list_remove(&server.request_set_selection.link);
 	wl_list_remove(&server.request_set_primary_selection.link);
 	wl_list_remove(&server.request_start_drag.link);

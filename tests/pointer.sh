@@ -7,7 +7,7 @@ LOG=build/pointer.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xclient build/badclient; do
+for tool in build/vinput build/pngtool build/xclient build/badclient build/xdgc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -608,6 +608,19 @@ saw "a client losing the focus" Q '^kb-leave'
 check "gets no menu with an old serial" "[ \"\$(global menu open)\" = 0 ]"
 stop Q
 stop R
+
+# A client's own cursor: the state shows its buffer and scale, for the tools that
+# load a cursor theme at their output's scale. 64 at scale 3 is what Adwaita gives
+# for 24 at 3; wlroots only logs that it doesn't divide.
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=curs cursor=64x64@3 >"$SMOKE_DIR/curs.log" 2>&1 &
+PID_curs=$!
+check "curs is mapped" "[ -n \"\$(get curs x)\" ]"
+do_input move $(($(get curs x) + 150)) $(($(get curs y) + 100))
+check "its cursor is in the state" \
+	"[ \"\$(global cursor cw)x\$(global cursor ch)@\$(global cursor cscale)\" = 64x64@3 ]"
+do_input move 5 5
+check "and gone over the desktop" "[ \"\$(global cursor cw)\" = 0 ]"
+stop curs
 
 stop_vinput
 stop_mwc

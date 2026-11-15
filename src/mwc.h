@@ -434,6 +434,8 @@ struct server {
 	struct wlr_seat *seat;
 	struct wl_listener new_input;
 	struct wl_listener request_cursor;
+	struct wlr_surface *client_cursor; /* the last one a client set, for the tests */
+	struct wl_listener client_cursor_destroy;
 	struct wl_listener request_set_selection;
 	struct wl_listener request_set_primary_selection;
 	struct wl_listener request_start_drag;

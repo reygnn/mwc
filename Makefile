@@ -373,7 +373,7 @@ misc-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/badclie
 state-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/badclient build/layerc
 	tests/state.sh
 
-pointer-test: mwc build/vinput build/pngtool build/xclient build/badclient
+pointer-test: mwc build/vinput build/pngtool build/xclient build/badclient build/xdgc
 	tests/pointer.sh
 
 crash-test: mwc build/vinput build/xclient build/xdgc build/badclient build/layerc

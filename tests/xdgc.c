@@ -30,6 +30,8 @@
  *                  input region
  *     viewport=1   a 1x1 buffer, stretched to the window's size by wp_viewporter:
  *                  a window of any size for next to no memory
+ *     cursor=WxH@S a cursor of its own while the pointer is over it: a WxH buffer
+ *                  at buffer scale S
  */
 #define _GNU_SOURCE
 #include <stdbool.h>
@@ -61,6 +63,8 @@ static bool early_frame, unparent;
 static struct org_kde_kwin_server_decoration_manager *kde_manager;
 static struct wp_viewporter *viewporter;
 static bool use_viewport, clear;
+static int cursor_w, cursor_h, cursor_scale;
+static struct wl_surface *cursor_surf;
 
 struct window {
 	struct wl_surface *surface;
@@ -134,6 +138,62 @@ static void draw(struct window *win)
 	wl_surface_damage_buffer(win->surface, 0, 0, bw, bh);
 	wl_surface_commit(win->surface);
 }
+
+static void pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
+	struct wl_surface *surface, wl_fixed_t x, wl_fixed_t y)
+{
+	if (!cursor_surf) {
+		size_t size = (size_t)cursor_w * cursor_h * 4;
+		int fd = memfd_create("xdgc-cursor", MFD_CLOEXEC);
+		if (fd < 0 || ftruncate(fd, size) != 0) {
+			perror("xdgc: cursor buffer");
+			exit(1);
+		}
+		uint32_t *px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+		for (size_t i = 0; i < size / 4; i++)
+			px[i] = 0xff000000;
+		munmap(px, size);
+		struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
+		struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0, cursor_w,
+			cursor_h, cursor_w * 4, WL_SHM_FORMAT_ARGB8888);
+		wl_shm_pool_destroy(pool);
+		close(fd);
+		cursor_surf = wl_compositor_create_surface(compositor);
+		wl_surface_set_buffer_scale(cursor_surf, cursor_scale);
+		wl_surface_attach(cursor_surf, buffer, 0, 0);
+		wl_surface_damage_buffer(cursor_surf, 0, 0, cursor_w, cursor_h);
+		wl_surface_commit(cursor_surf);
+	}
+	wl_pointer_set_cursor(pointer, serial, cursor_surf, 0, 0);
+}
+
+static void pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
+	struct wl_surface *surface)
+{
+}
+
+static void pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time,
+	wl_fixed_t x, wl_fixed_t y)
+{
+}
+
+static void pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
+	uint32_t time, uint32_t button, uint32_t state)
+{
+}
+
+static void pointer_axis(void *data, struct wl_pointer *pointer, uint32_t time,
+	uint32_t axis, wl_fixed_t value)
+{
+}
+
+static const struct wl_pointer_listener pointer_listener = {
+	.enter = pointer_enter,
+	.leave = pointer_leave,
+	.motion = pointer_motion,
+	.button = pointer_button,
+	.axis = pointer_axis,
+};
 
 static void xdg_configure(void *data, struct xdg_surface *xdg, uint32_t serial)
 {
@@ -234,6 +294,11 @@ static void registry_global(void *data, struct wl_registry *registry,
 			&wl_compositor_interface, 4);
 	else if (strcmp(interface, wl_shm_interface.name) == 0)
 		shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
+	else if (strcmp(interface, wl_seat_interface.name) == 0 && cursor_scale > 0) {
+		/* The tests always have a pointer, so its capability is not awaited. */
+		struct wl_seat *seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
+		wl_pointer_add_listener(wl_seat_get_pointer(seat), &pointer_listener, NULL);
+	}
 	else if (strcmp(interface, wl_output_interface.name) == 0 && n_outputs < 4)
 		outputs[n_outputs++] = wl_registry_bind(registry, name, &wl_output_interface, 1);
 	else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
@@ -366,6 +431,8 @@ int main(int argc, char *argv[])
 			sscanf(v, "%dx%d", &grow_w, &grow_h);
 		else if (!strcmp(argv[i], "grow_ms"))
 			grow_ms = atoi(v);
+		else if (!strcmp(argv[i], "cursor"))
+			sscanf(v, "%dx%d@%d", &cursor_w, &cursor_h, &cursor_scale);
 	}
 	if (!app) {
 		fprintf(stderr, "xdgc: app= is required\n");

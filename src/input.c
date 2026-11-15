@@ -1509,6 +1509,22 @@ static void new_input(struct wl_listener *listener, void *data)
 	input_add_device(server, data);
 }
 
+static void client_cursor_set(struct server *server, struct wlr_surface *surface)
+{
+	wl_list_remove(&server->client_cursor_destroy.link);
+	wl_list_init(&server->client_cursor_destroy.link);
+	server->client_cursor = surface;
+	if (surface)
+		wl_signal_add(&surface->events.destroy, &server->client_cursor_destroy);
+}
+
+static void client_cursor_destroy(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server,
+		client_cursor_destroy);
+	client_cursor_set(server, NULL);
+}
+
 static void request_cursor(struct wl_listener *listener, void *data)
 {
 	struct server *server = wl_container_of(listener, server,
@@ -1516,9 +1532,11 @@ static void request_cursor(struct wl_listener *listener, void *data)
 	struct wlr_seat_pointer_request_set_cursor_event *event = data;
 	if (server->cursor_mode != CURSOR_PASSTHROUGH)
 		return;
-	if (server->seat->pointer_state.focused_client == event->seat_client)
+	if (server->seat->pointer_state.focused_client == event->seat_client) {
 		wlr_cursor_set_surface(server->cursor, event->surface,
 			event->hotspot_x, event->hotspot_y);
+		client_cursor_set(server, event->surface);
+	}
 }
 
 static void request_set_selection(struct wl_listener *listener, void *data)
@@ -1590,6 +1608,8 @@ void input_init(struct server *server)
 	wl_signal_add(&server->backend->events.new_input, &server->new_input);
 	server->seat = wlr_seat_create(server->display, "seat0");
 	server->request_cursor.notify = request_cursor;
+	server->client_cursor_destroy.notify = client_cursor_destroy;
+	wl_list_init(&server->client_cursor_destroy.link);
 	wl_signal_add(&server->seat->events.request_set_cursor,
 		&server->request_cursor);
 	server->request_set_selection.notify = request_set_selection;
