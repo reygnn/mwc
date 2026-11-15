@@ -46,27 +46,20 @@ struct wlr_box snap_rect(enum snap s, struct wlr_box a)
 	}
 }
 
-/* Beside the dock a window may have the strip the dock keeps free. Positions that
- * line up decide together, so that two halves or quarters next to each other still
- * do: with a dock along the bottom or top a column, along a side a row. */
+/* Beside a dock along the bottom or top a column of positions may have its strip.
+ * The column decides as one, so that a half and the quarters in it line up. A dock
+ * along a side would narrow some positions and not others, which then overlap. */
 struct wlr_box snap_area(struct server *server, enum snap s, double px, double py)
 {
 	struct output *o = output_at(server, px, py);
 	if (!o)
 		return output_usable_area(server, px, py);
-	struct wlr_box a = o->open, g = a;
 	bool left = s == SNAP_LEFT || s == SNAP_TOP_LEFT || s == SNAP_BOTTOM_LEFT;
 	bool right = s == SNAP_RIGHT || s == SNAP_TOP_RIGHT || s == SNAP_BOTTOM_RIGHT;
-	bool top = s == SNAP_TOP_LEFT || s == SNAP_TOP_RIGHT;
-	bool bottom = s == SNAP_BOTTOM_LEFT || s == SNAP_BOTTOM_RIGHT;
-	if (dock_horizontal() && (left || right)) {
-		g = snap_rect(left ? SNAP_LEFT : SNAP_RIGHT, a);
-	} else if (!dock_horizontal() && (top || bottom)) {
-		struct wlr_box l = snap_rect(top ? SNAP_TOP_LEFT : SNAP_BOTTOM_LEFT, a);
-		struct wlr_box r = snap_rect(top ? SNAP_TOP_RIGHT : SNAP_BOTTOM_RIGHT, a);
-		g = (struct wlr_box){ l.x, l.y, r.x + r.width - l.x, l.height };
-	}
-	return output_dock_in_the_way(o, g) ? o->usable : a;
+	if (!dock_horizontal() || !(left || right))
+		return o->usable;
+	struct wlr_box column = snap_rect(left ? SNAP_LEFT : SNAP_RIGHT, o->open);
+	return output_dock_in_the_way(o, column) ? o->usable : o->open;
 }
 
 const char *snap_name(enum snap s)
@@ -277,8 +270,8 @@ static struct wlr_box edge_box(struct wlr_box a, enum snap_dir dir, int x, int y
 	return (struct wlr_box){ x, y, w, h };
 }
 
-/* Super+Shift+arrow: push a floating window flush against that edge of the usable
- * area of its output; two in a row reach a corner. */
+/* Super+Shift+arrow: push a floating window flush against that edge of its output's
+ * area, the dock's strip included beside the dock; two in a row reach a corner. */
 void view_move_to_edge(struct view *view, enum snap_dir dir)
 {
 	if (!view || view->minimized || view->fullscreen || view->maximized ||

@@ -96,7 +96,9 @@ tool larger than the monitor sticks out of it.
 
 Beside the dock only snapping, Super+Shift+arrows and placing use its strip. A
 maximized window, the tiling layout, the icon box and the work area X11 programs see
-keep to the area without the whole strip.
+keep to the area without the whole strip. Snapping uses it only beside a dock along
+the bottom or top: beside a column, a quarter in a row clear of it would overlap the
+half next to it.
 
 
 ## Placement by geometry

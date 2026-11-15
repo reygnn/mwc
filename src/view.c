@@ -90,6 +90,19 @@ bool output_dock_in_the_way(struct output *o, struct wlr_box b)
 	return o && wlr_box_intersection(&hit, &b, &o->dock);
 }
 
+static void view_place_within(struct view *view, struct wlr_box a, int x, int y);
+
+/* The area a window at box b may use: with the dock's strip unless b reaches into
+ * the dock. */
+static struct wlr_box area_for(struct server *server, struct wlr_box b)
+{
+	double cx = b.x + b.width / 2.0, cy = b.y + b.height / 2.0;
+	struct output *o = output_at(server, cx, cy);
+	if (!o)
+		return output_full_area(server, cx, cy);
+	return output_dock_in_the_way(o, b) ? o->usable : o->open;
+}
+
 /* Position of the client content inside the window tree. xdg clients may
  * draw shadows outside their window geometry, which we hide by offset. */
 static void view_update_content_pos(struct view *view)
@@ -179,12 +192,12 @@ void view_gravity_place(struct view *view, int ow, int oh, int w, int h,
 	if (!view->gravity_edges || !view_left_alone(view))
 		return;
 	int ew = frame_extra_w(view), eh = frame_extra_h(view);
-	struct wlr_box a = output_usable_area(server, view->x + (ow + ew) / 2.0,
-		view->y + (oh + eh) / 2.0);
 	if (view->gravity_edges & WLR_EDGE_RIGHT)
 		*x = view->x + ow - w;
 	if (view->gravity_edges & WLR_EDGE_BOTTOM)
 		*y = view->y + oh - h;
+	/* A window placed into the dock's strip beside the dock may stay there. */
+	struct wlr_box a = area_for(server, (struct wlr_box){ *x, *y, w + ew, h + eh });
 	/* Grown past the left or top edge: the title bar stays reachable. */
 	if (*x < a.x)
 		*x = a.x;
@@ -992,6 +1005,27 @@ void views_usable_area_changed(struct server *server)
 	tile_arrange(server);
 }
 
+void views_refit_snapped(struct server *server)
+{
+	struct view *v;
+	wl_list_for_each(v, &server->views, link)
+		if (v->mapped && v->snap != SNAP_NONE && !v->fullscreen && !v->tiled &&
+				!view_docked(v))
+			view_refit(v);
+}
+
+void views_clear_dock(struct output *output)
+{
+	struct view *v;
+	wl_list_for_each(v, &output->server->views, link) {
+		if (!v->mapped || v->minimized || view_docked(v) || !view_left_alone(v))
+			continue;
+		struct wlr_box b = { v->x, v->y, v->width + frame_extra_w(v), frame_height(v) };
+		if (output_dock_in_the_way(output, b))
+			view_place_within(v, output->usable, v->x, v->y);
+	}
+}
+
 void views_layout_changed(struct server *server)
 {
 	/* What they point at may have gone with an output. */
@@ -1420,6 +1454,16 @@ static void view_place_mapped(struct view *view)
 		view_place_within(view, a, (int)floor(view->server->cursor->x) - cx,
 			(int)floor(view->server->cursor->y) - cy);
 		return;
+	}
+	/* Counted from the output's edge beside the dock, from its strip over it. */
+	struct output *o = output_at(view->server, view->server->cursor->x,
+		view->server->cursor->y);
+	if (o) {
+		struct wlr_box b = { pos.from_right ? o->open.x + o->open.width - w - pos.x :
+			o->open.x + pos.x, pos.from_bottom ? o->open.y + o->open.height - h -
+			pos.y : o->open.y + pos.y, w, h };
+		if (!output_dock_in_the_way(o, b))
+			a = o->open;
 	}
 	view_place_within(view, a,
 		pos.from_right ? a.x + a.width - w - pos.x : a.x + pos.x,
@@ -1941,7 +1985,13 @@ static void popup_unconstrain(struct popup *popup)
 			lx = view->x + 1;
 			ly = view->y + 1;
 		}
+		/* Beside the dock as far as its window may go. */
 		struct wlr_box a = output_usable_area(view->server, lx, ly);
+		struct output *o = output_at(view->server, lx, ly);
+		struct wlr_box vb = { view->x, view->y, view->width + frame_extra_w(view),
+			frame_height(view) };
+		if (o && !output_dock_in_the_way(o, vb))
+			a = o->open;
 		a.x -= view->x + frame_left(view) - g->x;
 		a.y -= view->y + frame_top(view) - g->y;
 		/* wlroots wants the box relative to the toplevel, however deep the popup

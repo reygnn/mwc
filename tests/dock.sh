@@ -101,8 +101,12 @@ do_input key alt+F10
 check "plain back" "[ \"\$(get plain max)\" = 0 ]"
 
 # Beside the dock the strip is there to use: the left half reaches the output's
-# bottom, the right one, over the dock, stops above it, as do its quarters.
+# bottom, the right one, over the dock, stops above it, as do its quarters. Two has
+# grown first, so the dock keeps still meanwhile.
 G=8 # MWC_GAP
+wait_for "two has grown" grep -q '^grown' "$SMOKE_DIR/two.log"
+check "the dock as high as two" "[ \"\$(dock h)\" = \$((2 * B + \$(get two fh))) ]"
+check "plain has the focus" "[ \"\$(get plain active)\" = 1 ]"
 do_input key super+Left
 check "plain snapped left: down to the output's edge, beside the dock" \
 	"[ \"\$(get plain snap)\" != 0 ] && [ \$(bottom plain) = $((720 - G)) ]"
@@ -110,6 +114,15 @@ do_input key super+Down
 check "its bottom quarter too" "[ \$(bottom plain) = $((720 - G)) ] && \
 	[ \$(get plain y) -gt 360 ]"
 do_input key super+Up
+# A tool widens the dock under the left half: it refits above the dock, and goes
+# back down when the dock shrinks. Only the dock's box changes, not the areas.
+echo 'Mwm*wide*dock: true' >>"$RC"
+reload_mwc
+wayland wide size=600x40
+check "the dock reaches under the left half" "[ \$(dock x) -lt 636 ]"
+check "the left half refits above it" "[ \$(bottom plain) = \$((\$(dock y) - G)) ]"
+stop wide
+check "and back down when the dock shrinks" "[ \$(bottom plain) = $((720 - G)) ]"
 do_input key super+Right
 do_input key super+Right
 check "snapped right, over the dock: above it" \
@@ -127,14 +140,24 @@ do_input key super+shift+Right
 check "pushed right, now over the dock: above it" \
 	"[ \$(right plain) = 1280 ] && [ \$(bottom plain) = \$(dock y) ]"
 do_input key super+shift+Left
+do_input key super+shift+Down
+check "pushed down again" "[ \$(bottom plain) = 720 ]"
+# The dock growing over a free window in its strip moves the window out.
+wayland wide size=600x40
+check "a free window the dock now covers moves out of its strip" \
+	"[ \$(bottom plain) = \$(dock y) ]"
+stop wide
 do_input key super+shift+Up
-# Placed by its entry: beside the dock it may reach into the strip.
-echo 'Mwm*low*geometry: +20+500' >>"$RC"
+# Placed by an entry: beside the dock it may reach into the strip, from either side.
+printf 'Mwm*low*geometry: +20+500\nMwm*lower*geometry: +20-0\n' >>"$RC"
 reload_mwc
 wayland low size=200x150
 check "a geometry beside the dock is kept, into its strip" \
 	"[ \"\$(get low y)\" = 500 ] && [ \$(bottom low) -gt \$(dock y) ]"
 stop low
+wayland lower size=200x150
+check "one from the bottom counts from the output's edge" "[ \$(bottom lower) = 720 ]"
+stop lower
 
 # ---- focus and functions ----------------------------------------------------------
 
@@ -315,16 +338,16 @@ check "a column from the bottom right corner up, aligned right" \
 	 [ \$(right prefull) = $((1280 - B)) ] && [ \$(bottom prefull) = \$(get premax y) ]"
 check "its strip at the right kept free" \
 	"[ \"\$(global output uw)\" = \$(dock x) ] && [ \"\$(global output uh)\" = 720 ]"
-# A column decides by rows: the top right quarter, above the dock, reaches the edge;
-# the bottom right one, beside it, stops at it. One tool keeps the column low.
+# Beside a column snapping keeps the usable area: a quarter in a row clear of the
+# dock would overlap the half next to it. One tool keeps the column low.
 printf 'Mwm*premax*dock: true\nMwm*dockPlacement: bottom right\n' >"$RC"
 reload_mwc
 wayland side size=300x200
 check "the top row is clear of the dock" "[ \$(dock y) -gt 360 ]"
 do_input key super+Right
 do_input key super+Up
-check "the top right quarter beside a column: to the output's edge" \
-	"[ \"\$(get side snap)\" != 0 ] && [ \$(right side) = $((1280 - G)) ]"
+check "beside a column a quarter keeps the usable area, in line with the halves" \
+	"[ \"\$(get side snap)\" != 0 ] && [ \$(right side) = \$((\$(dock x) - G)) ]"
 do_input key super+Down
 do_input key super+Down
 check "the bottom right quarter, by the column: up to it" \
@@ -332,7 +355,8 @@ check "the bottom right quarter, by the column: up to it" \
 stop side
 printf '%s\nMwm*dockPlacement: bottom right\n' "$DOCKED" >"$RC"
 reload_mwc
-check "the column back" "[ \$(right premax) = $((1280 - B)) ] && [ \$(bottom premax) = $((720 - B)) ]"
+check "the column back" \
+	"[ \$(right premax) = $((1280 - B)) ] && [ \$(bottom premax) = $((720 - B)) ]"
 printf '%s\nMwm*dockPlacement: center top\n' "$DOCKED" >"$RC"
 reload_mwc
 check "a row in the middle of the top edge, from the left" \
@@ -345,6 +369,34 @@ wait_for "a wrong dockPlacement is reported" \
 	grep -q 'dockPlacement: expected a placement' "$LOG"
 check "and the default is used" \
 	"[ \$(right premax) = $((1280 - B)) ] && [ \$(bottom premax) = $((720 - B)) ]"
+
+# ---- beside a dock along the top --------------------------------------------------
+
+# Placed from the bottom, a window taller than the usable area reaches into the strip
+# beside the dock, and keeps its bottom when it grows. Dragged to the left edge, the
+# target and the snap reach the top.
+printf 'Mwm*premax*dock: true\nMwm*dockPlacement: right top\nMwm*tall*geometry: +20-0\n' \
+	>"$RC"
+reload_mwc
+check "a row along the top" \
+	"[ \"\$(dock y)\" = 0 ] && [ \"\$(global output uy)\" = \$(dock h) ]"
+wayland tall size=200x600 grow=200x640 grow_ms=1500
+check "tall from the bottom, into the strip beside the dock" \
+	"[ \$(bottom tall) = 720 ] && [ \$(get tall y) -lt \$(dock h) ]"
+wait_for "tall has grown" grep -q '^grown' "$SMOKE_DIR/tall.log"
+check "grown by itself, it keeps its bottom there" \
+	"[ \"\$(get tall h)\" = 640 ] && [ \$(bottom tall) = 720 ]"
+do_input move $(($(get tall x) + $(get tall bw) + 60)) $(($(get tall y) + $(get tall bw) + 5))
+do_input down left
+do_input move 0 360
+check "dragging to the left edge: the target reaches the top" \
+	"[ \"\$(global preview shown)\" = 1 ] && [ \"\$(global preview y)\" = $G ] && \
+	 [ \"\$(global preview h)\" = $((720 - 2 * G)) ]"
+do_input up left
+check "dropped: snapped to it" \
+	"[ \"\$(get tall snap)\" != 0 ] && [ \"\$(get tall y)\" = $G ] && \
+	 [ \$(bottom tall) = $((720 - G)) ]"
+stop tall
 
 stop_vinput
 stop_mwc

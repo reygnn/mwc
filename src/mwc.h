@@ -596,6 +596,10 @@ struct wlr_box output_usable_area(struct server *server, double lx, double ly);
 bool output_dock_in_the_way(struct output *o, struct wlr_box b);
 struct wlr_box output_full_area(struct server *server, double lx, double ly);
 void views_usable_area_changed(struct server *server);
+/* Only the dock's box changed on output: snapped windows refit, and free ones it
+ * would cover move out of its strip. */
+void views_refit_snapped(struct server *server);
+void views_clear_dock(struct output *output);
 void views_layout_changed(struct server *server);
 
 /* ---- hints.c ------------------------------------------------------------ */
@@ -758,8 +762,7 @@ void tile_stack(struct server *server, bool raise);
 /* ---- snap.c ------------------------------------------------------------- */
 
 struct wlr_box snap_rect(enum snap s, struct wlr_box area);
-/* The area snap_rect() divides for s on the output at (px, py), with the dock's
- * strip where s keeps clear of the dock. */
+/* What snap_rect() divides for s at (px, py): with the dock's strip beside the dock. */
 struct wlr_box snap_area(struct server *server, enum snap s, double px, double py);
 const char *snap_name(enum snap s);
 enum snap snap_zone_at(struct view *view, double px, double py);

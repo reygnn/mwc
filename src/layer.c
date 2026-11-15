@@ -148,22 +148,30 @@ void layer_arrange(struct output *output)
 	/* A panel may reserve more than there is, or all but a sliver. Then there is no
 	 * use in believing it: windows would have nowhere to go. X11 struts keep the same
 	 * room, see apply_struts(). */
-	if (!wlr_box_intersection(&usable, &usable, &full) || usable.width < MIN_ROOM ||
-			usable.height < MIN_ROOM)
-		usable = full;
 	if (!wlr_box_intersection(&open, &open, &full) || open.width < MIN_ROOM ||
 			open.height < MIN_ROOM)
 		open = full;
-	/* The dock moving within its strip changes which windows are beside it. */
+	/* open always holds usable: given up for the dock, both are the whole output. */
+	if (!wlr_box_intersection(&usable, &usable, &full) || usable.width < MIN_ROOM ||
+			usable.height < MIN_ROOM)
+		usable = open = full;
 	struct wlr_box dock = dock_box(output);
-	if (!wlr_box_equal(&usable, &output->usable) || !wlr_box_equal(&open, &output->open) ||
-			!wlr_box_equal(&dock, &output->dock)) {
-		output->usable = usable;
-		output->open = open;
-		output->dock = dock;
+	bool areas = !wlr_box_equal(&usable, &output->usable) ||
+		!wlr_box_equal(&open, &output->open);
+	bool moved = !wlr_box_equal(&dock, &output->dock);
+	output->usable = usable;
+	output->open = open;
+	output->dock = dock;
+	if (areas) {
 		views_usable_area_changed(output->server);
 		publish_workarea(output->server);
+	} else if (moved) {
+		/* A tool changing its width moves the dock within its strip: only which
+		 * windows are beside it changes, not the areas, the icons or the tiling. */
+		views_refit_snapped(output->server);
 	}
+	if (moved)
+		views_clear_dock(output);
 }
 
 /* Each arrange that changes the usable area refits every maximized and snapped
@@ -469,6 +477,9 @@ void layer_output_gone(struct output *output)
 	if (output->arrange_timer)
 		wl_event_source_remove(output->arrange_timer);
 	output->arrange_timer = NULL;
+	/* The output may come back: its next arrange_soon() must arm a new timer. */
+	output->arrange_resting = false;
+	output->arrange_due = false;
 	for (int layer = 0; layer < MWC_SHELL_LAYERS; layer++) {
 		struct layer_surface *ls, *tmp;
 		wl_list_for_each_safe(ls, tmp, &output->layers[layer], link)
