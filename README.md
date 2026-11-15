@@ -470,3 +470,8 @@ move, fifo, rdp and state.
 The state file and the virtual input devices exist only with `MWC_TEST_STATE` set (the
 devices also with `MWC_VIRTUAL_INPUT=1`, for wayrdp), because those protocols let a
 client type for the user.
+
+
+## License
+
+MIT, see [LICENSE](LICENSE).
