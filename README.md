@@ -1,5 +1,7 @@
 # mwc
 
+<img src="data/logo.png" alt="mwc logo" width="128" align="right">
+
 mwc is a small Wayland compositor with the look and behaviour of the Motif window
 manager. Frames are drawn server side: bevelled borders with corner grooves, a window
 menu button, minimize and maximize, desktop icons, and mwm's menus and key bindings.
