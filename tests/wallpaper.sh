@@ -18,6 +18,17 @@ build/pngtool stripes "$SMOKE_DIR/fit.png" 2560 1440 "$RED" "$BLUE"
 # Far wider than the output: only the middle stays visible.
 build/pngtool stripes "$SMOKE_DIR/wide.png" 3440 720 "$RED" "$BLUE"
 
+# pngtool itself: count's tolerance, and 0 for exact. 9497a6 is within the default of
+# 7387ad, mwc's active colour, which a test of a pale shade needs to tell apart.
+build/pngtool stripes "$SMOKE_DIR/two.png" 8 1 9497a6 7387ad
+[ "$(build/pngtool count "$SMOKE_DIR/two.png" 0 0 8 1 7387ad)" = 8 ] ||
+	fail "pngtool count: the default tolerance doesn't take 9497a6 for 7387ad"
+[ "$(build/pngtool count "$SMOKE_DIR/two.png" 0 0 8 1 7387ad 0)" = 4 ] ||
+	fail "pngtool count with 0: not only the exact pixels"
+[ "$(build/pngtool count "$SMOKE_DIR/two.png" 0 0 8 1 9497a7 1)" = 4 ] ||
+	fail "pngtool count with 1: a channel off by one isn't counted"
+echo "ok: pngtool count takes a tolerance"
+
 # ---- exact fit, plus input on top of the wallpaper --------------------------
 
 export MWC_TEST_STATE=$SMOKE_DIR/state

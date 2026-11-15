@@ -4,9 +4,11 @@
  *   pngtool stripes OUT W H OUTER INNER  image with outer quarters in colour
  *                                        OUTER and the middle half in INNER
  *   pngtool pixel FILE X Y               prints the pixel as rrggbb
- *   pngtool count FILE X Y W H RRGGBB    prints how many pixels have that colour,
- *                                        within 64 per channel: antialiased text
- *                                        rarely reaches the exact one
+ *   pngtool count FILE X Y W H RRGGBB [TOL]
+ *                                        prints how many pixels have that colour,
+ *                                        each channel off by at most TOL, 63 by
+ *                                        default: antialiased text rarely reaches
+ *                                        the exact one. 0 counts exact matches.
  *
  * Colours are rrggbb. Each quarter is measured along the width.
  */
@@ -57,7 +59,8 @@ static int pixel(const char *file, int x, int y)
 	return 0;
 }
 
-static int count(const char *file, int x, int y, int w, int h, const char *hex)
+static int count(const char *file, int x, int y, int w, int h, const char *hex,
+	int tol)
 {
 	cairo_surface_t *s = cairo_image_surface_create_from_png(file);
 	if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS)
@@ -75,7 +78,7 @@ static int count(const char *file, int x, int y, int w, int h, const char *hex)
 			for (int shift = 0; shift <= 16; shift += 8) {
 				int d = (int)((v >> shift) & 0xff) -
 					(int)((want >> shift) & 0xff);
-				near = near && d > -64 && d < 64;
+				near = near && d >= -tol && d <= tol;
 			}
 			n += near;
 		}
@@ -92,11 +95,11 @@ int main(int argc, char *argv[])
 			argv[6]);
 	if (argc == 5 && strcmp(argv[1], "pixel") == 0)
 		return pixel(argv[2], atoi(argv[3]), atoi(argv[4]));
-	if (argc == 8 && strcmp(argv[1], "count") == 0)
+	if ((argc == 8 || argc == 9) && strcmp(argv[1], "count") == 0)
 		return count(argv[2], atoi(argv[3]), atoi(argv[4]), atoi(argv[5]),
-			atoi(argv[6]), argv[7]);
+			atoi(argv[6]), argv[7], argc == 9 ? atoi(argv[8]) : 63);
 	fprintf(stderr, "usage: pngtool stripes OUT W H OUTER INNER\n"
 		"       pngtool pixel FILE X Y\n"
-		"       pngtool count FILE X Y W H RRGGBB\n");
+		"       pngtool count FILE X Y W H RRGGBB [TOL]\n");
 	return 2;
 }
