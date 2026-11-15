@@ -94,6 +94,10 @@ the others keep only floating windows.
 The dock sits at the monitor's edge, also where a panel is: the two overlap. A docked
 tool larger than the monitor sticks out of it.
 
+Beside the dock only snapping, Super+Shift+arrows and placing use its strip. A
+maximized window, the tiling layout, the icon box and the work area X11 programs see
+keep to the area without the whole strip.
+
 
 ## Placement by geometry
 

@@ -298,7 +298,9 @@ first monitor, in the order of their lines in the file. `dockPlacement` takes th
 words of `iconPlacement` except `tight`; the default `right bottom` starts in the
 bottom right corner and grows to the left. Tools of different heights line up along
 the monitor's edge. The dock follows when a tool comes, goes or changes its size, and
-its strip is kept free like a panel's. Docked windows keep their frames, are on every
+its strip is kept free like a panel's, but only over the dock: a window beside it, a
+snapped half or quarter, one pushed to an edge with Super+Shift+arrows or placed by
+`geometry`, may reach the monitor's edge. Docked windows keep their frames, are on every
 desktop and stay above other windows. They cannot be moved, resized, minimized,
 maximized or made fullscreen, and neither tile nor join tab groups; Alt+Tab passes
 them by, a click gives them the keyboard. Their dialogs open outside.

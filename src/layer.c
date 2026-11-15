@@ -143,6 +143,7 @@ void layer_arrange(struct output *output)
 	arrange_pass(output, &full, &usable, true);
 	arrange_pass(output, &full, &usable, false);
 	apply_struts(output, &usable);
+	struct wlr_box open = usable;
 	dock_reserve(output, &usable);
 	/* A panel may reserve more than there is, or all but a sliver. Then there is no
 	 * use in believing it: windows would have nowhere to go. X11 struts keep the same
@@ -150,8 +151,16 @@ void layer_arrange(struct output *output)
 	if (!wlr_box_intersection(&usable, &usable, &full) || usable.width < MIN_ROOM ||
 			usable.height < MIN_ROOM)
 		usable = full;
-	if (!wlr_box_equal(&usable, &output->usable)) {
+	if (!wlr_box_intersection(&open, &open, &full) || open.width < MIN_ROOM ||
+			open.height < MIN_ROOM)
+		open = full;
+	/* The dock moving within its strip changes which windows are beside it. */
+	struct wlr_box dock = dock_box(output);
+	if (!wlr_box_equal(&usable, &output->usable) || !wlr_box_equal(&open, &output->open) ||
+			!wlr_box_equal(&dock, &output->dock)) {
 		output->usable = usable;
+		output->open = open;
+		output->dock = dock;
 		views_usable_area_changed(output->server);
 		publish_workarea(output->server);
 	}

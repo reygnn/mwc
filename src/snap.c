@@ -46,6 +46,29 @@ struct wlr_box snap_rect(enum snap s, struct wlr_box a)
 	}
 }
 
+/* Beside the dock a window may have the strip the dock keeps free. Positions that
+ * line up decide together, so that two halves or quarters next to each other still
+ * do: with a dock along the bottom or top a column, along a side a row. */
+struct wlr_box snap_area(struct server *server, enum snap s, double px, double py)
+{
+	struct output *o = output_at(server, px, py);
+	if (!o)
+		return output_usable_area(server, px, py);
+	struct wlr_box a = o->open, g = a;
+	bool left = s == SNAP_LEFT || s == SNAP_TOP_LEFT || s == SNAP_BOTTOM_LEFT;
+	bool right = s == SNAP_RIGHT || s == SNAP_TOP_RIGHT || s == SNAP_BOTTOM_RIGHT;
+	bool top = s == SNAP_TOP_LEFT || s == SNAP_TOP_RIGHT;
+	bool bottom = s == SNAP_BOTTOM_LEFT || s == SNAP_BOTTOM_RIGHT;
+	if (dock_horizontal() && (left || right)) {
+		g = snap_rect(left ? SNAP_LEFT : SNAP_RIGHT, a);
+	} else if (!dock_horizontal() && (top || bottom)) {
+		struct wlr_box l = snap_rect(top ? SNAP_TOP_LEFT : SNAP_BOTTOM_LEFT, a);
+		struct wlr_box r = snap_rect(top ? SNAP_TOP_RIGHT : SNAP_BOTTOM_RIGHT, a);
+		g = (struct wlr_box){ l.x, l.y, r.x + r.width - l.x, l.height };
+	}
+	return output_dock_in_the_way(o, g) ? o->usable : a;
+}
+
 const char *snap_name(enum snap s)
 {
 	switch (s) {
@@ -106,7 +129,7 @@ void snap_preview(struct view *view, enum snap s, double px, double py)
 		snap_preview_hide();
 		return;
 	}
-	snap_preview_box(view, snap_rect(s, output_usable_area(view->server, px, py)));
+	snap_preview_box(view, snap_rect(s, snap_area(view->server, s, px, py)));
 }
 
 bool scene_buffer_no_input(struct wlr_scene_buffer *buffer, double *sx, double *sy)
@@ -233,19 +256,10 @@ void snap_step(struct view *view, enum snap_dir dir)
 		view->y + (view->height + frame_extra_h(view)) / 2.0);
 }
 
-/* Super+Shift+arrow: push a floating window flush against that edge of the usable
- * area of its output; two in a row reach a corner. */
-void view_move_to_edge(struct view *view, enum snap_dir dir)
+/* A window larger than the area keeps its left or top edge in. */
+static struct wlr_box edge_box(struct wlr_box a, enum snap_dir dir, int x, int y,
+	int w, int h)
 {
-	if (!view || view->minimized || view->fullscreen || view->maximized ||
-			view->snap != SNAP_NONE || !(view->funcs & FUNC_MOVE))
-		return;
-	int w = view->width + frame_extra_w(view);
-	int h = view->height + frame_extra_h(view);
-	struct wlr_box a = output_usable_area(view->server, view->x + w / 2.0,
-		view->y + h / 2.0);
-	int x = view->x, y = view->y;
-	/* A window larger than the area keeps its left or top edge in. */
 	switch (dir) {
 	case SNAP_DIR_LEFT:
 		x = a.x;
@@ -260,6 +274,32 @@ void view_move_to_edge(struct view *view, enum snap_dir dir)
 		y = a.y + a.height - h > a.y ? a.y + a.height - h : a.y;
 		break;
 	}
+	return (struct wlr_box){ x, y, w, h };
+}
+
+/* Super+Shift+arrow: push a floating window flush against that edge of the usable
+ * area of its output; two in a row reach a corner. */
+void view_move_to_edge(struct view *view, enum snap_dir dir)
+{
+	if (!view || view->minimized || view->fullscreen || view->maximized ||
+			view->snap != SNAP_NONE || !(view->funcs & FUNC_MOVE))
+		return;
+	int w = view->width + frame_extra_w(view);
+	int h = view->height + frame_extra_h(view);
+	struct output *o = output_at(view->server, view->x + w / 2.0, view->y + h / 2.0);
+	/* Beside the dock as far as the output's edge, else to the usable area's; one
+	 * that would now cover the dock moves out of its strip as well. */
+	struct wlr_box b = o ? edge_box(o->open, dir, view->x, view->y, w, h) :
+		(struct wlr_box){ 0 };
+	if (!o || output_dock_in_the_way(o, b)) {
+		struct wlr_box a = output_usable_area(view->server, view->x + w / 2.0,
+			view->y + h / 2.0);
+		b = edge_box(a, dir, view->x, view->y, w, h);
+		if (b.x + w > a.x + a.width)
+			b.x = a.x + a.width - w > a.x ? a.x + a.width - w : a.x;
+		if (b.y + h > a.y + a.height)
+			b.y = a.y + a.height - h > a.y ? a.y + a.height - h : a.y;
+	}
 	view->gravity_edges = 0;
-	view_set_position(view, x, y);
+	view_set_position(view, b.x, b.y);
 }

@@ -510,6 +510,8 @@ struct output {
 	struct wlr_output *wlr_output;
 	struct wl_list layers[MWC_SHELL_LAYERS]; /* layer_surface.link */
 	struct wlr_box usable; /* what panels leave free */
+	struct wlr_box open;   /* usable, but with the dock's strip */
+	struct wlr_box dock;   /* the dock's box here, empty without one */
 	struct wl_event_source *arrange_timer; /* see arrange_soon() */
 	bool arrange_resting, arrange_due;
 	struct wlr_scene_rect *background;
@@ -590,6 +592,8 @@ bool output_in_layout(struct output *output);
 /* The oldest in the layout; NULL if clients switched all off. */
 struct output *output_first(struct server *server);
 struct wlr_box output_usable_area(struct server *server, double lx, double ly);
+/* Whether b reaches into the dock on o. */
+bool output_dock_in_the_way(struct output *o, struct wlr_box b);
 struct wlr_box output_full_area(struct server *server, double lx, double ly);
 void views_usable_area_changed(struct server *server);
 void views_layout_changed(struct server *server);
@@ -754,6 +758,9 @@ void tile_stack(struct server *server, bool raise);
 /* ---- snap.c ------------------------------------------------------------- */
 
 struct wlr_box snap_rect(enum snap s, struct wlr_box area);
+/* The area snap_rect() divides for s on the output at (px, py), with the dock's
+ * strip where s keeps clear of the dock. */
+struct wlr_box snap_area(struct server *server, enum snap s, double px, double py);
 const char *snap_name(enum snap s);
 enum snap snap_zone_at(struct view *view, double px, double py);
 void snap_preview(struct view *view, enum snap s, double px, double py);
@@ -915,6 +922,10 @@ void dock_init(struct server *server);
 void dock_arrange(struct server *server);
 /* From layer_arrange(): takes the dock's strip off the usable area. */
 void dock_reserve(struct output *output, struct wlr_box *usable);
+/* The dock's box on output, empty if it is elsewhere or empty. */
+struct wlr_box dock_box(struct output *output);
+/* A row along the top or bottom edge, not a column along a side. */
+bool dock_horizontal(void);
 /* Takes what docked windows can't have: a state, a tab group, an icon. */
 void dock_admit(struct view *view);
 /* Its size or frame changed. */

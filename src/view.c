@@ -84,6 +84,12 @@ struct wlr_box output_usable_area(struct server *server, double lx, double ly)
 	return o ? o->usable : output_full_area(server, lx, ly);
 }
 
+bool output_dock_in_the_way(struct output *o, struct wlr_box b)
+{
+	struct wlr_box hit;
+	return o && wlr_box_intersection(&hit, &b, &o->dock);
+}
+
 /* Position of the client content inside the window tree. xdg clients may
  * draw shadows outside their window geometry, which we hide by offset. */
 static void view_update_content_pos(struct view *view)
@@ -430,7 +436,8 @@ static void view_fit_state(struct view *view, double px, double py)
 {
 	view->fit_px = px;
 	view->fit_py = py;
-	struct wlr_box a = output_usable_area(view->server, px, py);
+	struct wlr_box a = snap_area(view->server,
+		view->snap != SNAP_NONE ? view->snap : SNAP_MAXIMIZE, px, py);
 	if (view->snap != SNAP_NONE)
 		a = snap_rect(view->snap, a);
 	int w = a.width - frame_extra_w(view), h = a.height - frame_extra_h(view);
@@ -1322,11 +1329,9 @@ void view_init_common(struct view *view)
 	view->dock_order = -1;
 }
 
-/* Keep at least the title bar reachable. */
-static void view_place_within(struct view *view, struct wlr_box a, int x, int y)
+/* Inside a, keeping at least the title bar reachable. */
+static struct wlr_box place_in(struct wlr_box a, int x, int y, int w, int h)
 {
-	int w = view->width + frame_extra_w(view);
-	int h = view->height + frame_extra_h(view);
 	if (x + w > a.x + a.width)
 		x = a.x + a.width - w;
 	if (y + h > a.y + a.height)
@@ -1335,7 +1340,26 @@ static void view_place_within(struct view *view, struct wlr_box a, int x, int y)
 		x = a.x;
 	if (y < a.y)
 		y = a.y;
-	view_set_position(view, x, y);
+	return (struct wlr_box){ x, y, w, h };
+}
+
+/* Inside the usable area a; beside the dock, its strip may be used as well. */
+static void view_place_within(struct view *view, struct wlr_box a, int x, int y)
+{
+	int w = view->width + frame_extra_w(view);
+	int h = view->height + frame_extra_h(view);
+	struct output *o = output_at(view->server, a.x + a.width / 2.0,
+		a.y + a.height / 2.0);
+	struct wlr_box b;
+	if (o && wlr_box_equal(&a, &o->usable)) {
+		b = place_in(o->open, x, y, w, h);
+		if (!output_dock_in_the_way(o, b)) {
+			view_set_position(view, b.x, b.y);
+			return;
+		}
+	}
+	b = place_in(a, x, y, w, h);
+	view_set_position(view, b.x, b.y);
 }
 
 /* New windows cascade from the top-left of the output under the pointer. A

@@ -100,6 +100,42 @@ check "plain maximized: above the dock" \
 do_input key alt+F10
 check "plain back" "[ \"\$(get plain max)\" = 0 ]"
 
+# Beside the dock the strip is there to use: the left half reaches the output's
+# bottom, the right one, over the dock, stops above it, as do its quarters.
+G=8 # MWC_GAP
+do_input key super+Left
+check "plain snapped left: down to the output's edge, beside the dock" \
+	"[ \"\$(get plain snap)\" != 0 ] && [ \$(bottom plain) = $((720 - G)) ]"
+do_input key super+Down
+check "its bottom quarter too" "[ \$(bottom plain) = $((720 - G)) ] && \
+	[ \$(get plain y) -gt 360 ]"
+do_input key super+Up
+do_input key super+Right
+do_input key super+Right
+check "snapped right, over the dock: above it" \
+	"[ \"\$(get plain snap)\" != 0 ] && [ \$(bottom plain) = \$((\$(dock y) - G)) ]"
+do_input key super+Up
+check "its top quarter: half the usable height, in line with the quarter below" \
+	"[ \$(bottom plain) = \$((G + (\$(dock y) - 3 * G) / 2)) ]"
+do_input key super+Down
+do_input key super+Left
+check "plain free again" "[ \"\$(get plain snap)\" = 0 ]"
+# Pushed down: beside the dock as far as the edge, over it only to the dock.
+do_input key super+shift+Down
+check "pushed down beside the dock: to the output's bottom" "[ \$(bottom plain) = 720 ]"
+do_input key super+shift+Right
+check "pushed right, now over the dock: above it" \
+	"[ \$(right plain) = 1280 ] && [ \$(bottom plain) = \$(dock y) ]"
+do_input key super+shift+Left
+do_input key super+shift+Up
+# Placed by its entry: beside the dock it may reach into the strip.
+echo 'Mwm*low*geometry: +20+500' >>"$RC"
+reload_mwc
+wayland low size=200x150
+check "a geometry beside the dock is kept, into its strip" \
+	"[ \"\$(get low y)\" = 500 ] && [ \$(bottom low) -gt \$(dock y) ]"
+stop low
+
 # ---- focus and functions ----------------------------------------------------------
 
 wayland other size=300x200
@@ -279,6 +315,24 @@ check "a column from the bottom right corner up, aligned right" \
 	 [ \$(right prefull) = $((1280 - B)) ] && [ \$(bottom prefull) = \$(get premax y) ]"
 check "its strip at the right kept free" \
 	"[ \"\$(global output uw)\" = \$(dock x) ] && [ \"\$(global output uh)\" = 720 ]"
+# A column decides by rows: the top right quarter, above the dock, reaches the edge;
+# the bottom right one, beside it, stops at it. One tool keeps the column low.
+printf 'Mwm*premax*dock: true\nMwm*dockPlacement: bottom right\n' >"$RC"
+reload_mwc
+wayland side size=300x200
+check "the top row is clear of the dock" "[ \$(dock y) -gt 360 ]"
+do_input key super+Right
+do_input key super+Up
+check "the top right quarter beside a column: to the output's edge" \
+	"[ \"\$(get side snap)\" != 0 ] && [ \$(right side) = $((1280 - G)) ]"
+do_input key super+Down
+do_input key super+Down
+check "the bottom right quarter, by the column: up to it" \
+	"[ \$(right side) = \$((\$(dock x) - G)) ] && [ \$(get side y) -gt 360 ]"
+stop side
+printf '%s\nMwm*dockPlacement: bottom right\n' "$DOCKED" >"$RC"
+reload_mwc
+check "the column back" "[ \$(right premax) = $((1280 - B)) ] && [ \$(bottom premax) = $((720 - B)) ]"
 printf '%s\nMwm*dockPlacement: center top\n' "$DOCKED" >"$RC"
 reload_mwc
 check "a row in the middle of the top edge, from the left" \

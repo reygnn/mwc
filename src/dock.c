@@ -13,7 +13,9 @@
  *   default "right bottom". At the output's edge, not inside panels.
  * - Arranged anew when a tool appears, goes or changes its size, and on a reload.
  * - In a row the tools align at the dock's outer edge, in a column likewise.
- * - The strip is kept free like a panel's (dock_reserve(), from layer_arrange()).
+ * - The strip is kept free like a panel's (dock_reserve(), from layer_arrange()),
+ *   except for windows beside the dock: snapping, placing and pushing to an edge
+ *   use the output's open area where the window keeps clear of the dock.
  * - Normal top-level windows only: a tool's dialogs open outside.
  * - Docked windows are on every desktop, above normal windows, out of Alt+Tab, tiling
  *   and tab groups, and can't be moved, resized, minimized, maximized or made
@@ -156,6 +158,18 @@ void dock_arrange(struct server *server)
 	wlr_scene_node_set_position(&dk.frame->node, box.x, box.y);
 	wlr_scene_node_set_enabled(&dk.frame->node, true);
 	set_box(output, box);
+}
+
+struct wlr_box dock_box(struct output *output)
+{
+	if (output != dk.output || dk.box.width <= 0)
+		return (struct wlr_box){ 0 };
+	return dk.box;
+}
+
+bool dock_horizontal(void)
+{
+	return config_dock_placement()->horizontal;
 }
 
 void dock_reserve(struct output *output, struct wlr_box *usable)
