@@ -119,12 +119,14 @@ check "xterm has the focus" "[ \"\$(get XTerm active)\" = 1 ]"
 border_is "activeBackground by WM_CLASS class, ignoring case" XTerm 00aa00
 # firebrick mixed with gold, because foot's own "background" is unusable
 border_near "unfocused: a paler version of the client's colour" foot dc860f
-title_has "white title text on a dark background" XTerm ffffff
+# 00aa00 is a mid-tone: black has the higher contrast, a luma threshold chose white.
+title_has "black title text on a mid-tone" XTerm 000000
 
 do_input key alt+Tab
 check "foot has the focus" "[ \"\$(get foot active)\" = 1 ]"
 border_is "a colour name, by app_id" foot b22222
 title_has "activeForeground" foot 00ff00
+title_has "white title text on a dark background, unfocused" XTerm ffffff
 border_is "background by WM_CLASS instance" XTerm 334455
 
 # ---- the desktop icon wears the colours too ----------------------------------

@@ -3,6 +3,7 @@
  * as a wlr_buffer so the scene graph can display what we draw.
  */
 #define _POSIX_C_SOURCE 200809L
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -64,11 +65,19 @@ struct mwc_color color_mix(struct mwc_color a, struct mwc_color b, float f)
 		a.b + (b.b - a.b) * f };
 }
 
-/* Black or white, whichever reads better on bg. */
+static float linear(float c)
+{
+	return c <= 0.04045f ? c / 12.92f : powf((c + 0.055f) / 1.055f, 2.4f);
+}
+
+/* Black or white, whichever has the higher WCAG contrast on bg: black when
+ * (L + 0.05) / 0.05 > 1.05 / (L + 0.05). A luma threshold gave mid-tones such
+ * as 7387ad white text, and deskControl decides the same way. */
 struct mwc_color color_contrast(struct mwc_color bg)
 {
-	float luma = 0.299f * bg.r + 0.587f * bg.g + 0.114f * bg.b;
-	return hex(luma > 140000 / (1000 * 255.0f) ? 0x000000 : 0xffffff);
+	float l = 0.2126f * linear(bg.r) + 0.7152f * linear(bg.g) +
+		0.0722f * linear(bg.b);
+	return hex((l + 0.05f) * (l + 0.05f) > 1.05f * 0.05f ? 0x000000 : 0xffffff);
 }
 
 /*
