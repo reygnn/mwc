@@ -5,6 +5,7 @@
  *   fifoc plain N     the same without the protocol, for comparison
  *   fifoc release N   N updates with the barrier, then the wp_fifo_v1 goes
  *   fifoc quit N      N updates with the barrier, then exit while they are held
+ *   fifoc hold N      fullscreen, N updates with the barrier, print "held" and stay
  *   fifoc twice       a second wp_fifo_v1 for the same surface
  *   fifoc gone        set_barrier after the surface was destroyed
  *
@@ -161,7 +162,7 @@ static struct wl_buffer *make_buffer(void)
 
 static int usage(void)
 {
-	fprintf(stderr, "usage: fifoc fifo|plain|release|quit N | twice | gone\n");
+	fprintf(stderr, "usage: fifoc fifo|plain|release|quit|hold N | twice | gone\n");
 	return 2;
 }
 
@@ -186,7 +187,7 @@ int main(int argc, char *argv[])
 	const char *mode = argv[1];
 	int n = argc > 2 ? atoi(argv[2]) : 0;
 	bool updates = !strcmp(mode, "fifo") || !strcmp(mode, "plain") ||
-		!strcmp(mode, "release") || !strcmp(mode, "quit");
+		!strcmp(mode, "release") || !strcmp(mode, "quit") || !strcmp(mode, "hold");
 	if (updates ? n < 2 : strcmp(mode, "twice") && strcmp(mode, "gone"))
 		return usage();
 
@@ -230,6 +231,8 @@ int main(int argc, char *argv[])
 	xdg_toplevel_add_listener(toplevel, &toplevel_listener, NULL);
 	xdg_toplevel_set_title(toplevel, "fifoc");
 	xdg_toplevel_set_app_id(toplevel, "fifoc");
+	if (!strcmp(mode, "hold"))
+		xdg_toplevel_set_fullscreen(toplevel, NULL);
 	wl_surface_commit(surface);
 	while (!configured)
 		if (wl_display_dispatch(display) < 0)
@@ -268,6 +271,14 @@ int main(int argc, char *argv[])
 		wl_display_roundtrip(display);
 		printf("quit with %d of %d callbacks\n", callbacks_done, n);
 		wl_display_disconnect(display);
+		return 0;
+	}
+	if (!strcmp(mode, "hold")) {
+		wl_display_roundtrip(display);
+		printf("held\n");
+		fflush(stdout);
+		while (wl_display_dispatch(display) >= 0)
+			;
 		return 0;
 	}
 	if (!strcmp(mode, "release")) {

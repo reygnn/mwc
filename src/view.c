@@ -40,7 +40,7 @@ struct output *output_at(struct server *server, double lx, double ly)
 {
 	struct wlr_output *o = wlr_output_layout_output_at(server->output_layout,
 		lx, ly);
-	if (o)
+	if (o && o->data)
 		return o->data;
 	/* Not one a client switched off: its area is empty, and windows put there
 	 * would be out of reach. */

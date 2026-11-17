@@ -337,6 +337,10 @@ static void output_destroy(struct wl_listener *listener, void *data)
 	wlr_scene_node_destroy(&output->background->node);
 	if (output->wallpaper)
 		wlr_scene_node_destroy(&output->wallpaper->node);
+	/* wlroots leaves it in the layout until after this signal, and listeners after
+	 * this one (fifo's) may commit surfaces, which ask the layout where outputs are. */
+	output->wlr_output->data = NULL;
+	wlr_output_layout_remove(output->server->output_layout, output->wlr_output);
 	free(output);
 }
 

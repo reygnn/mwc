@@ -23,6 +23,7 @@ refreshes_between() {
 	echo "ok: $what ($r refreshes)"
 }
 
+export MWC_TEST_STATE=$SMOKE_DIR/state # for the unplug hook
 start_mwc 'exec sleep 300'
 
 # 30 updates sent at once. Without the barrier the last replaces the others and all
@@ -50,6 +51,17 @@ out=$(fifoc_quiet gone) || fail "fifoc gone: $out"
 [ "$out" = "error=wp_fifo_v1:0" ] || fail "set_barrier without a surface: $out"
 echo "ok: set_barrier after the surface is gone is surface_destroyed"
 
-kill -0 "$pid" || fail "mwc died"
+# A monitor unplugged while a fullscreen window's updates wait for it: they go out
+# during its removal and must not find the output mwc has already let go.
+WAYLAND_DISPLAY=wayland-0 build/fifoc hold 60 >"$SMOKE_DIR/hold.out" 2>&1 &
+hold=$!
+wait_for "a fullscreen window holds updates" grep -q held "$SMOKE_DIR/hold.out"
+kill -USR2 "$pid"
+check "the monitor is gone" "! grep -q '^output_' \"\$MWC_TEST_STATE\""
+kill -0 "$pid" || fail "mwc died when the monitor of held updates went"
+echo "ok: a monitor can go while a fullscreen window's updates wait for it"
+kill "$hold" 2>/dev/null
+wait "$hold" 2>/dev/null
+
 stop_mwc
 echo "PASS: fifo"
