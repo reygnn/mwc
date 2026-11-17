@@ -44,6 +44,11 @@ begin
 log_has "the output's name is logged, for mwmrc" "new output HEADLESS-1"
 grep -q '^_JAVA_AWT_WM_NONREPARENTING=1$' "$SMOKE_DIR/env" || fail "Java isn't told"
 echo "ok: Java programs are told not to expect reparenting"
+# Qt asks for server-side frames through xdg-decoration; the variable would take away
+# its own frame where no compositor draws one.
+grep -q '^QT_WAYLAND_DISABLE_WINDOWDECORATION=' "$SMOKE_DIR/env" &&
+	fail "Qt's own decorations are switched off"
+echo "ok: Qt is left to xdg-decoration"
 grep -q '^XDG_SESSION_TYPE=wayland$' "$SMOKE_DIR/env" && fail "nested, the session type isn't ours to set"
 echo "ok: outside a real session the activation environment stays alone"
 
@@ -67,12 +72,14 @@ wait "$PID_rep" 2>/dev/null
 rm "$RC"
 finish
 
-export _JAVA_AWT_WM_NONREPARENTING=0
+export _JAVA_AWT_WM_NONREPARENTING=0 QT_WAYLAND_DISABLE_WINDOWDECORATION=0
 begin
 grep -q '^_JAVA_AWT_WM_NONREPARENTING=0$' "$SMOKE_DIR/env" || fail "a value set by the user must stay"
+grep -q '^QT_WAYLAND_DISABLE_WINDOWDECORATION=0$' "$SMOKE_DIR/env" ||
+	fail "the user's Qt setting must stay"
 echo "ok: a value set by the user stays"
 finish
-unset _JAVA_AWT_WM_NONREPARENTING
+unset _JAVA_AWT_WM_NONREPARENTING QT_WAYLAND_DISABLE_WINDOWDECORATION
 
 # ---- monitors -----------------------------------------------------------------------
 

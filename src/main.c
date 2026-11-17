@@ -1062,8 +1062,6 @@ int main(int argc, char *argv[])
 	}
 	setenv("WAYLAND_DISPLAY", socket, true);
 	setenv("XDG_CURRENT_DESKTOP", "mwc", true);
-	/* Ask toolkits for server-side decorations where they support it. */
-	setenv("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1", true);
 	/* Java under Xwayland draws grey windows and misplaces popups on a window
 	 * manager that doesn't reparent, unless told. Not forced on anyone who set it. */
 	setenv("_JAVA_AWT_WM_NONREPARENTING", "1", false);
