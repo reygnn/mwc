@@ -289,12 +289,20 @@ check "switched on again: the icons go into the box" \
 
 # Bad values are reported once, not with every arrange, and the default holds.
 sed -i 's/iconBoxSize: 3/iconBoxSize: 0/' "$RC"
-echo 'Mwm*one*allDesktops: maybe' >>"$RC"
-echo 'Mwm*two*allDesktops: kind of' >>"$RC"
+echo 'Mwm*badone*allDesktops: maybe' >>"$RC"
+echo 'Mwm*badtwo*allDesktops: kind of' >>"$RC"
 reload_mwc
 for d in 2 1 2 1; do
 	ws activate $d >/dev/null || fail "activating desktop $d"
 	check "desktop $d" "[ \"\$(global desktop current)\" = $d ]"
+done
+# Two windows with bad values, mapped by turns.
+for name in badone badtwo badone badtwo; do
+	wayland $name
+	mapped $name
+	kill "$(eval echo \$PID_$name)"
+	wait "$(eval echo \$PID_$name)" 2>/dev/null
+	check "$name is gone" "[ -z \"\$(get $name x)\" ]"
 done
 n=$(grep -c 'iconBoxSize: expected' "$LOG")
 [ "$n" = 1 ] || fail "a bad iconBoxSize was reported $n times"
