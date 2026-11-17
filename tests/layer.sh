@@ -263,6 +263,19 @@ wait_for "a bad value: the defaults again" has_event rep "repeat 25 600"
 grep -q 'Mwm\*keyboardRepeatRate: expected 0 to 1000, not "fast"' "$LOG" ||
 	fail "the bad repeat rate is not reported"
 echo "ok: the bad repeat rate is reported"
+# Just past the limits: a delay of 0 would stop mwc's own repeat, a rate over 1000
+# its interval.
+: >"$SMOKE_DIR/rep.events"
+printf 'Mwm*keyboardRepeatRate: 50\nMwm*keyboardRepeatDelay: 300\n' >"$RC"
+reload_mwc
+wait_for "good values are taken" has_event rep "repeat 50 300"
+printf 'Mwm*keyboardRepeatRate: 1001\nMwm*keyboardRepeatDelay: 0\n' >"$RC"
+reload_mwc
+wait_for "values past the limits: the defaults" has_event rep "repeat 25 600"
+grep -q 'keyboardRepeatRate: expected 0 to 1000, not "1001"' "$LOG" &&
+	grep -q 'keyboardRepeatDelay: expected 1 to 10000, not "0"' "$LOG" ||
+	fail "values past the limits are not reported"
+echo "ok: and reported"
 rm "$RC"
 layerc_stop rep
 
