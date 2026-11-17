@@ -193,6 +193,13 @@ void layer_arrange_soon(struct output *output)
 	throttle_call(&output->arrange, output->server->event_loop);
 }
 
+void layers_arrange_all_soon(struct server *server)
+{
+	struct output *output;
+	wl_list_for_each(output, &server->outputs, link)
+		layer_arrange_soon(output);
+}
+
 void layers_arrange_all(struct server *server)
 {
 	struct output *output;

@@ -807,6 +807,7 @@ void layer_init(struct server *server);
 void layer_arrange(struct output *output);
 /* At once, then at most once per refresh. */
 void layer_arrange_soon(struct output *output);
+void layers_arrange_all_soon(struct server *server);
 void layers_arrange_all(struct server *server);
 void layer_publish_workarea(struct server *server);
 void layer_output_gone(struct output *output);

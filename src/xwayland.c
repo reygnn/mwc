@@ -509,7 +509,8 @@ static void xw_set_window_type(struct wl_listener *listener, void *data)
 static void xw_set_strut_partial(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, set_strut_partial);
-	layers_arrange_all(view->server);
+	/* A client may change it as fast as it can, as a layer surface its zone. */
+	layers_arrange_all_soon(view->server);
 }
 
 static void xw_request_above(struct wl_listener *listener, void *data)

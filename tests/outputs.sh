@@ -188,6 +188,22 @@ frame_is "maximized on the right, it stays out of both panels" rightwin 1310 40 
 kill "$PID_rightwin" "$PID_innerdock" "$PID_topdock"
 wait "$PID_rightwin" "$PID_innerdock" "$PID_topdock" 2>/dev/null
 
+# A panel changing its strut as fast as it can: the usable area is worked out again
+# at most once a refresh (16 ms), as for a layer surface, not once per change.
+DISPLAY=$X_DISPLAY build/xclient class=waf workarea=1 >"$SMOKE_DIR/wa-flicker.events" 2>&1 &
+PID_waf=$!
+check "a window that hears of the workarea" "[ -n \"\$(get waf x)\" ]"
+DISPLAY=$X_DISPLAY build/xclient class=flicker type=dock pos=0,0 size=1280x40 \
+	strut=0,0,40,0 strut_flicker=300 >"$SMOKE_DIR/flicker.events" 2>&1 &
+PID_flicker=$!
+wait_for "the panel has flickered" grep -q flickered "$SMOKE_DIR/flicker.events"
+check "the last strut counts" "[ \"\$(global output uy)\" = 40 ]"
+n=$(grep -c '^workarea' "$SMOKE_DIR/wa-flicker.events")
+[ "$n" -le 60 ] || fail "300 strut changes made $n workarea changes"
+echo "ok: 300 strut changes made $n workarea changes"
+kill "$PID_flicker" "$PID_waf"
+wait "$PID_flicker" "$PID_waf" 2>/dev/null
+
 # Fullscreen on the output the client names, not the one the window is on.
 do_input move 100 100
 WAYLAND_DISPLAY=wayland-0 build/xdgc app=fsout size=300x200 fs_output=1 \

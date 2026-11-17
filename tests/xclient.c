@@ -18,6 +18,8 @@
  *     ask_after=fullscreen|maximized   ask with one right after XMapWindow, unsynced,
  *                         as xterm -fullscreen does
  *     strut=L,R,T,B       _NET_WM_STRUT_PARTIAL along the whole edge
+ *     strut_flicker=N     once mapped, change the strut N times, the top one 10 px
+ *                         more every other time, as fast as it can; says "flickered"
  *     color=rrggbb        background
  *     dialog=NAME         also open a transient dialog with this WM_CLASS
  *     workarea=1          print the root's _NET_WORKAREA whenever it changes
@@ -128,6 +130,7 @@ struct options {
 	const char *override;
 	long strut[4];
 	bool has_strut;
+	int strut_flicker;
 	unsigned long color;
 };
 
@@ -155,6 +158,16 @@ static void set_atom_list(Window win, const char *prop, const char *value)
 	Atom a = XInternAtom(dpy, value, False);
 	XChangeProperty(dpy, win, XInternAtom(dpy, prop, False), XA_ATOM, 32,
 		PropModeReplace, (unsigned char *)&a, 1);
+}
+
+static void set_strut(Window win, const struct options *o, long more_top)
+{
+	int sw = DisplayWidth(dpy, DefaultScreen(dpy));
+	int sh_ = DisplayHeight(dpy, DefaultScreen(dpy));
+	long s[12] = { o->strut[0], o->strut[1], o->strut[2] + more_top, o->strut[3],
+		0, sh_ - 1, 0, sh_ - 1, 0, sw - 1, 0, sw - 1 };
+	XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STRUT_PARTIAL", False),
+		XA_CARDINAL, 32, PropModeReplace, (unsigned char *)s, 12);
 }
 
 static Window create_window(const struct options *o, const char *class,
@@ -256,15 +269,8 @@ static Window create_window(const struct options *o, const char *class,
 		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STATE", False),
 			XA_ATOM, 32, PropModeReplace, (unsigned char *)a, n);
 	}
-	if (o->has_strut) {
-		int sw = DisplayWidth(dpy, DefaultScreen(dpy));
-		int sh_ = DisplayHeight(dpy, DefaultScreen(dpy));
-		long s[12] = { o->strut[0], o->strut[1], o->strut[2], o->strut[3],
-			0, sh_ - 1, 0, sh_ - 1, 0, sw - 1, 0, sw - 1 };
-		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STRUT_PARTIAL",
-			False), XA_CARDINAL, 32, PropModeReplace,
-			(unsigned char *)s, 12);
-	}
+	if (o->has_strut)
+		set_strut(win, o, 0);
 	if (transient_for)
 		XSetTransientForHint(dpy, win, transient_for);
 	return win;
@@ -511,6 +517,8 @@ int main(int argc, char *argv[])
 			o.color = strtoul(v, NULL, 16);
 		else if (!strcmp(k, "dialog"))
 			o.dialog = v;
+		else if (!strcmp(k, "strut_flicker"))
+			o.strut_flicker = atoi(v);
 		else if (!strcmp(k, "workarea"))
 			o.workarea = atoi(v);
 		else if (!strcmp(k, "moveresize"))
@@ -592,8 +600,17 @@ int main(int argc, char *argv[])
 		ask_state(main_win, o.ask_after);
 		XFlush(dpy);
 	}
-	if (o.has_moveto) {
+	if (o.strut_flicker > 0 && o.has_strut) {
 		XSync(dpy, False);
+		usleep(300000);
+		for (int i = 1; i <= o.strut_flicker; i++) {
+			set_strut(main_win, &o, i % 2 ? 10 : 0);
+			XSync(dpy, False);
+		}
+		printf("flickered\n");
+		fflush(stdout);
+	}
+	if (o.has_moveto) {
 		usleep(500000);
 		XMoveWindow(dpy, main_win, o.moveto_x, o.moveto_y);
 		XSync(dpy, False);

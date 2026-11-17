@@ -853,7 +853,7 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 static void struts_changed(struct view *view)
 {
 	if (view->type == VIEW_XWAYLAND && view->xsurface->strut_partial)
-		layers_arrange_all(view->server);
+		layers_arrange_all_soon(view->server);
 }
 
 void view_show(struct view *view, bool show)
