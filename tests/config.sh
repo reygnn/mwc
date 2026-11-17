@@ -289,8 +289,18 @@ check "a reload changes the items" "[ \"\$(global menu sensitive | cut -c1-2)\" 
 WITH=$(global menu items)
 do_input key z
 wait_for "which run" ran zebra
+# A reload while the menu is open frees the items it shows: it closes first, and its
+# keys run nothing afterwards.
+rm -f "$SMOKE_DIR"/ran-*
+root_menu_open
 rm "$RC"
 reload_mwc
+check "a reload closes the open menu" "[ \"\$(global menu open)\" = 0 ]"
+do_input key z
+sleep 0.3
+[ -e "$SMOKE_DIR/ran-zebra" ] && fail "a key ran an item of the old menu"
+kill -0 "$pid" || fail "mwc died"
+echo "ok: and nothing of it runs"
 root_menu_open
 check "without any, the menu is as before" "[ \"\$(global menu sensitive | cut -c1)\" = N ]"
 [ "$WITH" = $(($(global menu items) + 2)) ] || fail "there is no separator below the items"
