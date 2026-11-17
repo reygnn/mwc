@@ -226,6 +226,27 @@ wait_for "its keys arrive" has_event lock1 "key 30"
 layerc_stop lock1
 check "with both gone, the window has it again" "[ \"\$(get foot kbfocus)\" = 1 ]"
 
+# Key repeat from mwmrc, also changed by a reload while a key is down: clients repeat
+# themselves and must hear of it then.
+RC=$XDG_CONFIG_HOME/mwc/mwmrc
+mkdir -p "$(dirname "$RC")"
+layerc_start rep layer=overlay anchor=left size=50x50 keyboard=exclusive color=555555
+wait_for "a client hears the default repeat" has_event rep "repeat 25 600"
+do_input press a
+wait_for "the key is down" has_event rep "key 30"
+printf 'Mwm*keyboardRepeatRate: 0\nMwm*keyboardRepeatDelay: 300\n' >"$RC"
+reload_mwc
+wait_for "a reload with the key down turns repeating off" has_event rep "repeat 0 300"
+do_input lift a
+echo 'Mwm*keyboardRepeatRate: fast' >"$RC"
+reload_mwc
+wait_for "a bad value: the defaults again" has_event rep "repeat 25 600"
+grep -q 'Mwm\*keyboardRepeatRate: expected 0 to 1000, not "fast"' "$LOG" ||
+	fail "the bad repeat rate is not reported"
+echo "ok: the bad repeat rate is reported"
+rm "$RC"
+layerc_stop rep
+
 # Of two that insist, the higher layer keeps it: layer-shell gives it to the top-most.
 layerc_start high layer=overlay anchor=left size=50x50 keyboard=exclusive color=555555
 wait_for "exclusive in the overlay layer has it" has_event high keyboard-enter

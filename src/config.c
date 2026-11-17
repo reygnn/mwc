@@ -18,6 +18,8 @@
  *   Mwm*moveOpaque:                true       drag windows, not an outline
  *   Mwm*keyboardLayout:            de         also keyboardVariant, keyboardOptions,
  *                                             keyboardModel
+ *   Mwm*keyboardRepeatRate:        25         keys a second, 0: no repeat
+ *   Mwm*keyboardRepeatDelay:       600        ms before a held key repeats
  *   Mwm*DP-1*outputMode:           3440x1440@144
  *   Mwm*DP-1*outputScale:          1.5        also outputTransform, outputPosition
  *   Mwm*outputManagement:          true       offer wlr-output-management (startup)

@@ -374,6 +374,7 @@ appeared, also while minimized.
 | Resource | Meaning |
 |---|---|
 | `keyboardLayout`, `keyboardVariant`, `keyboardOptions`, `keyboardModel` | as in XKB; `XKB_DEFAULT_*` wins. Without them the layout is `us`, also in a GDM session |
+| `keyboardRepeatRate`, `keyboardRepeatDelay` | a held key repeats this many times a second (0 to 1000, 0 is off) after this many ms (1 to 10000); default 25 and 600 |
 | `Name*outputMode` | `WIDTHxHEIGHT` or `WIDTHxHEIGHT@HZ`; default the preferred mode |
 | `Name*outputScale` | 0.1 to 10 |
 | `Name*outputPosition` | `X,Y` in the layout; default the next free place in the row |

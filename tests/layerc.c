@@ -216,6 +216,7 @@ static void kb_modifiers(void *d, struct wl_keyboard *k, uint32_t serial,
 }
 static void kb_repeat(void *d, struct wl_keyboard *k, int32_t rate, int32_t delay)
 {
+	printf("repeat %d %d\n", rate, delay);
 }
 
 static const struct wl_keyboard_listener keyboard_listener = {
@@ -259,7 +260,7 @@ static void registry_global(void *data, struct wl_registry *registry,
 	else if (strcmp(interface, wl_shm_interface.name) == 0)
 		shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
 	else if (strcmp(interface, wl_seat_interface.name) == 0) {
-		seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
+		seat = wl_registry_bind(registry, name, &wl_seat_interface, 4);
 		wl_seat_add_listener(seat, &seat_listener, NULL);
 	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0)
 		layer_shell = wl_registry_bind(registry, name,

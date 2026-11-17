@@ -1387,8 +1387,36 @@ static void apply_keymap(struct wlr_keyboard *wlr_kb)
 	}
 }
 
+/* Mwm*keyboardRepeatRate and keyboardRepeatDelay; rate 0 turns repeating off. A delay
+ * of 0 would disarm the timer of mwc's own repeat, a rate over 1000 its interval. */
+static int repeat_setting(const char *resource, long min, long max, int def)
+{
+	const char *v = config_get(resource);
+	if (v && *v) {
+		char *end;
+		long n = strtol(v, &end, 10);
+		if (*end == '\0' && n >= min && n <= max)
+			return (int)n;
+		wlr_log(WLR_ERROR, "Mwm*%s: expected %ld to %ld, not \"%s\"", resource, min,
+			max, v);
+	}
+	return def;
+}
+
+/* Every keyboard, virtual ones too: the seat's tells the clients. */
+static void apply_repeat(struct wlr_keyboard *wlr_kb)
+{
+	wlr_keyboard_set_repeat_info(wlr_kb, repeat_setting("keyboardRepeatRate", 0, 1000, 25),
+		repeat_setting("keyboardRepeatDelay", 1, 10000, 600));
+}
+
 void input_config_changed(struct server *server)
 {
+	struct keyboard *kb;
+	/* wlroots sends nothing when it stays the same. */
+	wl_list_for_each(kb, &server->keyboards, link)
+		apply_repeat(kb->wlr_keyboard);
+
 	/* A new keymap resets Caps Lock, NumLock and the layout group, so a reload for
 	 * the sake of a colour must not bring one. */
 	char now[sizeof(keymap_settings)];
@@ -1397,7 +1425,6 @@ void input_config_changed(struct server *server)
 		return;
 	wlr_log(WLR_INFO, "keymap settings changed: %s", now);
 	snprintf(keymap_settings, sizeof(keymap_settings), "%s", now);
-	struct keyboard *kb;
 	wl_list_for_each(kb, &server->keyboards, link) {
 		/* A virtual keyboard brought its own keymap. */
 		if (!wlr_input_device_get_virtual_keyboard(&kb->wlr_keyboard->base))
@@ -1472,7 +1499,7 @@ static void new_keyboard(struct server *server, struct wlr_input_device *dev)
 	kb->wlr_keyboard = wlr_kb;
 
 	apply_keymap(wlr_kb);
-	wlr_keyboard_set_repeat_info(wlr_kb, 25, 600);
+	apply_repeat(wlr_kb);
 
 	kb->modifiers.notify = keyboard_modifiers;
 	wl_signal_add(&wlr_kb->events.modifiers, &kb->modifiers);
