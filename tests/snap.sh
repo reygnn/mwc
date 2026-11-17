@@ -326,6 +326,29 @@ do_input move 640 300
 do_input up left
 check "Wayland: dragged away, the old size" "[ \"\$(get wl w)\" = 300 ] && [ \"\$(get wl h)\" = 200 ]"
 stop wl
+stop_vinput
+stop_mwc
+
+# ---- the target on a big monitor ----------------------------------------------------
+
+# The target is drawn in strips: one picture of an 8K monitor's size would be 130 MB.
+RC=$XDG_CONFIG_HOME/mwc/mwmrc
+mkdir -p "$(dirname "$RC")"
+echo 'Mwm*HEADLESS-1*outputMode: 7680x4320' >"$RC"
+start_mwc 'exec sleep 300'
+start_vinput 7680 4320
+hwm() { awk '/^VmHWM/ { print int($2 / 1024) }' "/proc/$pid/status"; }
+wayland big
+grab_title big
+before=$(hwm)
+do_input move 3840 0
+check "the target is the whole monitor" "[ \"\$(global preview w)\" -gt 7000 ]"
+after=$(hwm)
+do_input up left
+[ $((after - before)) -lt 60 ] || fail "the target took $((after - before)) MB"
+echo "ok: the target takes $((after - before)) MB"
+stop big
+rm "$RC"
 
 stop_vinput
 stop_mwc

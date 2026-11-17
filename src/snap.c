@@ -14,7 +14,10 @@
 #define SNAP_CORNER 64 /* corner zone along each edge */
 #define PREVIEW_W 8    /* outline thickness */
 
-static struct wlr_scene_buffer *preview;
+/* Four strips: the inside is empty, and one picture of the whole box would be the
+ * output's size, 32 MB at 4K, made anew with each zone. */
+static struct wlr_scene_tree *preview;
+static struct wlr_scene_buffer *preview_strip[4];
 static struct wlr_box preview_box;
 static bool preview_visible;
 
@@ -136,29 +139,45 @@ void snap_preview_box(struct view *view, struct wlr_box r)
 	const int t = PREVIEW_W;
 	const struct mwc_shade *sh = &view->shade_active;
 
-	struct cairo_buffer *buf = cairo_buffer_create(r.width, r.height);
-	if (!buf)
-		return;
-	cairo_t *cr = buf->cr;
-	set_source(cr, sh->bg);
-	cairo_paint(cr);
-	draw_bevel(cr, 0, 0, r.width, r.height, theme.bevel, sh, false);
-	draw_bevel(cr, t - 2, t - 2, r.width - 2 * (t - 2), r.height - 2 * (t - 2),
-		2, sh, true);
-	cairo_save(cr);
-	cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-	cairo_rectangle(cr, t, t, r.width - 2 * t, r.height - 2 * t);
-	cairo_fill(cr);
-	cairo_restore(cr);
-
 	if (!preview) {
-		preview = wlr_scene_buffer_create(server->layer_feedback, NULL);
-		preview->point_accepts_input = scene_buffer_no_input;
+		preview = wlr_scene_tree_create(server->layer_feedback);
+		if (!preview)
+			return;
+		for (int i = 0; i < 4; i++) {
+			preview_strip[i] = wlr_scene_buffer_create(preview, NULL);
+			if (preview_strip[i])
+				preview_strip[i]->point_accepts_input = scene_buffer_no_input;
+		}
+	}
+	const int st = t < r.height / 2 ? t : r.height / 2;
+	const int sl = t < r.width / 2 ? t : r.width / 2;
+	const struct wlr_box strips[4] = {
+		{ 0, 0, r.width, st }, { 0, r.height - st, r.width, st },
+		{ 0, st, sl, r.height - 2 * st }, { r.width - sl, st, sl, r.height - 2 * st },
+	};
+	for (int i = 0; i < 4; i++) {
+		const struct wlr_box *b = &strips[i];
+		if (!preview_strip[i])
+			continue;
+		struct cairo_buffer *buf = b->width > 0 && b->height > 0 ?
+			cairo_buffer_create(b->width, b->height) : NULL;
+		if (buf) {
+			/* The whole ring, of which the strip shows its part. */
+			cairo_t *cr = buf->cr;
+			set_source(cr, sh->bg);
+			cairo_paint(cr);
+			cairo_translate(cr, -b->x, -b->y);
+			draw_bevel(cr, 0, 0, r.width, r.height, theme.bevel, sh, false);
+			draw_bevel(cr, t - 2, t - 2, r.width - 2 * (t - 2),
+				r.height - 2 * (t - 2), 2, sh, true);
+		}
+		wlr_scene_buffer_set_buffer(preview_strip[i], buf ? &buf->base : NULL);
+		if (buf)
+			cairo_buffer_drop(buf);
+		wlr_scene_node_set_position(&preview_strip[i]->node, b->x, b->y);
 	}
 	/* Where the window goes stays visible over the target. */
 	wlr_scene_node_lower_to_bottom(&preview->node);
-	wlr_scene_buffer_set_buffer(preview, &buf->base);
-	cairo_buffer_drop(buf);
 	wlr_scene_node_set_position(&preview->node, r.x, r.y);
 	wlr_scene_node_set_enabled(&preview->node, true);
 	preview_box = r;
