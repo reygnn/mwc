@@ -354,6 +354,19 @@ sleep 0.2
 check "refused for X11 too" "[ \"\$(global cursor mode)\" = 0 ]"
 stop xlate
 
+# Asked while a button is held on another window: it can't take over the user's drag.
+x11 xother moveresize=3 pos=100,100 size=300x200
+x11 xheld pos=600,100 size=300x200
+do_input move 750 200
+do_input down left
+wait_for "an X client asks while the button is held on another" has xother '^asked'
+sleep 0.2 # an X11 client: no way to ask it
+check "refused: the drag stays the user's" \
+	"[ \"\$(global cursor mode)\" = 0 ] && [ \"\$(get xother x)\" = 100 ]"
+do_input up left
+stop xother
+stop xheld
+
 x11 xpress move_press=1 pos=100,100 size=300x200
 do_input move 250 200
 do_input down left

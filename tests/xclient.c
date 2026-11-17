@@ -31,6 +31,7 @@
  *     override=mapped     map it normal, set override-redirect afterwards
  *     clipboard=1         own CLIPBOARD and answer with 200 KB of text
  *     moveresize=2        map it, then ask for _NET_WM_MOVERESIZE with no button down
+ *     moveresize=3        the same 2 s after mapping, time to hold a button elsewhere
  *     move_press=1        a press asks for _NET_WM_MOVERESIZE, as toolkits do
  *     report=1            print _NET_FRAME_EXTENTS as it changes, and whether a Motif
  *                         window manager can be found, as XmIsMotifWMRunning looks
@@ -654,9 +655,9 @@ int main(int argc, char *argv[])
 		printf("activate asked\n");
 		fflush(stdout);
 	}
-	if (o.moveresize == 2) {
+	if (o.moveresize == 2 || o.moveresize == 3) {
 		XSync(dpy, False);
-		usleep(500000);
+		usleep(o.moveresize == 3 ? 2000000 : 500000);
 		ask_moveresize(main_win);
 		printf("asked\n");
 	}
