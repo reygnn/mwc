@@ -238,6 +238,7 @@ printf 'Mwm*keyboardRepeatRate: 0\nMwm*keyboardRepeatDelay: 300\n' >"$RC"
 reload_mwc
 wait_for "a reload with the key down turns repeating off" has_event rep "repeat 0 300"
 do_input lift a
+: >"$SMOKE_DIR/rep.events" # the defaults from the start must not count
 echo 'Mwm*keyboardRepeatRate: fast' >"$RC"
 reload_mwc
 wait_for "a bad value: the defaults again" has_event rep "repeat 25 600"
