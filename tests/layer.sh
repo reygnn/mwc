@@ -212,6 +212,24 @@ pixel_is "the surface is mapped" 1270 360 444444
 check "keyboard=none leaves the keyboard alone" "[ \"\$(get foot kbfocus)\" = 1 ]"
 layerc_stop nokbd
 
+# A window going away behind an on-demand surface that has the keyboard: the next
+# window becomes the active one, but the keys stay where the user types.
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=leaving >/dev/null 2>&1 &
+PID_leaving=$!
+check "a window has the keyboard" "[ \"\$(get leaving kbfocus)\" = 1 ]"
+layerc_start od layer=top anchor=right size=50x50 keyboard=on-demand color=444444
+wait_for "an on-demand surface takes it as it appears" has_event od keyboard-enter
+kill "$PID_leaving"
+wait "$PID_leaving" 2>/dev/null
+check "the window is gone, foot is the active one" \
+	"[ -z \"\$(get leaving x)\" ] && [ \"\$(get foot active)\" = 1 ]"
+do_input key a
+wait_for "the keys still go to the surface" has_event od "key 30"
+has_event od keyboard-leave && fail "the surface lost the keyboard to the next window"
+echo "ok: it keeps the keyboard"
+layerc_stop od
+check "when it goes, foot has the keyboard" "[ \"\$(get foot kbfocus)\" = 1 ]"
+
 # Two that insist: when the newer one goes, the keyboard goes to the other, not a window.
 layerc_start lock1 layer=overlay anchor=left size=50x50 keyboard=exclusive color=555555
 wait_for "exclusive keyboard: the first has it" has_event lock1 keyboard-enter

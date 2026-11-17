@@ -418,19 +418,48 @@ static bool cyclable(struct view *view)
 
 /* Give the focus to the topmost remaining window, or to nobody. A shaded window
  * only gets it when asked for by name. */
-static void focus_next(struct server *server, struct view *except)
+/* A window went away and v takes its place. An on-demand layer surface with the
+ * keyboard keeps it, and its popup stays open: the user types there. v gets the keys
+ * when the surface lets go (take_keyboard_back()). */
+static void focus_instead(struct view *v)
 {
-	/* Prefer the window a dialog belongs to. */
-	struct view *v = except ? view_parent(except) : NULL;
-	if (v && v != except && cyclable(v) && !v->shaded) {
+	struct server *server = v->server;
+	if (!server->focused_layer || server->exclusive_layer || !view_focusable(v) ||
+			v->off_desktop || v->tab_hidden || v->minimized ||
+			v->hidden_with_parent) {
 		view_focus(v);
 		return;
 	}
-	wl_list_for_each(v, &server->views, link) {
-		if (v != except && cyclable(v) && !v->shaded) {
-			view_focus(v);
-			return;
+	struct view *prev = focused_view(server);
+	if (prev && prev != v)
+		view_set_activated(prev, false);
+	if (!v->activated)
+		view_set_activated(v, true);
+	view_raise(v);
+	input_pointer_changed(server);
+}
+
+/* gone: except went away by itself, not by the user's doing here. */
+static void focus_next_after(struct server *server, struct view *except, bool gone)
+{
+	/* Prefer the window a dialog belongs to. */
+	struct view *v = except ? view_parent(except) : NULL, *next = NULL;
+	if (v && v != except && cyclable(v) && !v->shaded) {
+		next = v;
+	} else {
+		wl_list_for_each(v, &server->views, link) {
+			if (v != except && cyclable(v) && !v->shaded) {
+				next = v;
+				break;
+			}
 		}
+	}
+	if (next) {
+		if (gone)
+			focus_instead(next);
+		else
+			view_focus(next);
+		return;
 	}
 	if (except && except->activated)
 		view_set_activated(except, false);
@@ -438,6 +467,11 @@ static void focus_next(struct server *server, struct view *except)
 		input_end_client_grab(server);
 		wlr_seat_keyboard_notify_clear_focus(server->seat);
 	}
+}
+
+static void focus_next(struct server *server, struct view *except)
+{
+	focus_next_after(server, except, false);
 }
 
 static void view_maximize_at(struct view *view, bool maximized, double px,
@@ -910,7 +944,7 @@ void view_minimize(struct view *view)
 	/* The layout first: a shaded window may become the main one, and take the focus. */
 	tile_arrange(server);
 	if (had_focus)
-		focus_next(server, view);
+		focus_next_after(server, view, true);
 	input_pointer_changed(server);
 }
 
@@ -1571,7 +1605,7 @@ void view_handle_unmap(struct view *view)
 	/* The layout first: a shaded window may become the main one, and take the focus. */
 	tile_arrange(server);
 	if (was_active)
-		focus_next(server, view);
+		focus_next_after(server, view, true);
 	if (was_urgent)
 		workspace_update(server); /* its desktop may have nothing left to show */
 	input_pointer_changed(server);
