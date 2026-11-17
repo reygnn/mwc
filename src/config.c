@@ -71,6 +71,13 @@ static struct rule *rules;
 static int n_rules;
 static char path[4096];
 
+/* Bad booleans reported since the last load, each once: not per drag or map. By
+ * text: the rule a value came from is freed on a reload, and a new one may get the
+ * same address. */
+#define MAX_WARNED 16
+static char warned[MAX_WARNED][128];
+static int n_warned;
+
 /* DoNotTile or TileOnly, whichever comes last, with its programs. */
 static enum { FILTER_NONE, FILTER_DENY, FILTER_ONLY } tile_filter;
 static char **tile_names;
@@ -383,6 +390,7 @@ void config_load(void)
 	free(rules);
 	rules = NULL;
 	n_rules = 0;
+	n_warned = 0;
 
 	const char *cfg = getenv("XDG_CONFIG_HOME");
 	const char *home = getenv("HOME");
@@ -484,9 +492,6 @@ bool config_color(const char *value, struct mwc_color *out)
 
 int config_bool(const char *name, const char *s)
 {
-	/* Each bad value once, not per drag. By its text: the rule it came from is freed
-	 * on a reload, and a new one may get the same address. */
-	static char warned[256];
 	if (!s || !*s)
 		return -1;
 	if (!strcasecmp(s, "true") || !strcasecmp(s, "on") ||
@@ -495,12 +500,16 @@ int config_bool(const char *name, const char *s)
 	if (!strcasecmp(s, "false") || !strcasecmp(s, "off") ||
 			!strcasecmp(s, "no") || !strcmp(s, "0"))
 		return 0;
-	char key[sizeof(warned)];
+	char key[sizeof(warned[0])];
 	snprintf(key, sizeof(key), "%s=%s", name, s);
-	if (strcmp(key, warned) != 0) {
-		wlr_log(WLR_ERROR, "ignoring %s value %s, not a boolean", name, s);
-		snprintf(warned, sizeof(warned), "%s", key);
+	for (int i = 0; i < n_warned; i++) {
+		if (!strcmp(key, warned[i]))
+			return -1;
 	}
+	wlr_log(WLR_ERROR, "ignoring %s value %s, not a boolean", name, s);
+	/* Past the last slot the oldest goes: a file this wrong says so often enough. */
+	snprintf(warned[n_warned < MAX_WARNED ? n_warned++ : MAX_WARNED - 1],
+		sizeof(warned[0]), "%s", key);
 	return -1;
 }
 

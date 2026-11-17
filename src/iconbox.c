@@ -64,6 +64,7 @@ struct desk {
 static struct {
 	struct server *server;
 	bool enabled;    /* Mwm*useIconBox, as of the last load or reload */
+	int max;         /* Mwm*iconBoxSize, likewise */
 	int title_w;     /* "Icons" in the theme's font */
 	struct wlr_scene_tree *tree;
 	struct wlr_scene_buffer *chrome; /* frame, title bar, scroll bar */
@@ -514,7 +515,7 @@ void iconbox_arrange(struct server *server)
 	int fit = (along + icon_gap()) / (size + icon_gap());
 	if (fit < 1)
 		fit = 1;
-	ib.cap = max_icons() < fit ? max_icons() : fit;
+	ib.cap = ib.max < fit ? ib.max : fit;
 	ib.visible = ib.maximized ? ib.cap : (ib.n < ib.cap ? ib.n : ib.cap);
 	ib.scrolls = ib.n > ib.visible;
 	clamp_scroll(d);
@@ -619,6 +620,7 @@ void iconbox_config_changed(struct server *server)
 {
 	bool was = ib.enabled;
 	ib.enabled = config_bool("useIconBox", config_get("useIconBox")) == 1;
+	ib.max = max_icons(); /* read once: a bad value is reported once */
 	ib.maximized = false;
 	if (ib.enabled) {
 		int h;

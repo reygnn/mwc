@@ -287,6 +287,26 @@ kill -HUP "$pid"
 check "switched on again: the icons go into the box" \
 	"[ \"\$(box shown)\" = 1 ] && [ \"\$(box n)\" = 2 ]"
 
+# Bad values are reported once, not with every arrange, and the default holds.
+sed -i 's/iconBoxSize: 3/iconBoxSize: 0/' "$RC"
+echo 'Mwm*one*allDesktops: maybe' >>"$RC"
+echo 'Mwm*two*allDesktops: kind of' >>"$RC"
+reload_mwc
+for d in 2 1 2 1; do
+	ws activate $d >/dev/null || fail "activating desktop $d"
+	check "desktop $d" "[ \"\$(global desktop current)\" = $d ]"
+done
+n=$(grep -c 'iconBoxSize: expected' "$LOG")
+[ "$n" = 1 ] || fail "a bad iconBoxSize was reported $n times"
+for bad in 'allDesktops value maybe' 'allDesktops value kind of'; do
+	n=$(grep -c "ignoring $bad," "$LOG")
+	[ "$n" = 1 ] || fail "'$bad' was reported $n times"
+done
+echo "ok: bad values are reported once each"
+sed -i -e 's/iconBoxSize: 0/iconBoxSize: 3/' -e '/maybe\|kind of/d' "$RC"
+reload_mwc
+check "back to three" "[ \"\$(box shown)\" = 1 ] && [ \"\$(box n)\" = 2 ]"
+
 # ---- from the right ------------------------------------------------------------------
 
 # "right bottom": the box at the bottom right, its first icon on the right, so going on
