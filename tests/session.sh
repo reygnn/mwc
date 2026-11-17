@@ -141,6 +141,14 @@ begin
 output_is "a position nothing can add to changes nothing" HEADLESS-1 0 0 1280 720
 log_has "and is reported" 'ignoring outputPosition "2147483647,2147483647"'
 finish
+# Past the range of int: not taken as what is left of it, 5 here.
+for pos in 4294967301,0 -2147483648,0; do
+	echo "Mwm*HEADLESS-1*outputPosition: $pos" >"$RC"
+	begin
+	log_has "$pos is reported" "ignoring outputPosition \"$pos\""
+	output_is "and changes nothing" HEADLESS-1 0 0 1280 720
+	finish
+done
 
 # A monitor someone switched off stays off, and gets what it missed when it comes back.
 power() { WAYLAND_DISPLAY=wayland-0 build/powerc "$1" || fail "powerc $1"; }

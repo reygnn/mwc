@@ -505,12 +505,19 @@ static struct wlr_output_layout_output *output_place(struct server *server,
 	struct wlr_output *o)
 {
 	const char *value = config_get_for(o->name, "outputPosition");
-	int x, y, consumed = 0;
 	if (value) {
-		/* The limit keeps sums of positions and sizes from overflowing. */
-		if (sscanf(value, "%d,%d%n", &x, &y, &consumed) == 2 && !value[consumed] &&
-				abs(x) <= 1000000 && abs(y) <= 1000000)
-			return wlr_output_layout_add(server->output_layout, o, x, y);
+		/* The limit keeps sums of positions and sizes from overflowing. strtol,
+		 * not %d: past the range of int that would be undefined. */
+		char *end;
+		long x = strtol(value, &end, 10), y = 0;
+		bool ok = end != value && *end == ',';
+		if (ok) {
+			const char *ys = end + 1;
+			y = strtol(ys, &end, 10);
+			ok = end != ys && *end == '\0';
+		}
+		if (ok && x >= -1000000 && x <= 1000000 && y >= -1000000 && y <= 1000000)
+			return wlr_output_layout_add(server->output_layout, o, (int)x, (int)y);
 		wlr_log(WLR_ERROR, "ignoring outputPosition \"%s\" for %s", value, o->name);
 	}
 	return wlr_output_layout_add_auto(server->output_layout, o);
