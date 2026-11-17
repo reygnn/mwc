@@ -176,9 +176,10 @@ static int dump_state(int signal, void *data)
 		(int)server->cursor->x, (int)server->cursor->y, server->cursor_mode,
 		cs ? cs->current.buffer_width : 0, cs ? cs->current.buffer_height : 0,
 		cs ? cs->current.scale : 0);
-	fprintf(f, "seat pointer=%s keyboard=%s\n",
+	fprintf(f, "seat pointer=%s keyboard=%s caps=%u\n",
 		surface_owner(server, server->seat->pointer_state.focused_surface),
-		surface_owner(server, server->seat->keyboard_state.focused_surface));
+		surface_owner(server, server->seat->keyboard_state.focused_surface),
+		server->seat->capabilities);
 	fclose(f);
 	if (rename(tmp, state_path) != 0)
 		wlr_log_errno(WLR_ERROR, "cannot rename %s", tmp);

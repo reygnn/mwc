@@ -513,6 +513,12 @@ WAYLAND_DISPLAY=wayland-0 build/vinput 1280 720 </dev/null >/dev/null 2>&1 ||
 	fail "a second vinput"
 [ "$(grep -c 'keymap compiled' "$LOG")" = 1 ] || fail "a second keyboard compiled a keymap"
 echo "ok: a second keyboard shares the keymap"
+# The seat says it has a keyboard while it has one, and only then.
+check "with vinput's keyboard: pointer and keyboard" "[ \"\$(global seat caps)\" = 3 ]"
+stop_vinput
+check "without a keyboard the seat says so" "[ \"\$(global seat caps)\" = 1 ]"
+start_vinput
+check "and with one again" "[ \"\$(global seat caps)\" = 3 ]"
 echo 'Mwm*keyboardLayout: fr' >"$RC"
 kill -HUP "$pid"
 wait_for "a reload for the layout" grep -q 'keymap settings changed' "$LOG"

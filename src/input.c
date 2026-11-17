@@ -1319,9 +1319,18 @@ static void keyboard_key(struct wl_listener *listener, void *data)
 	}
 }
 
+static void update_capabilities(struct server *server)
+{
+	uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
+	if (!wl_list_empty(&server->keyboards))
+		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
+	wlr_seat_set_capabilities(server->seat, caps);
+}
+
 static void keyboard_destroy(struct wl_listener *listener, void *data)
 {
 	struct keyboard *kb = wl_container_of(listener, kb, destroy);
+	struct server *server = kb->server;
 	if (kb->repeat)
 		wl_event_source_remove(kb->repeat);
 	wl_list_remove(&kb->modifiers.link);
@@ -1329,6 +1338,8 @@ static void keyboard_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&kb->destroy.link);
 	wl_list_remove(&kb->link);
 	free(kb);
+	/* The last one gone: clients must not count on a keyboard. */
+	update_capabilities(server);
 }
 
 /* The environment over mwmrc, as for the other settings. */
@@ -1536,10 +1547,7 @@ void input_add_device(struct server *server, struct wlr_input_device *dev)
 	default:
 		break;
 	}
-	uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
-	if (!wl_list_empty(&server->keyboards))
-		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
-	wlr_seat_set_capabilities(server->seat, caps);
+	update_capabilities(server);
 }
 
 static void new_input(struct wl_listener *listener, void *data)
