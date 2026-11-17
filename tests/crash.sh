@@ -309,6 +309,16 @@ echo "ok: mwc stays below 1 GB with it ($peak kB)"
 grep -q 'cannot create a' "$LOG" && fail "a frame buffer was too large"
 echo "ok: every frame buffer could be made"
 stop whuge
+# The largest size a viewport allows: mwc takes it at most 2^20 wide, where frame
+# sizes, a pointer over it and its placement don't overflow.
+wayland wmax size=2147483647x100 viewport=1
+check "a 2147483647 wide window is mapped, 2^20 wide" "[ \"\$(get wmax w)\" = 1048576 ]"
+do_input move 640 360
+do_input move 641 361
+do_input key alt+Tab
+do_input key alt+Tab
+alive "a window 2147483647 wide"
+stop wmax
 finish
 
 # ---- a keymap that doesn't exist --------------------------------------------------------------

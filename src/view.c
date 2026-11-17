@@ -207,6 +207,15 @@ void view_gravity_place(struct view *view, int ow, int oh, int w, int h,
 
 /* Called from the commit handlers once the client has a (new) size; own when the
  * client chose it, not mwc. */
+/* Through wp_viewporter a 1x1 buffer makes a window of any size up to INT32_MAX:
+ * beyond 2^20, as far as outputPosition goes, frame sizes and placement overflow. */
+#define VIEW_MAX_SIZE (1 << 20)
+
+static int size_cap(int v)
+{
+	return v > VIEW_MAX_SIZE ? VIEW_MAX_SIZE : v;
+}
+
 static void view_apply_size(struct view *view, int w, int h, bool own)
 {
 	if (w == view->width && h == view->height) {
@@ -1731,7 +1740,7 @@ static void xdg_commit(struct wl_listener *listener, void *data)
 	if (!view->mapped)
 		return;
 	/* Caught up, and still not the size asked for: its own choice. */
-	int w = base->geometry.width, h = base->geometry.height;
+	int w = size_cap(base->geometry.width), h = size_cap(base->geometry.height);
 	bool own = base->current.configure_serial >= view->anchor_serial &&
 		(w != view->requested_w || h != view->requested_h);
 	view_apply_size(view, w, h, own);
@@ -1770,8 +1779,8 @@ static void xdg_map(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, map);
 	struct wlr_box *g = &view->xdg_toplevel->base->geometry;
-	view->width = view->requested_w = g->width;
-	view->height = view->requested_h = g->height;
+	view->width = view->requested_w = size_cap(g->width);
+	view->height = view->requested_h = size_cap(g->height);
 	view_handle_map(view);
 }
 
