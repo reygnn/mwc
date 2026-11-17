@@ -6,9 +6,11 @@
  *                             workspace id=1 name=1 x=0 state=active caps=activate group=1
  *                             (group=1: in the group), and one for the group:
  *                             group outputs=N caps=0
- *   workspacec activate ID    activate that one and wait until it says active
+ *   workspacec activate ID... activate each, one commit after the other without
+ *                             waiting, and wait until the last says active
  *   workspacec urgent ID      wait until that one says urgent
- *   workspacec outputs N      wait until the group has N outputs
+ *   workspacec outputs N      say "outputs-start M" with the outputs the group has at
+ *                             first, then wait until it has N
  *
  * state is a list of active, urgent and hidden joined by +, or none. Exits 0 on
  * success, 1 on failure or after five seconds, 2 on a usage error.
@@ -235,7 +237,8 @@ int main(int argc, char *argv[])
 	bool known = !strcmp(mode, "list") || (argc > 2 && (!strcmp(mode, "activate") ||
 		!strcmp(mode, "urgent") || !strcmp(mode, "outputs")));
 	if (!known) {
-		fprintf(stderr, "usage: workspacec list | activate ID | urgent ID | outputs N\n");
+		fprintf(stderr, "usage: workspacec list | activate ID... | urgent ID | "
+			"outputs N\n");
 		return 2;
 	}
 	signal(SIGALRM, timed_out);
@@ -271,23 +274,29 @@ int main(int argc, char *argv[])
 	if (!strcmp(argv[1], "outputs")) {
 		int want_outputs = atoi(argv[2]);
 		wl_display_roundtrip(display);
+		printf("outputs-start %d\n", group_outputs);
+		fflush(stdout);
 		while (group_outputs != want_outputs)
 			if (wl_display_dispatch(display) < 0)
 				return 1;
 		printf("outputs %d\n", group_outputs);
 		return 0;
 	}
-	struct ws *w = find(argv[2]);
-	if (!w) {
-		fprintf(stderr, "workspacec: no workspace %s\n", argv[2]);
-		return 1;
+	bool activate = !strcmp(argv[1], "activate");
+	struct ws *w = NULL;
+	for (int i = 2; i < (activate ? argc : 3); i++) {
+		w = find(argv[i]);
+		if (!w) {
+			fprintf(stderr, "workspacec: no workspace %s\n", argv[i]);
+			return 1;
+		}
+		if (activate) {
+			ext_workspace_handle_v1_activate(w->handle);
+			ext_workspace_manager_v1_commit(manager);
+		}
 	}
 	uint32_t want = !strcmp(argv[1], "urgent") ? EXT_WORKSPACE_HANDLE_V1_STATE_URGENT :
 		EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE;
-	if (!strcmp(argv[1], "activate")) {
-		ext_workspace_handle_v1_activate(w->handle);
-		ext_workspace_manager_v1_commit(manager);
-	}
 	while (!(w->state & want))
 		if (next_done(display) < 0)
 			return 1;

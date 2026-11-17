@@ -319,13 +319,20 @@ stop dockmenu
 
 ws outputs 0 >"$SMOKE_DIR/outputs.out" 2>&1 &
 PID_outputs=$!
-sleep 0.3
+# It must have seen the output first, or it ends at once without seeing it leave.
+wait_for "the pager sees the output" grep -q '^outputs-start 1' "$SMOKE_DIR/outputs.out"
 WAYLAND_DISPLAY=wayland-0 build/outputc apply HEADLESS-1 off || fail "switching the output off"
 wait "$PID_outputs" || fail "the group keeps an output that left: $(cat "$SMOKE_DIR/outputs.out")"
 echo "ok: an output switched off leaves the group"
 WAYLAND_DISPLAY=wayland-0 build/outputc apply HEADLESS-1 on || fail "switching it on"
 ws outputs 1 >"$SMOKE_DIR/outputs.out" 2>&1 || fail "the output doesn't come back: $(cat "$SMOKE_DIR/outputs.out")"
 echo "ok: and a new client sees it again"
+
+# A pager asking for several desktops at once: the first at once, then at most one per
+# 50 ms, the last asked for; none is lost and the last one wins.
+ws activate 2 4 1 3 >/dev/null || fail "activating 2 4 1 3"
+check "the last one asked for is current" "[ \"\$(global desktop current)\" = 3 ]"
+switch_to 1
 
 # An X11 window on another desktop asks to be on all of them: it comes into sight.
 x11 farstick size=200x100 script=-r,-r,+s
