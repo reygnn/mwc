@@ -531,8 +531,11 @@ bool input_button_held(struct server *server)
 
 void process_cursor_motion(struct server *server, uint32_t time)
 {
-	wlr_scene_node_set_position(&server->layer_drag->node,
-		lround(server->cursor->x), lround(server->cursor->y));
+	/* Only while a drag runs: wlroots walks the whole scene for each move of a
+	 * node, even of an empty tree. */
+	if (server->seat->drag)
+		wlr_scene_node_set_position(&server->layer_drag->node,
+			lround(server->cursor->x), lround(server->cursor->y));
 	switch (server->cursor_mode) {
 	case CURSOR_MOVE:
 		process_move(server);
