@@ -98,6 +98,13 @@ static enum window_type xwayland_type(struct wlr_xwayland_surface *xs)
 	return xs->parent ? WT_DIALOG : WT_NORMAL;
 }
 
+/* X11 windows are at most 32767 wide; the hints may say anything, and size
+ * arithmetic on them must not overflow. */
+static int hint_size(int32_t v)
+{
+	return v < 0 ? 0 : v > 32767 ? 32767 : v;
+}
+
 static void read_xwayland_size_hints(struct view *view)
 {
 	struct wlr_xwayland_surface *xs = view->xsurface;
@@ -109,28 +116,28 @@ static void read_xwayland_size_hints(struct view *view)
 	/* ICCCM 4.1.2.3: base and min size stand in for each other. */
 	view->base_w = view->base_h = view->min_w = view->min_h = 0;
 	if (has_base) {
-		view->base_w = sh->base_width;
-		view->base_h = sh->base_height;
+		view->base_w = hint_size(sh->base_width);
+		view->base_h = hint_size(sh->base_height);
 	} else if (has_min) {
-		view->base_w = sh->min_width;
-		view->base_h = sh->min_height;
+		view->base_w = hint_size(sh->min_width);
+		view->base_h = hint_size(sh->min_height);
 	}
 	if (has_min) {
-		view->min_w = sh->min_width;
-		view->min_h = sh->min_height;
+		view->min_w = hint_size(sh->min_width);
+		view->min_h = hint_size(sh->min_height);
 	} else if (has_base) {
-		view->min_w = sh->base_width;
-		view->min_h = sh->base_height;
+		view->min_w = hint_size(sh->base_width);
+		view->min_h = hint_size(sh->base_height);
 	}
 	view->max_w = view->max_h = 0;
 	if (flags & XCB_ICCCM_SIZE_HINT_P_MAX_SIZE) {
-		view->max_w = sh->max_width > 0 ? sh->max_width : 0;
-		view->max_h = sh->max_height > 0 ? sh->max_height : 0;
+		view->max_w = hint_size(sh->max_width);
+		view->max_h = hint_size(sh->max_height);
 	}
 	view->inc_w = view->inc_h = 0;
 	if (flags & XCB_ICCCM_SIZE_HINT_P_RESIZE_INC) {
-		view->inc_w = sh->width_inc > 0 ? sh->width_inc : 0;
-		view->inc_h = sh->height_inc > 0 ? sh->height_inc : 0;
+		view->inc_w = hint_size(sh->width_inc);
+		view->inc_h = hint_size(sh->height_inc);
 	}
 	view->min_aspect = view->max_aspect = 0;
 	if ((flags & XCB_ICCCM_SIZE_HINT_P_ASPECT) && sh->min_aspect_num > 0 &&

@@ -85,6 +85,11 @@ static void apply_struts(struct output *output, struct wlr_box *usable)
 				!v->xsurface->strut_partial)
 			continue;
 		const xcb_ewmh_wm_strut_partial_t *s = v->xsurface->strut_partial;
+		/* Past the whole screen it means nothing, and the sums below would
+		 * overflow. */
+		if ((long)s->left > sw || (long)s->right > sw || (long)s->top > sh ||
+				(long)s->bottom > sh)
+			continue;
 		/* A strut counts from the edge of the whole screen, so that of a panel on
 		 * an inner edge reaches over the monitors before it. There it leaves too
 		 * little room and means nothing, and neither does a nonsensical one. The

@@ -321,6 +321,31 @@ alive "a window 2147483647 wide"
 stop wmax
 finish
 
+# ---- client numbers past any screen ---------------------------------------------------------
+# Struts, size hints and a window menu position at the ends of their types: mwc must not
+# do signed arithmetic that overflows on them, which make check's UBSan aborts on.
+
+begin
+x11 strutmax type=dock pos=0,0 size=100x30 strut=0,4294967295,0,2147483648
+check "a panel with absurd struts is mapped" "[ -n \"\$(get strutmax x)\" ]"
+check "they are not believed" "[ \"\$(global output uw)\" = 1280 ] && [ \"\$(global output uh)\" = 720 ]"
+x11 basemin pos=200,200 size=300x200 base=-2147483648x-2147483648 min=10x10
+check "a window with a base size of INT_MIN is mapped" "[ -n \"\$(get basemin x)\" ]"
+do_input key alt+F8
+do_input key Right
+do_input key Return
+alive "resizing it"
+wayland menuat menu_at=2147483647,2147483647
+check "a window asking for a menu far away is mapped" "[ -n \"\$(get menuat x)\" ]"
+do_input move $(($(get menuat x) + 50)) $(($(get menuat y) + 80))
+do_input click left
+wait_for "it asks for the window menu" grep -q 'menu asked' "$SMOKE_DIR/menuat.events"
+check "the menu opens on the screen" "[ \"\$(global menu open)\" = 1 ] && \
+	[ \"\$(global menu x)\" -lt 1280 ] && [ \"\$(global menu y)\" -lt 720 ]"
+do_input key Escape
+alive "a window menu asked for at INT32_MAX"
+finish
+
 # ---- a keymap that doesn't exist --------------------------------------------------------------
 
 export XKB_DEFAULT_LAYOUT=no-such-layout

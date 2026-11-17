@@ -32,6 +32,8 @@
  *                  a window of any size for next to no memory
  *     cursor=WxH@S a cursor of its own while the pointer is over it: a WxH buffer
  *                  at buffer scale S
+ *     menu_at=X,Y  a button press asks for the window menu at X,Y, any int32;
+ *                  says "menu asked"
  */
 #define _GNU_SOURCE
 #include <stdbool.h>
@@ -64,6 +66,10 @@ static struct org_kde_kwin_server_decoration_manager *kde_manager;
 static struct wp_viewporter *viewporter;
 static bool use_viewport, clear;
 static int cursor_w, cursor_h, cursor_scale;
+static bool menu_asked;
+static int32_t menu_x, menu_y;
+static struct wl_seat *the_seat;
+static struct xdg_toplevel *menu_toplevel;
 static struct wl_surface *cursor_surf;
 
 struct window {
@@ -142,6 +148,8 @@ static void draw(struct window *win)
 static void pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	struct wl_surface *surface, wl_fixed_t x, wl_fixed_t y)
 {
+	if (cursor_scale <= 0)
+		return;
 	if (!cursor_surf) {
 		size_t size = (size_t)cursor_w * cursor_h * 4;
 		int fd = memfd_create("xdgc-cursor", MFD_CLOEXEC);
@@ -180,6 +188,11 @@ static void pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time
 static void pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 	uint32_t time, uint32_t button, uint32_t state)
 {
+	if (!menu_asked || state != WL_POINTER_BUTTON_STATE_PRESSED || !menu_toplevel)
+		return;
+	xdg_toplevel_show_window_menu(menu_toplevel, the_seat, serial, menu_x, menu_y);
+	printf("menu asked\n");
+	fflush(stdout);
 }
 
 static void pointer_axis(void *data, struct wl_pointer *pointer, uint32_t time,
@@ -294,10 +307,11 @@ static void registry_global(void *data, struct wl_registry *registry,
 			&wl_compositor_interface, 4);
 	else if (strcmp(interface, wl_shm_interface.name) == 0)
 		shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
-	else if (strcmp(interface, wl_seat_interface.name) == 0 && cursor_scale > 0) {
+	else if (strcmp(interface, wl_seat_interface.name) == 0 &&
+			(cursor_scale > 0 || menu_asked)) {
 		/* The tests always have a pointer, so its capability is not awaited. */
-		struct wl_seat *seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
-		wl_pointer_add_listener(wl_seat_get_pointer(seat), &pointer_listener, NULL);
+		the_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
+		wl_pointer_add_listener(wl_seat_get_pointer(the_seat), &pointer_listener, NULL);
 	}
 	else if (strcmp(interface, wl_output_interface.name) == 0 && n_outputs < 4)
 		outputs[n_outputs++] = wl_registry_bind(registry, name, &wl_output_interface, 1);
@@ -433,6 +447,8 @@ int main(int argc, char *argv[])
 			grow_ms = atoi(v);
 		else if (!strcmp(argv[i], "cursor"))
 			sscanf(v, "%dx%d@%d", &cursor_w, &cursor_h, &cursor_scale);
+		else if (!strcmp(argv[i], "menu_at"))
+			menu_asked = sscanf(v, "%d,%d", &menu_x, &menu_y) == 2;
 	}
 	if (!app) {
 		fprintf(stderr, "xdgc: app= is required\n");
@@ -452,6 +468,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	struct window *main_win = open_window(app, NULL, default_w, default_h, true);
+	menu_toplevel = main_win->toplevel;
 	if (dialog) {
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);

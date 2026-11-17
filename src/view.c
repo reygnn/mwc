@@ -1884,8 +1884,11 @@ static void xdg_request_show_window_menu(struct wl_listener *listener,
 	if (!view->activated ||
 			!wlr_seat_client_validate_event_serial(event->seat, event->serial))
 		return;
-	menu_open_window(view->server, view, view->x + frame_left(view) + event->x,
-		view->y + frame_top(view) + event->y);
+	/* Within the window: the client may say any int32. */
+	int x = event->x < 0 ? 0 : event->x > view->width ? view->width : event->x;
+	int y = event->y < 0 ? 0 : event->y > view->height ? view->height : event->y;
+	menu_open_window(view->server, view, view->x + frame_left(view) + x,
+		view->y + frame_top(view) + y);
 }
 
 static void xdg_set_title(struct wl_listener *listener, void *data)
