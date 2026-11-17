@@ -798,7 +798,8 @@ void outline_hide(void);
 bool outline_get(struct wlr_box *box); /* false while hidden */
 void feedback_show(struct server *server, const char *text, double lx, double ly);
 void feedback_hide(void);
-const char *feedback_get(struct wlr_box *box); /* "" while hidden */
+/* "" while hidden; draws: how often it was drawn. */
+const char *feedback_get(struct wlr_box *box, int *draws);
 
 /* ---- layer.c ------------------------------------------------------------ */
 

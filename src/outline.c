@@ -28,8 +28,12 @@ static struct wlr_box outline_box;
 static bool outline_visible;
 
 static struct wlr_scene_buffer *feedback_node;
-static char feedback_shown[64];
+static char feedback_shown[64], feedback_want[64];
 static struct wlr_box feedback_box;
+static double feedback_lx, feedback_ly;
+static int feedback_draws;
+static void feedback_draw(void *data);
+static struct throttle feedback_throttle = { .ms = 16, .run = feedback_draw };
 
 /* The environment wins over mwmrc, unless it holds no boolean. */
 bool outline_wanted(void)
@@ -126,33 +130,25 @@ bool outline_get(struct wlr_box *box)
 
 /* ---- feedback ------------------------------------------------------------ */
 
-void feedback_show(struct server *server, const char *text, double lx, double ly)
+/* Where it goes: the middle of the pointer's monitor. */
+static void feedback_place(struct server *server)
 {
-	struct wlr_box m = output_full_area(server, lx, ly);
-	/* It follows the pointer's monitor on every motion event, but the text changes
-	 * less often, and only then is it measured and drawn. */
-	bool same = feedback_node && strcmp(text, feedback_shown) == 0;
+	struct wlr_box m = output_full_area(server, feedback_lx, feedback_ly);
 	int w = feedback_box.width, h = feedback_box.height;
-	if (!same) {
-		int tw, th;
-		text_extent(theme.font, text, &tw, &th);
-		w = tw + 24 > 80 ? tw + 24 : 80;
-		h = th + 14;
-	}
-
-	if (!feedback_node) {
-		feedback_node = wlr_scene_buffer_create(server->layer_feedback, NULL);
-		feedback_node->point_accepts_input = scene_buffer_no_input;
-	}
-	feedback_box = (struct wlr_box){ m.x + (m.width - w) / 2,
-		m.y + (m.height - h) / 2, w, h };
-	wlr_scene_node_set_position(&feedback_node->node, feedback_box.x,
-		feedback_box.y);
+	feedback_box = (struct wlr_box){ m.x + (m.width - w) / 2, m.y + (m.height - h) / 2,
+		w, h };
+	wlr_scene_node_set_position(&feedback_node->node, feedback_box.x, feedback_box.y);
 	wlr_scene_node_set_enabled(&feedback_node->node, true);
-	if (same)
-		return;
-	snprintf(feedback_shown, sizeof(feedback_shown), "%s", text);
+}
 
+static void feedback_draw(void *data)
+{
+	struct server *server = data;
+	if (!feedback_want[0] || !strcmp(feedback_want, feedback_shown))
+		return;
+	int tw, th;
+	text_extent(theme.font, feedback_want, &tw, &th);
+	const int w = tw + 24 > 80 ? tw + 24 : 80, h = th + 14;
 	const struct mwc_shade *s = &theme.inactive;
 	struct cairo_buffer *buf = cairo_buffer_create(w, h);
 	if (!buf)
@@ -162,20 +158,47 @@ void feedback_show(struct server *server, const char *text, double lx, double ly
 	cairo_paint(cr);
 	draw_bevel(cr, 0, 0, w, h, theme.bevel, s, false);
 	draw_bevel(cr, 4, 4, w - 8, h - 8, 1, s, true);
-	draw_text(cr, text, theme.font, s->fg, 6, 4, w - 12, h - 8, true);
+	draw_text(cr, feedback_want, theme.font, s->fg, 6, 4, w - 12, h - 8, true);
 	wlr_scene_buffer_set_buffer(feedback_node, &buf->base);
 	cairo_buffer_drop(buf);
+	snprintf(feedback_shown, sizeof(feedback_shown), "%s", feedback_want);
+	feedback_box.width = w;
+	feedback_box.height = h;
+	feedback_draws++;
+	feedback_place(server);
+}
+
+void feedback_show(struct server *server, const char *text, double lx, double ly)
+{
+	if (!feedback_node) {
+		feedback_node = wlr_scene_buffer_create(server->layer_feedback, NULL);
+		if (!feedback_node)
+			return;
+		feedback_node->point_accepts_input = scene_buffer_no_input;
+	}
+	feedback_lx = lx;
+	feedback_ly = ly;
+	snprintf(feedback_want, sizeof(feedback_want), "%s", text);
+	/* A move changes the text with every motion event, a fast mouse a thousand
+	 * times a second: it is drawn at most once a refresh, the last one. */
+	if (strcmp(text, feedback_shown)) {
+		feedback_throttle.data = server;
+		throttle_call(&feedback_throttle, server->event_loop);
+	} else {
+		feedback_place(server);
+	}
 }
 
 void feedback_hide(void)
 {
 	if (feedback_node)
 		wlr_scene_node_set_enabled(&feedback_node->node, false);
-	feedback_shown[0] = '\0';
+	feedback_shown[0] = feedback_want[0] = '\0';
 }
 
-const char *feedback_get(struct wlr_box *box)
+const char *feedback_get(struct wlr_box *box, int *draws)
 {
 	*box = feedback_box;
+	*draws = feedback_draws;
 	return feedback_shown;
 }

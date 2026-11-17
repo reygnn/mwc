@@ -102,6 +102,16 @@ pixel_is "the outline is drawn in the window's colour" 151 200 7387ad
 pixel_is "the title bar line is drawn too" 300 $((130 + B + T - 1)) 7387ad
 refresh
 pixel_is "the box is drawn" $(($(global feedback x) + 2)) $(($(global feedback y) + 10)) aeb2c3
+# A fast mouse: the box is drawn about once a refresh, not for every motion event,
+# and shows where the window ends up.
+draws=$(global feedback draws)
+do_input glide $((TX + 250)) $((TY + 130)) 200
+do_input glide $((TX + 50)) $((TY + 30)) 200
+feedback_is "after a fast move the box shows the position" "+150_+130"
+refresh
+[ $(($(global feedback draws) - draws)) -le 40 ] ||
+	fail "400 motion events drew the box $(($(global feedback draws) - draws)) times"
+echo "ok: 400 motion events drew the box $(($(global feedback draws) - draws)) times"
 do_input up left
 geometry_is "the window goes there when released" mover 150 130 300 200
 no_grab_left "nothing is left of the grab"

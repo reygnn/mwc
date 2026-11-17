@@ -3,6 +3,8 @@
  * line from stdin and answers "ok" once mwc has processed it:
  *
  *   move X Y           absolute pointer position
+ *   glide X Y N        N steps from where the pointer is to X Y, all sent at once,
+ *                      as a fast mouse does
  *   down|up|click B    B is left, middle or right
  *   key COMBO          press and release, e.g. "alt+F4", "shift+Escape", "q"
  *   press KEY          press a key and keep it down, until vinput goes
@@ -228,6 +230,22 @@ static const char *do_button(const char *name, bool press, bool release)
 	return NULL;
 }
 
+static int pointer_x, pointer_y;
+
+static void move_to(int x, int y)
+{
+	/* A real mouse stops at the screen's edge, too. */
+	x = x < 0 ? 0 : x >= width ? width - 1 : x;
+	y = y < 0 ? 0 : y >= height ? height - 1 : y;
+	pointer_x = x;
+	pointer_y = y;
+	/* Aim at the pixel centre: an exact X/width lands just below X after the
+	 * compositor's floating-point mapping. */
+	zwlr_virtual_pointer_v1_motion_absolute(pointer, now_msec(), 2 * x + 1, 2 * y + 1,
+		2 * width, 2 * height);
+	zwlr_virtual_pointer_v1_frame(pointer);
+}
+
 static const char *run_command(char *line)
 {
 	char *save = NULL;
@@ -237,15 +255,17 @@ static const char *run_command(char *line)
 	if (!cmd)
 		return "empty command";
 	if (strcmp(cmd, "move") == 0 && a && b) {
-		/* Aim at the pixel centre: an exact X/width lands just below
-		 * X after the compositor's floating-point mapping. */
-		/* A real mouse stops at the screen's edge, too. */
-		int x = atoi(a), y = atoi(b);
-		x = x < 0 ? 0 : x >= width ? width - 1 : x;
-		y = y < 0 ? 0 : y >= height ? height - 1 : y;
-		zwlr_virtual_pointer_v1_motion_absolute(pointer, now_msec(),
-			2 * x + 1, 2 * y + 1, 2 * width, 2 * height);
-		zwlr_virtual_pointer_v1_frame(pointer);
+		move_to(atoi(a), atoi(b));
+		return NULL;
+	}
+	if (strcmp(cmd, "glide") == 0 && a && b) {
+		char *c = strtok_r(NULL, " \n", &save);
+		int n = c ? atoi(c) : 0;
+		if (n < 1)
+			return "glide needs a number of steps";
+		int x0 = pointer_x, y0 = pointer_y, x1 = atoi(a), y1 = atoi(b);
+		for (int i = 1; i <= n; i++)
+			move_to(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n);
 		return NULL;
 	}
 	if (!a)
