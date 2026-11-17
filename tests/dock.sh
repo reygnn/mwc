@@ -413,6 +413,25 @@ echo "ok: the dock's frame takes $((after - before)) MB"
 stop wide
 stop high
 
+# A window that joins the dock while it is dragged: the drag lets go of it, and it goes
+# into the dock and stays there.
+echo 'Mwm*joiner*dock: true' >"$RC"
+reload_mwc
+wayland drifter size=200x100 late_app=joiner late_ms=2500
+do_input move $(($(get drifter x) + 60)) $(($(get drifter y) + $(get drifter bw) + 5))
+do_input down left
+do_input move 400 300
+check "it is being dragged" "[ \"\$(global cursor mode)\" != 0 ]"
+wait_for "it changes its app_id" grep -q '^late app' "$SMOKE_DIR/drifter.log"
+check "docked, the drag lets go of it" \
+	"[ \"\$(get joiner everywhere)\" = 1 ] && [ \"\$(global cursor mode)\" = 0 ] && \
+	 [ \"\$(get joiner x)\" = \$((\$(dock x) + B)) ]"
+do_input move 300 200
+do_input up left
+check "and it stays in the dock" "[ \"\$(get joiner x)\" = \$((\$(dock x) + B)) ]"
+kill "$PID_drifter"
+wait "$PID_drifter" 2>/dev/null
+
 stop_vinput
 stop_mwc
 echo "PASS"
