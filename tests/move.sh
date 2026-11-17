@@ -170,6 +170,28 @@ echo "ok: and stops when it goes up"
 do_input key Escape
 geometry_is "Escape: the window stays where it was" mover 159 139 300 200
 
+# Its own repeat follows mwmrc as the clients' does; with rate 0 a held arrow is one
+# step. (A reload ends the move, so it can't change the rate in the middle of one.)
+printf 'Mwm*keyboardRepeatDelay: 100\nMwm*keyboardRepeatRate: 50\n' >"$RC"
+reload_mwc
+do_input key alt+F7
+do_input press Right
+check "a shorter delay, a faster repeat" "[ \"\$(global outline x)\" -ge 259 ]"
+do_input lift Right
+do_input key Escape
+printf 'Mwm*keyboardRepeatDelay: 100\nMwm*keyboardRepeatRate: 0\n' >"$RC"
+reload_mwc
+do_input key alt+F7
+do_input press Right
+outline_is "rate 0: one step" 169 139 "$OW" "$OH"
+sleep 0.5 # five times the delay
+outline_is "and no more" 169 139 "$OW" "$OH"
+do_input lift Right
+do_input key Escape
+rm "$RC"
+reload_mwc
+geometry_is "the window stays where it was" mover 159 139 300 200
+
 do_input key alt+F7
 do_input key Left
 outline_is "a new move" 149 139 "$OW" "$OH"
