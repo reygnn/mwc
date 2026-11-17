@@ -260,12 +260,23 @@ case $oldest in HEADLESS-1) other=HEADLESS-2 ;; HEADLESS-2) other=HEADLESS-1 ;;
 area() { refresh; echo "$(global "output_$1" x) $(global "output_$1" y) 1280 720"; }
 first_area=$(area "$oldest") other_area=$(area "$other")
 wait_for "the workarea is the oldest monitor's ($oldest)" workarea_is "$first_area"
+# A panel on it, with the keyboard: closed with its monitor, the keyboard back to a window.
+do_input move $(($(global "output_$oldest" x) + 640)) 360
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=overlay anchor=top,left,right size=0x30 \
+	exclusive=30 keyboard=exclusive color=444444 >"$SMOKE_DIR/gone.events" 2>&1 &
+PID_gone=$!
+wait_for "a panel with the keyboard" grep -q keyboard-enter "$SMOKE_DIR/gone.events"
+wait_for "it reserves its strip" workarea_is "$(global "output_$oldest" x) 30 1280 690"
 echo "$oldest" >"$MWC_TEST_STATE.unplug"
 kill -USR2 "$pid"
 check "$oldest is unplugged, the other stays where it was" \
 	"[ -z \"\$(global output_$oldest x)\" ] && \
 	[ \"\$(global output_$other x) \$(global output_$other y) 1280 720\" = \"$other_area\" ]"
+wait_for "the panel is closed with it" grep -q '^closed' "$SMOKE_DIR/gone.events"
+check "the window has the keyboard back" "[ \"\$(get wa kbfocus)\" = 1 ]"
 wait_for "the workarea is now the other monitor's" workarea_is "$other_area"
+kill "$PID_gone" 2>/dev/null
+wait "$PID_gone" 2>/dev/null
 kill "$PID_wa"
 wait "$PID_wa" 2>/dev/null
 rm "$XDG_CONFIG_HOME/mwc/mwmrc"
