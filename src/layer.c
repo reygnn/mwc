@@ -180,33 +180,17 @@ void layer_arrange(struct output *output)
  * refresh, with what was committed last. */
 #define ARRANGE_MS 16
 
-static int arrange_rested(void *data)
+static void arrange_now(void *data)
 {
-	struct output *output = data;
-	output->arrange_resting = false;
-	if (!output->arrange_due)
-		return 0;
-	output->arrange_due = false;
-	layer_arrange(output);
-	output->arrange_resting = true;
-	wl_event_source_timer_update(output->arrange_timer, ARRANGE_MS);
-	return 0;
+	layer_arrange(data);
 }
 
 void layer_arrange_soon(struct output *output)
 {
-	if (!output->arrange_timer)
-		output->arrange_timer = wl_event_loop_add_timer(output->server->event_loop,
-			arrange_rested, output);
-	if (output->arrange_resting && output->arrange_timer) {
-		output->arrange_due = true;
-		return;
-	}
-	layer_arrange(output);
-	if (output->arrange_timer) {
-		output->arrange_resting = true;
-		wl_event_source_timer_update(output->arrange_timer, ARRANGE_MS);
-	}
+	output->arrange.ms = ARRANGE_MS;
+	output->arrange.run = arrange_now;
+	output->arrange.data = output;
+	throttle_call(&output->arrange, output->server->event_loop);
 }
 
 void layers_arrange_all(struct server *server)
@@ -474,12 +458,8 @@ static void new_layer_surface(struct wl_listener *listener, void *data)
 void layer_output_gone(struct output *output)
 {
 	dock_output_gone(output);
-	if (output->arrange_timer)
-		wl_event_source_remove(output->arrange_timer);
-	output->arrange_timer = NULL;
-	/* The output may come back: its next arrange_soon() must arm a new timer. */
-	output->arrange_resting = false;
-	output->arrange_due = false;
+	/* The output may come back: its next arrange_soon() arms a new timer. */
+	throttle_cancel(&output->arrange);
 	for (int layer = 0; layer < MWC_SHELL_LAYERS; layer++) {
 		struct layer_surface *ls, *tmp;
 		wl_list_for_each_safe(ls, tmp, &output->layers[layer], link)

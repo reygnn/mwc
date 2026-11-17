@@ -178,39 +178,21 @@ static void send_output(struct ws_client *c, struct wlr_output *output, bool ent
  * SWITCH_MS, the last asked for. */
 #define SWITCH_MS 50
 
-static struct wl_event_source *switch_timer;
 static struct server *switch_server;
-static int switch_waiting = -1; /* asked for meanwhile, -1: none */
-static bool switch_resting;     /* the timer runs */
+static int switch_to; /* the last asked for */
 
-static int switch_rested(void *data)
+static void switch_now(void *data)
 {
-	switch_resting = false;
-	if (switch_waiting < 0)
-		return 0;
-	int n = switch_waiting;
-	switch_waiting = -1;
-	desktop_switch(switch_server, n);
-	switch_resting = true;
-	wl_event_source_timer_update(switch_timer, SWITCH_MS);
-	return 0;
+	desktop_switch(switch_server, switch_to);
 }
+
+static struct throttle switch_throttle = { .ms = SWITCH_MS, .run = switch_now };
 
 static void request_switch(struct server *server, int n)
 {
-	if (!switch_timer) {
-		switch_server = server;
-		switch_timer = wl_event_loop_add_timer(server->event_loop, switch_rested, NULL);
-	}
-	if (switch_resting && switch_timer) {
-		switch_waiting = n;
-		return;
-	}
-	desktop_switch(server, n);
-	if (switch_timer) {
-		switch_resting = true;
-		wl_event_source_timer_update(switch_timer, SWITCH_MS);
-	}
+	switch_server = server;
+	switch_to = n;
+	throttle_call(&switch_throttle, server->event_loop);
 }
 
 static void manager_commit(struct wl_client *client, struct wl_resource *resource)

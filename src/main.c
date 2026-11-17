@@ -320,6 +320,43 @@ static void new_idle_inhibitor(struct wl_listener *listener, void *data)
 	idle_recount(server, NULL);
 }
 
+static int throttle_rested(void *data)
+{
+	struct throttle *t = data;
+	t->resting = false;
+	if (!t->due)
+		return 0;
+	t->due = false;
+	t->resting = true;
+	wl_event_source_timer_update(t->timer, t->ms);
+	t->run(t->data);
+	return 0;
+}
+
+void throttle_call(struct throttle *t, struct wl_event_loop *loop)
+{
+	if (!t->timer)
+		t->timer = wl_event_loop_add_timer(loop, throttle_rested, t);
+	if (t->resting) {
+		t->due = true;
+		return;
+	}
+	/* Without a timer each call runs: slower, but nothing is lost. */
+	if (t->timer) {
+		t->resting = true;
+		wl_event_source_timer_update(t->timer, t->ms);
+	}
+	t->run(t->data);
+}
+
+void throttle_cancel(struct throttle *t)
+{
+	if (t->timer)
+		wl_event_source_remove(t->timer);
+	t->timer = NULL;
+	t->resting = t->due = false;
+}
+
 static void output_destroy(struct wl_listener *listener, void *data)
 {
 	struct output *output = wl_container_of(listener, output, destroy);

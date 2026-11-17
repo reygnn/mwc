@@ -88,6 +88,21 @@ struct cairo_buffer *cairo_buffer_create(int width, int height);
 /* The scene keeps it while shown. */
 void cairo_buffer_drop(struct cairo_buffer *buf);
 
+/* ---- throttle, in main.c ------------------------------------------------- */
+
+/* For work a client or a fast mouse could ask for faster than it is worth doing:
+ * the first call runs at once, then at most one per ms, the last one asked for. */
+struct throttle {
+	int ms;
+	void (*run)(void *data);
+	void *data;
+	struct wl_event_source *timer;
+	bool resting, due;
+};
+void throttle_call(struct throttle *t, struct wl_event_loop *loop);
+/* Drops a call that waits, and the timer. */
+void throttle_cancel(struct throttle *t);
+
 /* ---- views -------------------------------------------------------------- */
 
 enum view_type {
@@ -513,8 +528,7 @@ struct output {
 	struct wlr_box usable; /* what panels leave free */
 	struct wlr_box open;   /* usable, but with the dock's strip */
 	struct wlr_box dock;   /* the dock's box here, empty without one */
-	struct wl_event_source *arrange_timer; /* see arrange_soon() */
-	bool arrange_resting, arrange_due;
+	struct throttle arrange; /* see layer_arrange_soon() */
 	struct wlr_scene_rect *background;
 	struct wlr_scene_buffer *wallpaper; /* NULL: none */
 	int wallpaper_w, wallpaper_h;       /* rendered for */
