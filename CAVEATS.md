@@ -40,7 +40,9 @@ the viewer as usual.
 As in most wlroots compositors, any client may use these, and mwc asks nobody:
 wlr-screencopy and ext-image-copy-capture-v1 read the screen, ext-data-control-v1 and
 wlr-data-control read and set the clipboard, wlr-layer-shell covers the screen, and
-ext-workspace-v1 switches the desktop. Virtual keyboard and pointer are the exception:
+ext-workspace-v1 switches the desktop. wlr-output-power-management lets any client
+switch every monitor off; input does not bring them back, only a client does (wlopm
+or a screen saver such as displayOff). Virtual keyboard and pointer are the exception:
 they exist only with `MWC_VIRTUAL_INPUT=1` or in the tests.
 
 
@@ -105,6 +107,13 @@ half next to it.
 
 `geometry` does not apply to a window that starts maximized or fullscreen, nor to a
 client that sets its `app_id` only after its window has appeared.
+
+
+## Many icons
+
+Icons on the desktop take their places one after another, each checked against all the
+others. With a few hundred icons, a change of the usable area (a panel coming or going)
+takes noticeably long. The icon box is not affected.
 
 
 ## X11 details

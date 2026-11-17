@@ -73,3 +73,18 @@ TODO
   Mwm*outputManagement bleibt nötig. src/fifo.c fällt zugunsten von wlroots'
   wlr_fifo_manager_v1 weg (vorher prüfen, dass tests/fifo.sh weiter besteht).
   Ein eigener Branch, mit allen API-Änderungen von 0.19 auf 0.20.
+
+* Wallpaper beim Reload nur neu laden, wenn es sich geändert hat (Review
+  2026-11-17). Jetzt dekodiert ein Reload das PNG einmal zur Prüfung und
+  einmal pro Output, auch wenn nur eine Farbe geändert wurde; bei einem
+  großen Foto auf zwei 4K-Monitoren steht die Session dabei spürbar.
+  Pfad, mtime und Größe merken und nur bei einer Änderung neu zeichnen; die
+  Prüf-Dekodierung in wallpaper_init() entfällt.
+  Abnahme: ein Test in tests/wallpaper.sh, der zählt, wie oft dekodiert wird.
+
+* Opakes Resize von X11-Fenstern von links oder oben: die gegenüberliegende
+  Kante zittert (Review 2026-11-17). view_set_geometry() setzt die neue
+  Position sofort, das Fenster hat aber noch die alte Größe, bis Xwayland
+  committet. Wie bei xdg: Position erst mit dem Commit setzen
+  (xw_commit() verankert schon über grab_geobox).
+  Abnahme: ein Pixeltest in tests/move.sh mit langsamem Client.
