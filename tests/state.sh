@@ -514,7 +514,8 @@ check "and comes back with it" "[ \"\$(get kidp min)\" = 0 ] && [ \"\$(get kid h
 stop kidp
 
 x11 latin latin1_title=1
-sleep 0.5
+# Mapped with its 12 bytes as the title: its frame has been drawn with them.
+check "the Latin-1 title is drawn" "[ \"\$(get latin tlen)\" = 12 ]"
 grep -aq 'Invalid UTF-8' "$LOG" && fail "a Latin-1 title reaches Pango as it is"
 echo "ok: a Latin-1 title is converted"
 stop latin
