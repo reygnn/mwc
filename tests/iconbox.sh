@@ -266,8 +266,12 @@ do_input key super+t
 
 # ---- reload ----------------------------------------------------------------------------
 
+# Switched off while it has the keyboard: a window gets it.
+click_at $(title_bar)
+check "the box has the keyboard" "[ \"\$(box focused)\" = 1 ]"
 sed -i 's/useIconBox: true/useIconBox: false/' "$RC"
 kill -HUP "$pid"
+check "switched off with the keyboard, a window gets it" "[ \"\$(global focus any)\" = 1 ]"
 # Every icon is shown.
 icons_shown() {
 	local a

@@ -629,7 +629,7 @@ void iconbox_config_changed(struct server *server)
 			cairo_surface_destroy(image);
 		return;
 	}
-	set_focused(false);
+	lose_focus(); /* a window gets the keyboard */
 	hide_all();
 	forget_icons();
 	if (was) {
