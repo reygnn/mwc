@@ -12,7 +12,7 @@
  *     type=dialog|utility|splash|dock|desktop|notification|toolbar
  *     motif=FUNCS,DECOR   _MOTIF_WM_HINTS
  *     input=0             WM_HINTS without input focus
- *     state=above|below|fullscreen|maximized   initial _NET_WM_STATE
+ *     state=above|below|fullscreen|maximized|sticky   initial _NET_WM_STATE
  *     ask_before=fullscreen|maximized  ask with a _NET_WM_STATE message, while unmapped
  *     ask_later=fullscreen|maximized   ask with one 2 s after mapping
  *     ask_after=fullscreen|maximized   ask with one right after XMapWindow, unsynced,

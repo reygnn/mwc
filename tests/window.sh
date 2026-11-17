@@ -368,6 +368,9 @@ for i in 1 2 3 4 5; do
 	x11 startbelow state=below
 	check "starts below, try $i" "[ \"\$(get startbelow below)\" = 1 ]"
 	stop startbelow
+	x11 startsticky state=sticky
+	check "starts on all desktops, try $i" "[ \"\$(get startsticky everywhere)\" = 1 ]"
+	stop startsticky
 done
 
 # ---- window types and stacking ------------------------------------------------

@@ -421,6 +421,7 @@ struct server {
 	uint32_t atom_motif_hints, atom_motif_info, atom_frame_extents;
 	uint32_t atom_net_wm_state, atom_state_above, atom_state_below;
 	uint32_t atom_state_fullscreen, atom_state_max_vert, atom_state_max_horz;
+	uint32_t atom_state_sticky;
 
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;

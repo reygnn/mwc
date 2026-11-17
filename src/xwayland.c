@@ -118,6 +118,8 @@ static void read_initial_state(struct view *view)
 				max_v = true;
 			else if (atoms[i] == server->atom_state_max_horz)
 				max_h = true;
+			else if (atoms[i] == server->atom_state_sticky)
+				wlr_xwayland_surface_set_sticky(xs, true);
 		}
 		if (max_v || max_h)
 			wlr_xwayland_surface_set_maximized(xs, max_h, max_v);
@@ -817,6 +819,7 @@ static void xwayland_ready(struct wl_listener *listener, void *data)
 		"_NET_WM_STATE_MAXIMIZED_VERT");
 	server->atom_state_max_horz = intern_atom(conn,
 		"_NET_WM_STATE_MAXIMIZED_HORZ");
+	server->atom_state_sticky = intern_atom(conn, "_NET_WM_STATE_STICKY");
 	layer_publish_workarea(server);
 
 	/* X clients that never set a cursor get the default arrow. */
