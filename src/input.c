@@ -1359,7 +1359,12 @@ static void keyboard_settings_text(char *buf, size_t size)
 		n.variant ? n.variant : "", n.options ? n.options : "");
 }
 
-static void apply_keymap(struct wlr_keyboard *wlr_kb)
+/* One keymap for every keyboard: wlroots compares keymaps by pointer, and each
+ * switch between keyboard devices with different ones sends the keymap to every
+ * client again. Built anew when its settings change. */
+static struct xkb_keymap *shared_keymap;
+
+static struct xkb_keymap *compile_keymap(void)
 {
 	const struct xkb_rule_names names = keyboard_settings();
 	keyboard_settings_text(keymap_settings, sizeof(keymap_settings));
@@ -1370,21 +1375,24 @@ static void apply_keymap(struct wlr_keyboard *wlr_kb)
 	if (keymap) {
 		wlr_log(WLR_INFO, "keymap compiled, layout %s",
 			xkb_keymap_layout_get_name(keymap, 0));
-	} else {
-		/* A typo in the layout must not cost the keyboard, let alone the
-		 * session. Without the environment this time, it may be what failed. */
-		wlr_log(WLR_ERROR, "cannot compile the keymap, falling back to the "
-			"us layout");
-		const struct xkb_rule_names us = { .layout = "us" };
-		ctx = xkb_context_new(XKB_CONTEXT_NO_ENVIRONMENT_NAMES);
-		keymap = xkb_keymap_new_from_names(ctx, &us,
-			XKB_KEYMAP_COMPILE_NO_FLAGS);
-		xkb_context_unref(ctx);
+		return keymap;
 	}
-	if (keymap) {
-		wlr_keyboard_set_keymap(wlr_kb, keymap);
-		xkb_keymap_unref(keymap);
-	}
+	/* A typo in the layout must not cost the keyboard, let alone the session.
+	 * Without the environment this time, it may be what failed. */
+	wlr_log(WLR_ERROR, "cannot compile the keymap, falling back to the us layout");
+	const struct xkb_rule_names us = { .layout = "us" };
+	ctx = xkb_context_new(XKB_CONTEXT_NO_ENVIRONMENT_NAMES);
+	keymap = xkb_keymap_new_from_names(ctx, &us, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	xkb_context_unref(ctx);
+	return keymap;
+}
+
+static void apply_keymap(struct wlr_keyboard *wlr_kb)
+{
+	if (!shared_keymap)
+		shared_keymap = compile_keymap();
+	if (shared_keymap)
+		wlr_keyboard_set_keymap(wlr_kb, shared_keymap);
 }
 
 /* Mwm*keyboardRepeatRate and keyboardRepeatDelay; rate 0 turns repeating off. A delay
@@ -1424,7 +1432,8 @@ void input_config_changed(struct server *server)
 	if (!strcmp(now, keymap_settings))
 		return;
 	wlr_log(WLR_INFO, "keymap settings changed: %s", now);
-	snprintf(keymap_settings, sizeof(keymap_settings), "%s", now);
+	xkb_keymap_unref(shared_keymap);
+	shared_keymap = compile_keymap();
 	wl_list_for_each(kb, &server->keyboards, link) {
 		/* A virtual keyboard brought its own keymap. */
 		if (!wlr_input_device_get_virtual_keyboard(&kb->wlr_keyboard->base))

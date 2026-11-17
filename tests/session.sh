@@ -492,6 +492,12 @@ echo 'Mwm*rootBackground: #102030' >>"$RC"
 reload_mwc
 grep -q 'keymap settings changed' "$LOG" && fail "a reload for a colour rebuilt the keymap"
 echo "ok: a reload for a colour leaves the keymap alone"
+# Every keyboard gets the same keymap: with one of its own, each switch between them
+# would send the keymap to every client again.
+WAYLAND_DISPLAY=wayland-0 build/vinput 1280 720 </dev/null >/dev/null 2>&1 ||
+	fail "a second vinput"
+[ "$(grep -c 'keymap compiled' "$LOG")" = 1 ] || fail "a second keyboard compiled a keymap"
+echo "ok: a second keyboard shares the keymap"
 echo 'Mwm*keyboardLayout: fr' >"$RC"
 kill -HUP "$pid"
 wait_for "a reload for the layout" grep -q 'keymap settings changed' "$LOG"
