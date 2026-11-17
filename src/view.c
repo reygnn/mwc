@@ -1693,6 +1693,9 @@ static void xdg_send_first_configure(struct view *view)
 	wlr_xdg_toplevel_set_tiled(top, WLR_EDGE_NONE);
 	wlr_xdg_toplevel_set_resizing(top, false);
 	wlr_xdg_toplevel_set_suspended(top, false);
+	/* False until view_focus(): a window mapped without the focus would draw itself
+	 * focused. */
+	wlr_xdg_toplevel_set_activated(top, view->activated);
 	/* The output it goes back to, leaving a state. */
 	view->fit_px = server->cursor->x;
 	view->fit_py = server->cursor->y;

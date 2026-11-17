@@ -150,6 +150,8 @@ fi
 bad remapplain remap-plain
 wait_for "the client started over" grep -q 'configured max=' "$SMOKE_DIR/remapplain.events"
 grep -q 'configured max=0' "$SMOKE_DIR/remapplain.events" || fail "the new first configure says maximized"
+grep -q 'activated=0' "$SMOKE_DIR/remapplain.events" ||
+	fail "the new first configure says activated, before mwc gave it the focus"
 echo "ok: the new first configure says nothing of its old states"
 check "and it isn't maximized" "[ \"\$(get bad max)\" = 0 ]"
 stop remapplain

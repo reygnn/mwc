@@ -46,7 +46,7 @@ static struct wl_data_device_manager *ddm;
 static struct wl_display *display;
 
 static const char *app = "bad";
-static int config_max;
+static int config_max, config_act;
 static const char *mode;
 static struct wl_surface *main_surface;
 static struct xdg_surface *main_xdg;
@@ -96,11 +96,13 @@ static void top_configure(void *data, struct xdg_toplevel *t, int32_t w, int32_t
 {
 	config_w = w;
 	config_h = h;
-	config_max = 0;
+	config_max = config_act = 0;
 	uint32_t *state;
 	wl_array_for_each(state, states) {
 		if (*state == XDG_TOPLEVEL_STATE_MAXIMIZED)
 			config_max = 1;
+		if (*state == XDG_TOPLEVEL_STATE_ACTIVATED)
+			config_act = 1;
 	}
 }
 
@@ -627,7 +629,7 @@ int main(int argc, char *argv[])
 		wl_surface_commit(surface);
 		wait_configure();
 		xdg_surface_ack_configure(xdg, configure_serial);
-		printf("configured max=%d\n", config_max);
+		printf("configured max=%d activated=%d\n", config_max, config_act);
 		wl_surface_attach(surface, make_buffer(200, 100), 0, 0);
 		wl_surface_commit(surface);
 	} else if (!strcmp(mode, "remap")) {
