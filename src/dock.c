@@ -28,7 +28,11 @@
 static struct {
 	/* Between normal and docked windows, in a layer of its own: lowering a docked
 	 * window can't put it under the frame. */
-	struct wlr_scene_buffer *frame;
+	struct wlr_scene_tree *frame;
+	/* The fill under the tools and the bevel in four strips: a picture of the whole
+	 * dock would take a docked client's size in memory, gigabytes for a huge one. */
+	struct wlr_scene_rect *fill;
+	struct wlr_scene_buffer *strip[4];
 	int drawn_w, drawn_h;  /* 0: to be drawn anew */
 	struct output *output; /* the one the dock is on, or NULL */
 	struct wlr_box box;    /* the dock with its frame; empty without tools */
@@ -57,15 +61,32 @@ static void render_frame(int w, int h)
 {
 	if (w == dk.drawn_w && h == dk.drawn_h)
 		return;
-	struct cairo_buffer *buf = cairo_buffer_create(w, h);
-	if (!buf)
-		return;
 	const struct mwc_shade *s = &theme.inactive;
-	set_source(buf->cr, s->bg);
-	cairo_paint(buf->cr);
-	draw_bevel(buf->cr, 0, 0, w, h, theme.bevel, s, false);
-	wlr_scene_buffer_set_buffer(dk.frame, &buf->base);
-	cairo_buffer_drop(buf);
+	const float c[4] = { s->bg.r, s->bg.g, s->bg.b, 1 };
+	wlr_scene_rect_set_color(dk.fill, c);
+	wlr_scene_rect_set_size(dk.fill, w, h);
+	const int t = theme.bevel < w / 2 && theme.bevel < h / 2 ? theme.bevel : 0;
+	const struct wlr_box strips[4] = {
+		{ 0, 0, w, t }, { 0, h - t, w, t }, { 0, t, t, h - 2 * t },
+		{ w - t, t, t, h - 2 * t },
+	};
+	for (int i = 0; i < 4; i++) {
+		const struct wlr_box *b = &strips[i];
+		struct cairo_buffer *buf = t > 0 ? cairo_buffer_create(b->width, b->height) :
+			NULL;
+		if (buf) {
+			/* The whole bevel, of which the strip shows its part: the corners
+			 * join diagonally as Motif's do. */
+			set_source(buf->cr, s->bg);
+			cairo_paint(buf->cr);
+			cairo_translate(buf->cr, -b->x, -b->y);
+			draw_bevel(buf->cr, 0, 0, w, h, t, s, false);
+			wlr_scene_node_set_position(&dk.strip[i]->node, b->x, b->y);
+		}
+		wlr_scene_buffer_set_buffer(dk.strip[i], buf ? &buf->base : NULL);
+		if (buf)
+			cairo_buffer_drop(buf);
+	}
 	dk.drawn_w = w;
 	dk.drawn_h = h;
 }
@@ -273,6 +294,10 @@ void dock_state(FILE *f)
 
 void dock_init(struct server *server)
 {
-	dk.frame = wlr_scene_buffer_create(&server->scene->tree, NULL);
+	dk.frame = wlr_scene_tree_create(&server->scene->tree);
+	const float none[4] = { 0 };
+	dk.fill = wlr_scene_rect_create(dk.frame, 0, 0, none);
+	for (int i = 0; i < 4; i++)
+		dk.strip[i] = wlr_scene_buffer_create(dk.frame, NULL);
 	wlr_scene_node_set_enabled(&dk.frame->node, false);
 }

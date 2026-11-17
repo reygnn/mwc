@@ -398,6 +398,21 @@ check "dropped: snapped to it" \
 	 [ \$(bottom tall) = $((720 - G)) ]"
 stop tall
 
+# The dock's frame costs no picture of the dock's size: a wide and a tall tool in a
+# row make a dock of 12000x12000, 550 MB as one picture.
+hwm() { awk '/^VmHWM/ { print int($2 / 1024) }' "/proc/$pid/status"; }
+printf 'Mwm*wide*dock: true\nMwm*high*dock: true\n' >"$RC"
+reload_mwc
+before=$(hwm)
+wayland wide size=12000x10 own_size=1
+wayland high size=10x12000 own_size=1
+check "a dock of both" "[ \"\$(dock w)\" -gt 12000 ] && [ \"\$(dock h)\" -gt 12000 ]"
+after=$(hwm)
+[ $((after - before)) -lt 200 ] || fail "the dock's frame took $((after - before)) MB"
+echo "ok: the dock's frame takes $((after - before)) MB"
+stop wide
+stop high
+
 stop_vinput
 stop_mwc
 echo "PASS"
