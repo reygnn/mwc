@@ -204,6 +204,27 @@ echo "ok: 300 strut changes made $n workarea changes"
 kill "$PID_flicker" "$PID_waf"
 wait "$PID_flicker" "$PID_waf" 2>/dev/null
 
+# A submenu of a window across both monitors stays on the monitor its menu opened on,
+# the right one: not slid back onto the left one, where the window begins.
+do_input move 100 100
+WAYLAND_DISPLAY=wayland-0 build/badclient submenu sub >"$SMOKE_DIR/sub.log" 2>&1 &
+PID_sub=$!
+check "the window is mapped" "[ \"\$(get sub active)\" = 1 ]"
+do_input key alt+F7
+refresh
+do_input move $(($(global cursor x) + 1100 - $(get sub x))) $(($(global cursor y) + 100 - $(get sub y)))
+do_input key Return
+# Give or take a pixel: vinput aims at pixel centres.
+check "a window across both monitors" "[ \"\$(get sub x)\" -ge 1095 ] && [ \"\$(get sub x)\" -le 1105 ]"
+do_input move $(($(get sub x) + 50)) $(($(get sub y) + 50))
+do_input click left
+wait_for "its menu opens a submenu" grep -q '^sub-at' "$SMOKE_DIR/sub.log"
+grep -q '^sub-at 51 26$' "$SMOKE_DIR/sub.log" ||
+	fail "the submenu was moved: $(grep '^sub-at' "$SMOKE_DIR/sub.log")"
+echo "ok: the submenu is where it asked to be"
+kill "$PID_sub"
+wait "$PID_sub" 2>/dev/null
+
 # Fullscreen on the output the client names, not the one the window is on.
 do_input move 100 100
 WAYLAND_DISPLAY=wayland-0 build/xdgc app=fsout size=300x200 fs_output=1 \

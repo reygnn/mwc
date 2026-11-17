@@ -17,6 +17,8 @@
  *   badclient log [APP]         only that
  *   badclient popup-grab [APP]  a press opens a popup with a grab; a press in it too
  *   badclient popup-far [APP]   a press opens one, then repositions it far off-screen
+ *   badclient submenu [APP]     a press opens a menu at 250,10 and in it a submenu at
+ *                               50,25, which may slide; says "sub-at X Y"
  *   badclient drag [APP]        a press starts a drag with an icon
  *   badclient drop [APP]        accepts a drag
  *   badclient move-press [APP]  a press asks for xdg_toplevel.move
@@ -221,6 +223,47 @@ static void open_grabbing_popup(uint32_t serial)
 	}
 }
 
+static void sub_configure(void *d, struct xdg_popup *p, int32_t x, int32_t y,
+	int32_t w, int32_t h)
+{
+	printf("sub-at %d %d\n", x, y);
+}
+
+static const struct xdg_popup_listener sub_listener = {
+	sub_configure, popup_done, popup_repositioned,
+};
+
+static struct xdg_popup *open_popup(struct xdg_surface *parent, int ax, int ay,
+	const struct xdg_popup_listener *listener)
+{
+	struct wl_surface *s = wl_compositor_create_surface(compositor);
+	struct xdg_surface *x = xdg_wm_base_get_xdg_surface(wm_base, s);
+	xdg_surface_add_listener(x, &popup_xdg_listener, s);
+	struct xdg_positioner *p = xdg_wm_base_create_positioner(wm_base);
+	xdg_positioner_set_size(p, 100, 50);
+	xdg_positioner_set_anchor_rect(p, ax, ay, 1, 1);
+	xdg_positioner_set_anchor(p, XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT);
+	xdg_positioner_set_gravity(p, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+	xdg_positioner_set_constraint_adjustment(p,
+		XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X |
+		XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y);
+	struct xdg_popup *popup = xdg_surface_get_popup(x, parent, p);
+	xdg_popup_add_listener(popup, listener, NULL);
+	xdg_positioner_destroy(p);
+	wl_surface_commit(s);
+	item_xdg = x;
+	return popup;
+}
+
+/* A menu and its submenu, as a window across two monitors opens them. */
+static void open_submenu(void)
+{
+	open_popup(main_xdg, 250, 10, &popup_listener);
+	wl_display_roundtrip(display);
+	open_popup(item_xdg, 50, 25, &sub_listener);
+	printf("submenu-open\n");
+}
+
 static void source_target(void *d, struct wl_data_source *s, const char *m)
 {
 }
@@ -323,6 +366,8 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 	}
 	if (down && (!strcmp(mode, "popup-grab") || !strcmp(mode, "popup-far")))
 		open_grabbing_popup(serial);
+	else if (down && !strcmp(mode, "submenu") && !item_xdg)
+		open_submenu();
 	else if (down && !strcmp(mode, "drag"))
 		start_a_drag(serial);
 	else if (down && !strcmp(mode, "menu-press"))
@@ -586,7 +631,7 @@ int main(int argc, char *argv[])
 	xdg_wm_base_add_listener(wm_base, &wm_listener, NULL);
 	bool logging = !strcmp(mode, "log") || !strcmp(mode, "popup-grab") ||
 		!strcmp(mode, "popup-item") ||
-		!strcmp(mode, "popup-far") ||
+		!strcmp(mode, "popup-far") || !strcmp(mode, "submenu") ||
 		!strcmp(mode, "drag") || !strcmp(mode, "drop") ||
 		!strcmp(mode, "move-press") || !strcmp(mode, "move-late") ||
 		!strcmp(mode, "menu-press") || !strcmp(mode, "menu-bad") ||

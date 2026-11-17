@@ -2018,15 +2018,11 @@ static void popup_unconstrain(struct popup *popup)
 		struct wlr_xdg_popup *xp = popup->xdg_popup;
 		struct wlr_box ar = xp->scheduled.rules.anchor_rect;
 		int ax = ar.x + ar.width / 2, ay = ar.y + ar.height / 2;
-		/* The anchor is in the parent's window geometry; the toplevel's surface
-		 * starts at view->x + frame_left - g->x in the layout. */
-		int tx = g->x + ax, ty = g->y + ay;
-		struct wlr_xdg_popup *parent =
-			wlr_xdg_popup_try_from_wlr_surface(xp->parent);
-		if (parent)
-			wlr_xdg_popup_get_toplevel_coords(parent,
-				parent->base->geometry.x + ax, parent->base->geometry.y + ay,
-				&tx, &ty);
+		/* The anchor is in the parent's window geometry. wlroots adds the parent
+		 * popups' positions up to the toplevel's surface, which starts at
+		 * view->x + frame_left - g->x in the layout. */
+		int tx, ty;
+		wlr_xdg_popup_get_toplevel_coords(xp, ax, ay, &tx, &ty);
 		double lx = view->x + frame_left(view) - g->x + tx;
 		double ly = view->y + frame_top(view) - g->y + ty;
 		/* Off every monitor, the window's corner decides, as before. */

@@ -379,7 +379,7 @@ pointer-test: mwc build/vinput build/pngtool build/xclient build/badclient build
 crash-test: mwc build/vinput build/xclient build/xdgc build/badclient build/layerc
 	tests/crash.sh
 
-outputs-test: mwc build/vinput build/pngtool build/xclient build/layerc
+outputs-test: mwc build/vinput build/pngtool build/xclient build/layerc build/badclient
 	tests/outputs.sh
 
 tile-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/outputc
