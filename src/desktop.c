@@ -171,6 +171,27 @@ void desktop_recheck(struct view *view)
 	focus_after(view->server, lost);
 }
 
+/* Out of sight or into it, as each window's desktop now says; the arranging after it
+ * only if one did, unless always. */
+static void recheck_all(struct server *server, bool always)
+{
+	struct view *v;
+	bool lost = false, changed = false;
+	wl_list_for_each(v, &server->views, link) {
+		bool now = off(v);
+		if (now != v->off_desktop) {
+			changed = true;
+			lost |= now && v->activated;
+			v->off_desktop = now;
+			apply(v);
+		}
+		if (!now)
+			v->attention = false;
+	}
+	if (changed || always)
+		focus_after(server, lost);
+}
+
 void desktop_config_changed(struct server *server)
 {
 	struct view *v;
@@ -179,18 +200,7 @@ void desktop_config_changed(struct server *server)
 		if (v->mapped && !v->off_desktop)
 			v->desktop = desktop_for(v);
 	}
-	bool lost = false;
-	wl_list_for_each(v, &server->views, link) {
-		bool now = off(v);
-		if (now != v->off_desktop) {
-			lost |= now && v->activated;
-			v->off_desktop = now;
-			apply(v);
-		}
-		if (!now)
-			v->attention = false;
-	}
-	focus_after(server, lost);
+	recheck_all(server, true);
 }
 
 void view_toggle_sticky(struct view *view)
@@ -199,7 +209,8 @@ void view_toggle_sticky(struct view *view)
 	struct view *root = view_transient_root(view);
 	if (view_sticky_by_rule(root))
 		return;
-	/* It is in sight, so on the current desktop; there it stays when it stops. */
+	/* On the current desktop it stays when it stops; a client may ask from another
+	 * desktop, and comes into sight. */
 	bool on = !root->sticky;
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
@@ -211,6 +222,7 @@ void view_toggle_sticky(struct view *view)
 		v->desktop = server->desktop;
 		xwayland_publish_state(v);
 	}
+	recheck_all(server, false);
 }
 
 void desktop_attention(struct view *view)

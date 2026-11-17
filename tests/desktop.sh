@@ -327,6 +327,18 @@ WAYLAND_DISPLAY=wayland-0 build/outputc apply HEADLESS-1 on || fail "switching i
 ws outputs 1 >"$SMOKE_DIR/outputs.out" 2>&1 || fail "the output doesn't come back: $(cat "$SMOKE_DIR/outputs.out")"
 echo "ok: and a new client sees it again"
 
+# An X11 window on another desktop asks to be on all of them: it comes into sight.
+x11 farstick size=200x100 script=-r,-r,+s
+switch_to 2
+check "farstick is out of sight" "[ \"\$(get farstick visible)\" = 0 ]"
+grep -q '^sent' "$SMOKE_DIR/farstick.log" && fail "farstick asked too early for the test"
+wait_for "it asks to be sticky" grep -q '^sent 3' "$SMOKE_DIR/farstick.log"
+check "it is everywhere, and in sight here" \
+	"[ \"\$(get farstick everywhere)\" = 1 ] && [ \"\$(get farstick visible)\" = 1 ]"
+kill "$PID_farstick"
+wait "$PID_farstick" 2>/dev/null
+switch_to 1
+
 kill -0 "$pid" || fail "mwc died"
 stop_vinput
 stop_mwc
