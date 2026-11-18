@@ -6,7 +6,7 @@ LOG=build/outputs.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xclient build/layerc; do
+for tool in build/vinput build/pngtool build/xclient build/layerc build/outputc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -301,6 +301,58 @@ kill "$PID_gone" 2>/dev/null
 wait "$PID_gone" 2>/dev/null
 kill "$PID_wa"
 wait "$PID_wa" 2>/dev/null
+rm "$XDG_CONFIG_HOME/mwc/mwmrc"
+stop_vinput
+stop_mwc
+
+# An output shrinking by its scale: windows filling a state on it stay there, though
+# their centre is now on the other output, which wlroots moved closer (mwmrc, placed
+# automatically), or in the gap left beside it (wlr-output-management, placed as given).
+RC=$XDG_CONFIG_HOME/mwc/mwmrc
+echo 'Mwm*outputManagement: true' >"$RC"
+rm -f "$SMOKE_DIR/display"
+start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
+wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
+X_DISPLAY=$(cat "$SMOKE_DIR/display")
+start_vinput 2560 720
+refresh
+left=HEADLESS-1 right=HEADLESS-2
+[ "$(global output_HEADLESS-2 x)" = 0 ] && left=HEADLESS-2 right=HEADLESS-1
+do_input move 640 360
+DISPLAY=$X_DISPLAY build/xclient class=half pos=100,100 size=300x200 >/dev/null 2>&1 &
+PID_half=$!
+check "a window on the left output" "[ \"\$(get half active)\" = 1 ]"
+do_input key super+Right
+frame_is "snapped to its right half" half 644 8 628 704
+DISPLAY=$X_DISPLAY build/xclient class=full pos=100,100 size=300x200 >/dev/null 2>&1 &
+PID_full=$!
+check "another one" "[ \"\$(get full active)\" = 1 ]"
+do_input key alt+F11
+check "fullscreen on the left output" \
+	"[ \"\$(get full full)\" = 1 ] && [ \"\$(get full x)\" = 0 ] && [ \"\$(get full w)\" = 1280 ]"
+on_left() { # <description> <width of the left output>
+	check "$1: the fullscreen window fills the left output" \
+		"[ \"\$(get full full)\" = 1 ] && [ \"\$(get full x)\" = 0 ] && \
+		[ \"\$(get full w)\" = $2 ]"
+	check "$1: the snapped window is the left output's right half" \
+		"[ \"\$(get half x)\" -ge $(($2 / 2)) ] && \
+		[ \$((\$(get half x) + \$(get half w) + 2 * \$(get half bw))) -le $2 ]"
+}
+printf 'Mwm*outputManagement: true\nMwm*%s*outputScale: 2\n' "$left" >"$RC"
+reload_mwc
+check "mwmrc: the left output is half as wide, the other moved beside it" \
+	"[ \"\$(global output_$left w)\" = 640 ] && [ \"\$(global output_$right x)\" = 640 ]"
+on_left "mwmrc" 640
+echo 'Mwm*outputManagement: true' >"$RC"
+reload_mwc
+check "scale 1 again" "[ \"\$(global output_$left w)\" = 1280 ]"
+on_left "back" 1280
+WAYLAND_DISPLAY=wayland-0 build/outputc apply "$left" scale 2 || fail "scale 2 on $left"
+check "outputc: the left output is half as wide, a gap beside it" \
+	"[ \"\$(global output_$left w)\" = 640 ] && [ \"\$(global output_$right x)\" = 1280 ]"
+on_left "outputc" 640
+kill "$PID_half" "$PID_full"
+wait "$PID_half" "$PID_full" 2>/dev/null
 rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 stop_vinput
 stop_mwc

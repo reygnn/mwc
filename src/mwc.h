@@ -245,6 +245,7 @@ struct view {
 	struct mwc_shade shade_active, shade_inactive;
 	struct wlr_box saved;  /* before maximize, snap, fullscreen */
 	double fit_px, fit_py; /* on the output its state fills */
+	struct output *fit_output; /* that output, while it exists */
 	/* Edges kept until an xdg client has acked its new size. */
 	uint32_t anchor_edges;
 	int anchor_right, anchor_bottom;
@@ -616,6 +617,7 @@ void views_usable_area_changed(struct server *server);
 void views_refit_snapped(struct server *server);
 void views_clear_dock(struct output *output);
 void views_layout_changed(struct server *server);
+void views_output_gone(struct output *output);
 
 /* ---- hints.c ------------------------------------------------------------ */
 

@@ -367,6 +367,7 @@ static void output_destroy(struct wl_listener *listener, void *data)
 	output_forget_managed(output);
 	output_manager_update(output->server);
 	layer_output_gone(output);
+	views_output_gone(output);
 	/* The workarea is the oldest output's. If that one went, the next oldest may keep
 	 * its place and its area, and nothing else would tell X11 programs. */
 	layer_publish_workarea(output->server);

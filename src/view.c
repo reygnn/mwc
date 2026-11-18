@@ -515,6 +515,7 @@ static void view_fit_state(struct view *view, double px, double py)
 {
 	view->fit_px = px;
 	view->fit_py = py;
+	view->fit_output = output_at(view->server, px, py);
 	struct wlr_box a = snap_area(view->server,
 		view->snap != SNAP_NONE ? view->snap : SNAP_MAXIMIZE, px, py);
 	if (view->snap != SNAP_NONE)
@@ -524,10 +525,26 @@ static void view_fit_state(struct view *view, double px, double py)
 	view_set_geometry(view, a.x, a.y, w, h);
 }
 
+/* Its centre, unless that is off the output its state fills: an output shrinking by
+ * a scale or a mode moves its neighbours under windows that stay on it. */
+static void view_state_point(struct view *view, double *px, double *py)
+{
+	*px = view->x + view->width / 2.0;
+	*py = view->y + view->height / 2.0;
+	struct output *o = view->fit_output;
+	if (!o || !output_in_layout(o) || output_at(view->server, *px, *py) == o)
+		return;
+	struct wlr_box b;
+	wlr_output_layout_get_box(view->server->output_layout, o->wlr_output, &b);
+	*px = b.x + b.width / 2.0;
+	*py = b.y + b.height / 2.0;
+}
+
 void view_refit(struct view *view)
 {
-	view_fit_state(view, view->x + view->width / 2.0,
-		view->y + view->height / 2.0);
+	double px, py;
+	view_state_point(view, &px, &py);
+	view_fit_state(view, px, py);
 }
 
 void view_refit_at(struct view *view, double px, double py)
@@ -876,6 +893,7 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 			if (asked_output)
 				fullscreen_output_point(view, &px, &py);
 			struct wlr_box a = output_full_area(view->server, px, py);
+			view->fit_output = output_at(view->server, px, py);
 			view->fullscreen = true;
 			views_update_layers(view->server);
 			/* Fullscreen windows lose their frame for the duration. */
@@ -1094,6 +1112,15 @@ void views_clear_dock(struct output *output)
 	}
 }
 
+void views_output_gone(struct output *output)
+{
+	struct view *v;
+	wl_list_for_each(v, &output->server->views, link) {
+		if (v->fit_output == output)
+			v->fit_output = NULL;
+	}
+}
+
 void views_layout_changed(struct server *server)
 {
 	/* What they point at may have gone with an output. */
@@ -1133,9 +1160,11 @@ void views_layout_changed(struct server *server)
 		if (v->tiled) {
 			continue;
 		} else if (v->fullscreen) {
-			struct wlr_box f = output_full_area(server, reachable ?
-				v->x + box.width / 2.0 : a.x + 1, reachable ?
-				v->y + box.height / 2.0 : a.y + 1);
+			double px = a.x + 1, py = a.y + 1;
+			if (reachable)
+				view_state_point(v, &px, &py);
+			struct wlr_box f = output_full_area(server, px, py);
+			v->fit_output = output_at(server, px, py);
 			view_set_geometry(v, f.x, f.y, f.width, f.height);
 		} else if (v->maximized || v->snap != SNAP_NONE) {
 			if (!reachable)
@@ -1728,6 +1757,7 @@ static void xdg_send_first_configure(struct view *view)
 		double px = server->cursor->x, py = server->cursor->y;
 		fullscreen_output_point(view, &px, &py);
 		struct wlr_box a = output_full_area(server, px, py);
+		view->fit_output = output_at(server, px, py);
 		view->x = a.x;
 		view->y = a.y;
 		view->placed = true;

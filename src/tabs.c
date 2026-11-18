@@ -45,6 +45,7 @@ static void move_place(struct view *to, struct view *from)
 	to->saved = from->saved;
 	to->fit_px = from->fit_px;
 	to->fit_py = from->fit_py;
+	to->fit_output = from->fit_output;
 	to->maximized = from->maximized;
 	to->snap = from->snap;
 	to->tiled = from->tiled;
