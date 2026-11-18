@@ -20,7 +20,7 @@
  * for each view on every focus change, and a client decides how many there are. An
  * xdg surface's data is its scene tree (xdg_surface_set_tree()), which hangs in its
  * view's tree; an X11 surface's data is its view (new_managed()). */
-struct view *view_parent(struct view *view)
+static struct view *direct_parent(struct view *view)
 {
 	struct view *p = NULL;
 	if (view->type == VIEW_XDG) {
@@ -32,6 +32,17 @@ struct view *view_parent(struct view *view)
 		p = view->xsurface->parent->data;
 	}
 	return p != view ? p : NULL;
+}
+
+/* An unmapped parent's place goes to its own parent, as xdg-shell says: a window
+ * withdrawn to the tray, or an owner never shown, keeps no desktop or state that
+ * its dialogs would follow out of sight. */
+struct view *view_parent(struct view *view)
+{
+	struct view *p = direct_parent(view);
+	for (int i = 0; p && !p->mapped && i < MAX_TRANSIENT_DEPTH; i++)
+		p = direct_parent(p);
+	return p && p->mapped && p != view ? p : NULL;
 }
 
 bool view_is_transient_of(struct view *view, struct view *ancestor)

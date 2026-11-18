@@ -265,6 +265,7 @@ static void xw_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&view->request_sticky.link);
 	wl_list_remove(&view->request_shaded.link);
 	wl_list_remove(&view->request_demands_attention.link);
+	wl_list_remove(&view->set_hints.link);
 	view->xsurface->data = NULL;
 	view_handle_destroy(view);
 }
@@ -435,6 +436,16 @@ static void xw_request_demands_attention(struct wl_listener *listener, void *dat
 		desktop_attention(view);
 }
 
+/* The older way to ask, ICCCM's urgency flag in WM_HINTS: GTK's urgency hint, xterm's
+ * bellIsUrgent. wlroots doesn't make demands_attention of it. */
+static void xw_set_hints(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, set_hints);
+	const xcb_icccm_wm_hints_t *h = view->xsurface->hints;
+	if (view->mapped && h && (h->flags & XCB_ICCCM_WM_HINT_X_URGENCY))
+		desktop_attention(view);
+}
+
 static void xw_request_fullscreen(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_fullscreen);
@@ -595,6 +606,7 @@ static struct view *new_managed(struct server *server, struct wlr_xwayland_surfa
 	LISTEN(request_shaded, request_shaded, xw_request_shaded);
 	LISTEN(request_demands_attention, request_demands_attention,
 		xw_request_demands_attention);
+	LISTEN(set_hints, set_hints, xw_set_hints);
 #undef LISTEN
 	read_initial_state(view);
 	return view;

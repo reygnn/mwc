@@ -253,6 +253,44 @@ urgent_is "going there clears it" ""
 stop late2
 switch_to 1
 
+# The urgency flag in WM_HINTS asks for attention as _NET_WM_STATE_DEMANDS_ATTENTION
+# does: GTK's urgency hint, xterm's bellIsUrgent.
+x11 bell size=300x200 urgent_after="$SMOKE_DIR/bell"
+to_desktop bell 2
+urgent_is "nothing is urgent yet" ""
+touch "$SMOKE_DIR/bell"
+wait_for "it sets the urgency flag" said bell urgent
+ws urgent 2 >"$SMOKE_DIR/urgent.out" 2>&1 || fail "desktop 2 isn't marked urgent: $(cat "$SMOKE_DIR/urgent.out")"
+urgent_is "its desktop is marked" 2
+switch_to 2
+urgent_is "going there clears it" ""
+stop bell
+switch_to 1
+
+# A window withdrawn to the tray keeps no desktop for its dialogs: one opening while
+# the user is elsewhere opens there, in sight, not on the desktop the window was left
+# on. Nor does an owner that is never shown hold them on desktop 0.
+x11 tray size=300x200 dialog=traydlg withdraw_after="$SMOKE_DIR/withdraw" \
+	dialog_after="$SMOKE_DIR/traydlg"
+touch "$SMOKE_DIR/withdraw"
+wait_for "the window is withdrawn" said tray withdrawn
+check "and out of the state" "[ -z \"\$(get tray x)\" ]"
+switch_to 2
+touch "$SMOKE_DIR/traydlg"
+check "its dialog opens" "[ -n \"\$(get traydlg x)\" ]"
+on "on the current desktop, in sight" traydlg 2 1
+urgent_is "nothing asks for attention elsewhere" ""
+stop tray
+DISPLAY=$X_DISPLAY build/xclient class=owner nomap=1 dialog=ownerdlg \
+	>"$SMOKE_DIR/owner.log" 2>&1 &
+PID_owner=$!
+check "a dialog of an owner never shown" "[ -n \"\$(get ownerdlg x)\" ]"
+on "is on the current desktop, in sight" ownerdlg 2 1
+kill "$PID_owner"
+wait "$PID_owner" 2>/dev/null
+check "it is gone" "[ -z \"\$(get ownerdlg x)\" ]"
+switch_to 1
+
 # ---- a program on every desktop: Mwm*NAME*allDesktops -------------------------------------
 
 RC=$XDG_CONFIG_HOME/mwc/mwmrc

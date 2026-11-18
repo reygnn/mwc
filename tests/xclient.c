@@ -68,6 +68,10 @@
  *     title_later=TEXT    2 s after mapping, a new WM_NAME
  *     latin1_title=1      a WM_NAME with bytes that are not UTF-8
  *     dialog_ms=MS        wait that long before opening the dialog
+ *     dialog_after=FILE   open it once FILE exists
+ *     withdraw_after=FILE once FILE exists, withdraw the main window; says "withdrawn"
+ *     nomap=1             never map the main window, an owner kept out of sight
+ *     urgent_after=FILE   once FILE exists, set XUrgencyHint in WM_HINTS; says "urgent"
  *     dialog_type=TYPE    the dialog's explicit window type, as for type=, also normal
  *     pulldown=1          a press posts an override-redirect menu and grabs the pointer,
  *                         as Motif does for press-drag-release; logs what follows
@@ -115,6 +119,8 @@ struct options {
 	bool has_motif;
 	bool no_input, workarea, clipboard, move_press, pulldown;
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
+	const char *dialog_after, *withdraw_after, *urgent_after;
+	bool nomap;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	int decor_later, decor_ms;
 	bool has_decor_later;
@@ -291,6 +297,13 @@ static void set_override_redirect(Window win, bool on)
 }
 
 /* What a client in a toolkit does for a window-manager-driven move. */
+/* The test says when, by creating it. */
+static void wait_for_file(const char *path)
+{
+	while (access(path, F_OK) != 0)
+		usleep(50000);
+}
+
 static void ask_moveresize(Window win)
 {
 	XEvent e = { 0 };
@@ -509,6 +522,14 @@ int main(int argc, char *argv[])
 			o.dialog_type = v;
 		else if (!strcmp(k, "dialog_ms"))
 			o.dialog_ms = atoi(v);
+		else if (!strcmp(k, "dialog_after"))
+			o.dialog_after = v;
+		else if (!strcmp(k, "withdraw_after"))
+			o.withdraw_after = v;
+		else if (!strcmp(k, "nomap"))
+			o.nomap = atoi(v);
+		else if (!strcmp(k, "urgent_after"))
+			o.urgent_after = v;
 		else if (!strcmp(k, "ask_before"))
 			o.ask_before = v;
 		else if (!strcmp(k, "ask_later"))
@@ -609,7 +630,8 @@ int main(int argc, char *argv[])
 		XSync(dpy, False);
 		usleep(300000);
 	}
-	XMapWindow(dpy, main_win);
+	if (!o.nomap)
+		XMapWindow(dpy, main_win);
 	if (o.ask_after) {
 		ask_state(main_win, o.ask_after);
 		XFlush(dpy);
@@ -682,11 +704,36 @@ int main(int argc, char *argv[])
 		XMoveWindow(dpy, main_win, o.x + 1, o.y);
 		XSync(dpy, False);
 	}
+	if (o.withdraw_after) {
+		XSync(dpy, False);
+		wait_for_file(o.withdraw_after);
+		XWithdrawWindow(dpy, main_win, DefaultScreen(dpy));
+		XSync(dpy, False);
+		printf("withdrawn\n");
+		fflush(stdout);
+	}
+	if (o.urgent_after) {
+		XSync(dpy, False);
+		wait_for_file(o.urgent_after);
+		XWMHints *h = XGetWMHints(dpy, main_win);
+		if (!h)
+			h = XAllocWMHints();
+		h->flags |= XUrgencyHint;
+		XSetWMHints(dpy, main_win, h);
+		XFree(h);
+		XSync(dpy, False);
+		printf("urgent\n");
+		fflush(stdout);
+	}
 	Window dialog_win = None;
 	if (o.dialog) {
 		if (o.dialog_ms) {
 			XSync(dpy, False);
 			usleep(o.dialog_ms * 1000);
+		}
+		if (o.dialog_after) {
+			XSync(dpy, False);
+			wait_for_file(o.dialog_after);
 		}
 		struct options d = o;
 		d.has_pos = d.has_min = d.has_max = d.has_motif = false;

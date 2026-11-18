@@ -295,6 +295,7 @@ struct view {
 	struct wl_listener request_sticky;
 	struct wl_listener request_shaded;
 	struct wl_listener request_demands_attention;
+	struct wl_listener set_hints;
 };
 
 /* Not counting another desktop: what restoring undoes. */
