@@ -774,6 +774,32 @@ void spawn(const char *cmd);
 /* No shell, no quoting. */
 void spawn_file(const char *path);
 
+/* ---- tilelayout.c ------------------------------------------------------- */
+
+#define TILE_MAIN_MIN 10
+#define TILE_MAIN_MAX 90
+
+/* A window as the layout sees it: what it needs, and the cell it gets. */
+struct tile_window {
+	int min_w, min_h; /* its smallest frame */
+	int shaded_h;     /* its frame rolled up */
+	bool can_shade, focused;
+	bool shaded, auto_shaded; /* in and out: kept from round to round */
+	struct wlr_box cell;      /* out */
+	bool main;                /* out */
+};
+
+/* "60" or "60%" from TILE_MAIN_MIN to _MAX, else -1 and said; name is for the log. */
+int tile_parse_pct(const char *name, const char *s);
+struct config_placement; /* config.c */
+/* a without the strip along the edge icons pile up from, up to the innermost. */
+struct wlr_box tile_area(struct wlr_box a, const struct config_placement *p,
+	const struct wlr_box *icons, int n);
+/* Cells for w[0..n), main window first: the index of one that fits nowhere, or -1;
+ * *overflow: the stack is too short even with all of it rolled up. */
+int tile_plan(struct tile_window *w, int n, struct wlr_box a, int main_pct,
+	bool *overflow);
+
 /* ---- tile.c ------------------------------------------------------------- */
 
 void tile_init(struct server *server);

@@ -26,37 +26,17 @@
 #include <wlr/util/log.h>
 #include "mwc.h"
 
-#define TILE_GAP MWC_GAP /* px around and between windows */
 #define TILE_MAIN_PCT 55
-#define TILE_MAIN_MIN 10
-#define TILE_MAIN_MAX 90
 
 static int main_pct = TILE_MAIN_PCT;
-
-/* "60" or "60%" within the limits, else -1; name is for the log. */
-static int parse_pct(const char *name, const char *s)
-{
-	if (!s || !*s)
-		return -1;
-	char *end;
-	long v = strtol(s, &end, 10);
-	if (*end == '%')
-		end++;
-	if (end == s || *end || v < TILE_MAIN_MIN || v > TILE_MAIN_MAX) {
-		wlr_log(WLR_ERROR, "ignoring %s value %s, not a percentage from %d to %d",
-			name, s, TILE_MAIN_MIN, TILE_MAIN_MAX);
-		return -1;
-	}
-	return (int)v;
-}
 
 /* The environment over mwmrc, as for the other settings. */
 static void read_main_width(void)
 {
 	int v;
 	main_pct = TILE_MAIN_PCT;
-	if ((v = parse_pct("MWC_TILE_MAIN_WIDTH", getenv("MWC_TILE_MAIN_WIDTH"))) > 0 ||
-			(v = parse_pct("tileMainWidth", config_get("tileMainWidth"))) > 0)
+	if ((v = tile_parse_pct("MWC_TILE_MAIN_WIDTH", getenv("MWC_TILE_MAIN_WIDTH"))) > 0 ||
+			(v = tile_parse_pct("tileMainWidth", config_get("tileMainWidth"))) > 0)
 		main_pct = v;
 }
 
@@ -125,181 +105,66 @@ static struct view **tiled_windows(struct server *server, int *n)
 	return list;
 }
 
-/* Smallest frame a window can have, from its limits. */
-static void min_frame(struct view *view, int *w, int *h)
-{
-	int cw = 1, ch = 1;
-	view_apply_size_hints(view, &cw, &ch, true);
-	*w = cw + frame_extra_w(view);
-	*h = ch + frame_extra_h(view);
-}
-
-/* Lay out the stack windows list[0..k) in the column at x, width w: shaded ones
- * take their title bar, the open ones share what is left. When that is too little
- * for them, open ones from the bottom up are shaded (the focused one last). Returns
- * false if the column still can't hold them. */
-static bool layout_stack(struct view **list, int k, struct wlr_box a, int x, int w)
-{
-	for (;;) {
-		int shaded = 0, n_open = 0, need = 0;
-		for (int i = 0; i < k; i++) {
-			int mw, mh;
-			min_frame(list[i], &mw, &mh);
-			if (list[i]->shaded) {
-				shaded += frame_extra_h(list[i]);
-			} else {
-				n_open++;
-				if (mh > need)
-					need = mh;
-			}
-		}
-		int room = a.height - 2 * TILE_GAP - (k - 1) * TILE_GAP - shaded;
-		int each = n_open ? room / n_open : 0;
-		if (n_open && each < need) {
-			/* Shade one more, if any can be. */
-			struct view *pick = NULL;
-			for (int i = k - 1; i >= 0 && !pick; i--) {
-				if (!list[i]->shaded && tile_can_shade(list[i]) &&
-						!list[i]->activated)
-					pick = list[i];
-			}
-			for (int i = k - 1; i >= 0 && !pick; i--) {
-				if (!list[i]->shaded && tile_can_shade(list[i]))
-					pick = list[i];
-			}
-			if (pick) {
-				pick->shaded = true;
-				pick->auto_shaded = true;
-				continue;
-			}
-		}
-		if (room < 0 || (n_open && each < need))
-			return false;
-		int y = a.y + TILE_GAP, open_left = n_open;
-		for (int i = 0; i < k; i++) {
-			struct view *v = list[i];
-			int h = frame_extra_h(v);
-			if (!v->shaded) /* the last open one gets the rest */
-				h = --open_left ? each : room - each * (n_open - 1);
-			v->tile = (struct wlr_box){ x, y, w, h };
-			v->tile_main = false;
-			y += h + TILE_GAP;
-		}
-		return true;
-	}
-}
-
 /* The output the layout covers: the first one that was added and is in the layout.
- * tile_arrange() doesn't start without one. */
+ * tile_arrange() doesn't start without one. Icons stay in view: the layout leaves out
+ * the strip along the edge they pile up from, up to the innermost row or column of
+ * them (they keep their own 8 px margin), or the icon box. */
 static struct wlr_box layout_area(struct server *server)
 {
-	return output_first(server)->usable;
-}
-
-/* What the layout may use of the area, edge by edge. */
-struct strip {
-	int left, right, top, bottom;
-};
-
-/* The edge the icons pile up from moves in past b. */
-static void leave_free(struct strip *st, const struct config_placement *p,
-	struct wlr_box b)
-{
-	if (p->horizontal && p->from_bottom) {
-		if (b.y < st->bottom)
-			st->bottom = b.y;
-	} else if (p->horizontal) {
-		if (b.y + b.height > st->top)
-			st->top = b.y + b.height;
-	} else if (p->from_right) {
-		if (b.x < st->right)
-			st->right = b.x;
-	} else if (b.x + b.width > st->left) {
-		st->left = b.x + b.width;
-	}
-}
-
-/* Cells for list[0..n), main window first. Returns a window that can't fit its
- * cell, or NULL; *overflow says the stack column is full even with every window in
- * it shaded. */
-static struct view *plan(struct server *server, struct view **list, int n,
-	bool *overflow)
-{
-	*overflow = false;
-	struct wlr_box a = layout_area(server);
-	/* Icons stay in view: the layout leaves out the strip along the edge they
-	 * pile up from, up to the innermost row or column of them (they keep their
-	 * own 8 px margin). */
+	struct wlr_box a = output_first(server)->usable;
 	const struct config_placement *p = config_icon_placement();
-	struct strip strip = { a.x, a.x + a.width, a.y, a.y + a.height };
-	struct view *v;
-	struct wlr_box ibox;
+	struct wlr_box *icons = calloc(wl_list_length(&server->views) + 1, sizeof(*icons));
+	int n = 0;
+	if (!icons)
+		return tile_area(a, p, NULL, 0);
 	if (iconbox_enabled()) {
-		/* The icon box, or its logo, the same way. */
-		if (iconbox_rect(&ibox))
-			leave_free(&strip, p, ibox);
+		if (iconbox_rect(&icons[0]))
+			n = 1;
 	} else {
+		struct view *v;
 		wl_list_for_each(v, &server->views, link) {
 			if (!v->minimized || v->off_desktop || !v->icon_placed ||
 					v->icon_x < a.x || v->icon_x >= a.x + a.width ||
 					v->icon_y < a.y || v->icon_y >= a.y + a.height)
 				continue;
-			leave_free(&strip, p, (struct wlr_box){ v->icon_x, v->icon_y,
-				ICON_W, ICON_H });
+			icons[n++] = (struct wlr_box){ v->icon_x, v->icon_y, ICON_W, ICON_H };
 		}
 	}
-	int left = strip.left, right = strip.right, top_edge = strip.top,
-		bottom = strip.bottom;
-	int min = 2 * TILE_GAP + 1;
-	a.x = left;
-	a.width = right - left > min ? right - left : min;
-	a.y = top_edge;
-	a.height = bottom - top_edge > min ? bottom - top_edge : min;
-	int top = a.y + TILE_GAP, h = a.height - 2 * TILE_GAP;
-	/* What the layout rolled up for lack of room in an earlier round gets another
-	 * chance, the room may be there now. One that has lost its title bar since has
-	 * nothing left to roll up to, nor a button to unroll it: it opens again. */
+	a = tile_area(a, p, icons, n);
+	free(icons);
+	return a;
+}
+
+/* Cells for list[0..n), main window first, through tile_plan(). Returns a window
+ * that can't fit its cell, or NULL; *overflow says the stack column is full even
+ * with every window in it shaded. */
+static struct view *plan(struct server *server, struct view **list, int n,
+	bool *overflow)
+{
+	*overflow = false;
+	struct tile_window *w = calloc(n, sizeof(*w));
+	if (!w)
+		return NULL;
 	for (int i = 0; i < n; i++) {
-		if (list[i]->auto_shaded ||
-				(list[i]->shaded && !tile_can_shade(list[i]))) {
-			list[i]->shaded = false;
-			list[i]->auto_shaded = false;
-		}
+		struct view *v = list[i];
+		int cw = 1, ch = 1;
+		view_apply_size_hints(v, &cw, &ch, true);
+		w[i] = (struct tile_window){
+			.min_w = cw + frame_extra_w(v), .min_h = ch + frame_extra_h(v),
+			.shaded_h = frame_extra_h(v), .can_shade = tile_can_shade(v),
+			.focused = v->activated, .shaded = v->shaded,
+			.auto_shaded = v->auto_shaded, .cell = v->tile, .main = v->tile_main,
+		};
 	}
-	/* The main window is never shaded. */
-	list[0]->shaded = false;
-	if (n == 1) {
-		list[0]->tile = (struct wlr_box){ a.x + TILE_GAP, top,
-			a.width - 2 * TILE_GAP, h };
-	} else {
-		int inner = a.width - 3 * TILE_GAP;
-		int mw = inner * main_pct / 100, sw = inner - mw;
-		/* Those that fit in no cell, before anything gets rolled up for them. A
-		 * window too tall for the whole column could never be unrolled. */
-		int fw, fh;
-		min_frame(list[0], &fw, &fh);
-		if (fw > mw || fh > h)
-			return list[0];
-		for (int i = 1; i < n; i++) {
-			min_frame(list[i], &fw, &fh);
-			if (fw > sw || fh > h)
-				return list[i];
-		}
-		list[0]->tile = (struct wlr_box){ a.x + 2 * TILE_GAP + sw, top, mw, h };
-		if (!layout_stack(list + 1, n - 1, a, a.x + TILE_GAP, sw)) {
-			*overflow = true;
-			return list[n - 1];
-		}
-	}
-	list[0]->tile_main = true;
+	int misfit = tile_plan(w, n, layout_area(server), main_pct, overflow);
 	for (int i = 0; i < n; i++) {
-		int mw, mh;
-		min_frame(list[i], &mw, &mh);
-		if (mw > list[i]->tile.width ||
-				(!list[i]->shaded && mh > list[i]->tile.height))
-			return list[i];
+		list[i]->shaded = w[i].shaded;
+		list[i]->auto_shaded = w[i].auto_shaded;
+		list[i]->tile = w[i].cell;
+		list[i]->tile_main = w[i].main;
 	}
-	return NULL;
+	free(w);
+	return misfit >= 0 ? list[misfit] : NULL;
 }
 
 /* Would the layout take it, as things are? The same plan as a round, with the window
