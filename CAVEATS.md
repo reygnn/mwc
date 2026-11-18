@@ -78,6 +78,14 @@ or restoring a window. This keeps X11 programs from taking the keyboard from Way
 ones, but an X11 launcher started from a Wayland terminal gets no keys.
 
 
+## Programs mwc starts
+
+`terminal`, `runDialog`, `screenSaver`, the screenshot commands and `rootMenuItem` run
+through `/bin/sh -c` without mwc waiting for them. A command that fails, such as a
+misspelt program name, shows nothing on the screen: the key or menu item does nothing,
+and only the shell's message ("not found") is in mwc's log.
+
+
 ## Desktops and what clients see
 
 Clients aren't told about desktops: an X11 window on another desktop is not iconified
