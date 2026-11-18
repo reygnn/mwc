@@ -880,10 +880,12 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 			views_update_layers(view->server);
 			/* Fullscreen windows lose their frame for the duration. */
 			view->decorated = false;
-			view_update_content_pos(view);
 			xwayland_publish_frame_extents(view);
 			frame_render(view);
 			view_set_geometry(view, a.x, a.y, a.width, a.height);
+			/* At its new place: the backdrop is placed relative to it, and an X11
+			 * commit of the new size doesn't do it again. */
+			view_update_content_pos(view);
 			view_focus(view);
 		} else {
 			view->fullscreen = false;

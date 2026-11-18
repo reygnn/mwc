@@ -130,6 +130,8 @@ do_input key alt+F11
 check "fullscreen on the second output" \
 	"[ \"\$(get win full)\" = 1 ] && [ \"\$(get win x)\" = 1280 ]"
 pixel_is "it covers the panel there" 1920 10 "$WIN"
+# Its black backdrop follows it there, off the first output.
+pixel_is "the first output keeps its wallpaper" 640 360 0000ff
 do_input move 640 360
 WAYLAND_DISPLAY=wayland-0 build/layerc layer=top size=200x100 keyboard=exclusive \
 	color=00ff00 >"$SMOKE_DIR/prompt.events" 2>&1 &
