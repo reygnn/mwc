@@ -98,11 +98,10 @@ static enum window_type xwayland_type(struct wlr_xwayland_surface *xs)
 	return xs->parent ? WT_DIALOG : WT_NORMAL;
 }
 
-/* X11 windows are at most 32767 wide; the hints may say anything, and size
- * arithmetic on them must not overflow. */
+/* The hints may say anything, and size arithmetic on them must not overflow. */
 static int hint_size(int32_t v)
 {
-	return v < 0 ? 0 : v > 32767 ? 32767 : v;
+	return v < 0 ? 0 : v > X11_MAX_SIZE ? X11_MAX_SIZE : v;
 }
 
 static void read_xwayland_size_hints(struct view *view)
@@ -152,10 +151,11 @@ static void read_xwayland_size_hints(struct view *view)
 static void read_xdg_size_hints(struct view *view)
 {
 	const struct wlr_xdg_toplevel_state *st = &view->xdg_toplevel->current;
-	view->min_w = st->min_width;
-	view->min_h = st->min_height;
-	view->max_w = st->max_width;
-	view->max_h = st->max_height;
+	/* wlroots only checks them against each other; 0 is no limit. */
+	view->min_w = st->min_width < VIEW_MAX_SIZE ? st->min_width : VIEW_MAX_SIZE;
+	view->min_h = st->min_height < VIEW_MAX_SIZE ? st->min_height : VIEW_MAX_SIZE;
+	view->max_w = st->max_width < VIEW_MAX_SIZE ? st->max_width : VIEW_MAX_SIZE;
+	view->max_h = st->max_height < VIEW_MAX_SIZE ? st->max_height : VIEW_MAX_SIZE;
 	view->base_w = view->base_h = view->inc_w = view->inc_h = 0;
 	view->min_aspect = view->max_aspect = 0;
 	view->gravity = XCB_GRAVITY_NORTH_WEST;
@@ -268,19 +268,23 @@ void view_aspect_follow(struct view *view, int *pw, int *ph, bool width_given)
 	if (w <= 0 || h <= 0)
 		return;
 	float wide = (float)w / h, tall = (float)h / w;
+	/* In double and capped: a ratio of 1:10^9 makes 10^12. */
+	double fw = w, fh = h;
 	if (width_given) {
 		if (view->max_aspect < wide)
-			h = w / view->max_aspect + 0.5f;
+			fh = w / (double)view->max_aspect;
 		else if (view->min_aspect < tall)
-			h = w * view->min_aspect + 0.5f;
+			fh = w * (double)view->min_aspect;
 	} else {
 		if (view->min_aspect < tall)
-			w = h / view->min_aspect + 0.5f;
+			fw = h / (double)view->min_aspect;
 		else if (view->max_aspect < wide)
-			w = h * view->max_aspect + 0.5f;
+			fw = h * (double)view->max_aspect;
 	}
-	*pw = w + base_w;
-	*ph = h + base_h;
+	*pw = (fw + 0.5 < X11_MAX_SIZE - base_w ? (int)(fw + 0.5) : X11_MAX_SIZE - base_w) +
+		base_w;
+	*ph = (fh + 0.5 < X11_MAX_SIZE - base_h ? (int)(fh + 0.5) : X11_MAX_SIZE - base_h) +
+		base_h;
 }
 
 void view_apply_size_hints(struct view *view, int *pw, int *ph, bool incr)
@@ -319,6 +323,11 @@ void view_apply_size_hints(struct view *view, int *pw, int *ph, bool incr)
 		w = view->max_w;
 	if (view->max_h && h > view->max_h)
 		h = view->max_h;
+	/* What a configure can carry (uint16_t in wlroots), whatever asked for more. */
+	if (view->type == VIEW_XWAYLAND) {
+		w = w < X11_MAX_SIZE ? w : X11_MAX_SIZE;
+		h = h < X11_MAX_SIZE ? h : X11_MAX_SIZE;
+	}
 	*pw = w > 1 ? w : 1;
 	*ph = h > 1 ? h : 1;
 }

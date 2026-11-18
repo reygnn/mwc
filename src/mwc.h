@@ -621,6 +621,10 @@ void views_output_gone(struct output *output);
 
 /* ---- hints.c ------------------------------------------------------------ */
 
+/* Largest window size; beyond it frame sizes and placement overflow. */
+#define VIEW_MAX_SIZE (1 << 20)
+#define X11_MAX_SIZE 32767
+
 /* Type and size limits from the client; decor and funcs from them. */
 void view_update_properties(struct view *view);
 /* wm_capabilities from funcs, sent on a change. */

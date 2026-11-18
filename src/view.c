@@ -207,10 +207,6 @@ void view_gravity_place(struct view *view, int ow, int oh, int w, int h,
 
 /* Called from the commit handlers once the client has a (new) size; own when the
  * client chose it, not mwc. */
-/* Through wp_viewporter a 1x1 buffer makes a window of any size up to INT32_MAX:
- * beyond 2^20, as far as outputPosition goes, frame sizes and placement overflow. */
-#define VIEW_MAX_SIZE (1 << 20)
-
 static int size_cap(int v)
 {
 	return v > VIEW_MAX_SIZE ? VIEW_MAX_SIZE : v;

@@ -8,7 +8,7 @@
  *     pos=X,Y             asks for that place with USPosition
  *     gravity=nw|n|ne|w|c|e|sw|s|se|static
  *     min=WxH max=WxH inc=WxH base=WxH
- *     aspect=N/D          fixed aspect ratio
+ *     aspect=N/D          fixed aspect ratio; N/D,N/D the smallest and largest
  *     type=dialog|utility|splash|dock|desktop|notification|toolbar
  *     motif=FUNCS,DECOR   _MOTIF_WM_HINTS
  *     input=0             WM_HINTS without input focus
@@ -35,6 +35,7 @@
  *     move_press=1        a press asks for _NET_WM_MOVERESIZE, as toolkits do
  *     report=1            print _NET_FRAME_EXTENTS as it changes, and whether a Motif
  *                         window manager can be found, as XmIsMotifWMRunning looks
+ *     sizes=1             print "size WxH" for each ConfigureNotify of the main window
  *     moveto=X,Y          once mapped, XMoveWindow there
  *     grow=WxH            1 s after mapping, XResizeWindow to that size; says "grown"
  *     iconic=1            WM_HINTS with the initial state iconic
@@ -109,7 +110,7 @@ struct options {
 	bool has_pos;
 	int min_w, min_h, max_w, max_h, inc_w, inc_h, base_w, base_h;
 	bool has_min, has_max, has_inc, has_base;
-	int aspect_n, aspect_d;
+	int aspect_n, aspect_d, aspect_max_n, aspect_max_d;
 	long motif_funcs, motif_decor;
 	bool has_motif;
 	bool no_input, workarea, clipboard, move_press, pulldown;
@@ -124,7 +125,7 @@ struct options {
 	int iconify_ms;
 	bool iconify_dialog;
 	int moveresize;
-	bool has_moveto, iconic, normalize, report, netstate;
+	bool has_moveto, iconic, normalize, report, netstate, sizes;
 	int activate_ms;
 	int moveto_x, moveto_y;
 	int grow_w, grow_h;
@@ -223,8 +224,10 @@ static Window create_window(const struct options *o, const char *class,
 	}
 	if (o->aspect_n) {
 		sh.flags |= PAspect;
-		sh.min_aspect.x = sh.max_aspect.x = o->aspect_n;
-		sh.min_aspect.y = sh.max_aspect.y = o->aspect_d;
+		sh.min_aspect.x = o->aspect_n;
+		sh.min_aspect.y = o->aspect_d;
+		sh.max_aspect.x = o->aspect_max_n;
+		sh.max_aspect.y = o->aspect_max_d;
 	}
 	XSetWMNormalHints(dpy, win, &sh);
 
@@ -459,8 +462,13 @@ int main(int argc, char *argv[])
 			o.has_inc = sscanf(v, "%dx%d", &o.inc_w, &o.inc_h) == 2;
 		else if (!strcmp(k, "base"))
 			o.has_base = sscanf(v, "%dx%d", &o.base_w, &o.base_h) == 2;
-		else if (!strcmp(k, "aspect"))
-			sscanf(v, "%d/%d", &o.aspect_n, &o.aspect_d);
+		else if (!strcmp(k, "aspect")) {
+			if (sscanf(v, "%d/%d,%d/%d", &o.aspect_n, &o.aspect_d,
+					&o.aspect_max_n, &o.aspect_max_d) != 4) {
+				o.aspect_max_n = o.aspect_n;
+				o.aspect_max_d = o.aspect_d;
+			}
+		}
 		else if (!strcmp(k, "type"))
 			o.type = v;
 		else if (!strcmp(k, "rehide"))
@@ -531,6 +539,8 @@ int main(int argc, char *argv[])
 			o.clipboard = atoi(v);
 		else if (!strcmp(k, "report"))
 			o.report = atoi(v);
+		else if (!strcmp(k, "sizes"))
+			o.sizes = atoi(v);
 		else if (!strcmp(k, "netstate"))
 			o.netstate = atoi(v);
 		else if (!strcmp(k, "moveto"))
@@ -885,6 +895,10 @@ int main(int argc, char *argv[])
 				print_motif_wm();
 				print_supported();
 			}
+			break;
+		case ConfigureNotify:
+			if (o.sizes && e.xconfigure.window == main_win)
+				printf("size %dx%d\n", e.xconfigure.width, e.xconfigure.height);
 			break;
 		case FocusIn:
 			printf("focus-in %s\n", e.xfocus.window == main_win ? "main" : "dialog");

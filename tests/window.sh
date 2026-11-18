@@ -145,6 +145,18 @@ size_is "the left edge" wide 400 200
 check "the right side stays" "[ \$((\$(get wide x) + \$(outer_w wide))) = $RIGHT ]"
 stop wide
 
+# Ratios the hints allow but no window can follow: the other side stops at what X11
+# takes. 1:100 asked for 50000; 1:10^9 overflowed an int (UBSan in make check) and
+# came out as height 1.
+for ratio in 100 1000000000; do
+	x11 extreme pos=100,100 size=300x300 aspect=1/$((2 * ratio)),1/$ratio sizes=1
+	mapped extreme
+	right_edge extreme 200
+	check "X11: aspect ratio 1:$ratio, the height X11 can take at most" \
+		"grep '^size' \"\$SMOKE_DIR/extreme.events\" | tail -1 | grep -qx 'size [0-9]*x32767'"
+	stop extreme
+done
+
 # ---- size hints: Wayland ------------------------------------------------------
 
 wayland wlimit size=300x200 min=200x150 max=400x300
@@ -160,6 +172,26 @@ mapped wfixed
 check "Wayland: a fixed size means a thin border" "[ \"\$(border wfixed)\" = $THIN ]"
 sensitive_is "Wayland: and no Size or Maximize" wfixed MnLC
 stop wfixed
+
+# A minimum size of INT32_MAX, which wlroots lets through: what mwc asks for stays at
+# its own limit, 2^20, and the frame around it adds up.
+wayland whuge size=300x200 min=2147483647x2147483647 own_size=1 states=1
+mapped whuge
+do_input key alt+F10
+wait_for "Wayland: maximized" grep -q '^configure maximized' "$SMOKE_DIR/whuge.events"
+check "Wayland: a huge minimum size, capped" \
+	"grep '^configure maximized' \"\$SMOKE_DIR/whuge.events\" | tail -1 | \
+	grep -qx 'configure maximized 1048576x1048576'"
+do_input key alt+F10
+check "and back" "[ \"\$(get whuge max)\" = 0 ]"
+refresh
+X=$(get whuge x) Y=$(get whuge y)
+do_input key super+t
+check "tiling leaves it out, where it was" \
+	"[ \"\$(global tiling on)\" = 1 ] && [ \"\$(get whuge tiled)\" = 0 ] && \
+	[ \"\$(get whuge x)\" = $X ] && [ \"\$(get whuge y)\" = $Y ]"
+do_input key super+t
+stop whuge
 
 # ---- a window that cannot be resized ------------------------------------------
 
