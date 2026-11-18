@@ -131,10 +131,11 @@ reload_mwc() {
 
 # ---- simulated input and window state (needs MWC_TEST_STATE) -----------------
 
-# start_vinput [width height]: the size of the whole layout, default one output.
+# start_vinput [width height [layouts]]: the size of the whole layout, default one
+# output, and the XKB layouts of the keyboard, default us.
 start_vinput() {
-	local w=${1:-1280} h=${2:-720}
-	coproc VINPUT { WAYLAND_DISPLAY=wayland-0 build/vinput "$w" "$h" 2>&1; }
+	local w=${1:-1280} h=${2:-720} l=${3:-us}
+	coproc VINPUT { WAYLAND_DISPLAY=wayland-0 build/vinput "$w" "$h" "$l" 2>&1; }
 }
 
 stop_vinput() {

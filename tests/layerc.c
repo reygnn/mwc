@@ -213,6 +213,7 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t t,
 static void kb_modifiers(void *d, struct wl_keyboard *k, uint32_t serial,
 	uint32_t dep, uint32_t lat, uint32_t lock, uint32_t group)
 {
+	printf("modifiers group=%u\n", group);
 }
 static void kb_repeat(void *d, struct wl_keyboard *k, int32_t rate, int32_t delay)
 {
@@ -230,15 +231,21 @@ static const struct wl_keyboard_listener keyboard_listener = {
 
 static void seat_capabilities(void *d, struct wl_seat *s, uint32_t caps)
 {
-	static bool have_pointer, have_keyboard;
+	static bool have_pointer;
+	static struct wl_keyboard *keyboard;
 	if ((caps & WL_SEAT_CAPABILITY_POINTER) && !have_pointer) {
 		have_pointer = true;
 		wl_pointer_add_listener(wl_seat_get_pointer(s), &pointer_listener, NULL);
 	}
-	if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !have_keyboard) {
-		have_keyboard = true;
-		wl_keyboard_add_listener(wl_seat_get_keyboard(s), &keyboard_listener,
-			NULL);
+	/* Gone with the last keyboard, as wl_seat wants: a new one when one comes. */
+	if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && keyboard) {
+		wl_keyboard_release(keyboard);
+		keyboard = NULL;
+		printf("keyboard-gone\n");
+	}
+	if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !keyboard) {
+		keyboard = wl_seat_get_keyboard(s);
+		wl_keyboard_add_listener(keyboard, &keyboard_listener, NULL);
 	}
 }
 

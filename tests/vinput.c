@@ -11,9 +11,12 @@
  *   lift KEY           let a pressed key go up again
  *   hold|release MOD   keep alt, ctrl, shift or super down across commands
  *   caps on|off        lock or unlock Caps
+ *   group N            lock layout group N, counting from 0, of the LAYOUTS given
  *   wheel N            turn the wheel N steps
  *
- * Usage: vinput WIDTH HEIGHT (the size of the headless output)
+ * Usage: vinput WIDTH HEIGHT [LAYOUTS]: the size of the headless output, and the XKB
+ * layouts of its keymap, default "us" (e.g. "us,ru" for a second group). Key names
+ * stand for keys where the us layout has them, whatever the group.
  */
 #define _GNU_SOURCE
 #include <linux/input-event-codes.h>
@@ -112,11 +115,13 @@ static const struct wl_registry_listener registry_listener = {
 	.global_remove = registry_global_remove,
 };
 
+static const char *layouts = "us";
+
 /* A virtual keyboard must upload its keymap before the first key. */
 static void send_keymap(void)
 {
 	struct xkb_context *ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	struct xkb_rule_names names = { .layout = "us" };
+	struct xkb_rule_names names = { .layout = layouts };
 	struct xkb_keymap *map = xkb_keymap_new_from_names(ctx, &names,
 		XKB_KEYMAP_COMPILE_NO_FLAGS);
 	if (!map) {
@@ -146,7 +151,7 @@ static void send_key(uint32_t code, bool pressed)
 }
 
 /* The compositor doesn't track modifiers of a virtual keyboard itself. */
-static uint32_t locked_mods;
+static uint32_t locked_mods, locked_group;
 
 static void set_mod(int idx, bool pressed)
 {
@@ -155,7 +160,7 @@ static void set_mod(int idx, bool pressed)
 	else
 		held_mods &= ~mods[idx].mask;
 	send_key(mods[idx].code, pressed);
-	zwp_virtual_keyboard_v1_modifiers(keyboard, held_mods, 0, locked_mods, 0);
+	zwp_virtual_keyboard_v1_modifiers(keyboard, held_mods, 0, locked_mods, locked_group);
 }
 
 static int find_mod(const char *name)
@@ -294,7 +299,18 @@ static const char *run_command(char *line)
 	}
 	if (strcmp(cmd, "caps") == 0) {
 		locked_mods = strcmp(a, "on") == 0 ? 2 : 0; /* Lock is the second modifier */
-		zwp_virtual_keyboard_v1_modifiers(keyboard, held_mods, 0, locked_mods, 0);
+		zwp_virtual_keyboard_v1_modifiers(keyboard, held_mods, 0, locked_mods,
+			locked_group);
+		return NULL;
+	}
+	if (strcmp(cmd, "group") == 0) {
+		char *end;
+		long n = strtol(a, &end, 10);
+		if (*end || n < 0 || n > 3)
+			return "group needs 0 to 3";
+		locked_group = n;
+		zwp_virtual_keyboard_v1_modifiers(keyboard, held_mods, 0, locked_mods,
+			locked_group);
 		return NULL;
 	}
 	if (strcmp(cmd, "hold") == 0 || strcmp(cmd, "release") == 0) {
@@ -309,12 +325,14 @@ static const char *run_command(char *line)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 3) {
-		fprintf(stderr, "usage: vinput WIDTH HEIGHT\n");
+	if (argc != 3 && argc != 4) {
+		fprintf(stderr, "usage: vinput WIDTH HEIGHT [LAYOUTS]\n");
 		return 2;
 	}
 	width = atoi(argv[1]);
 	height = atoi(argv[2]);
+	if (argc == 4)
+		layouts = argv[3];
 
 	display = wl_display_connect(NULL);
 	if (!display) {

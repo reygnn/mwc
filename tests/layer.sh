@@ -263,6 +263,15 @@ wait_for "a bad value: the defaults again" has_event rep "repeat 25 600"
 grep -q 'Mwm\*keyboardRepeatRate: expected 0 to 1000, not "fast"' "$LOG" ||
 	fail "the bad repeat rate is not reported"
 echo "ok: the bad repeat rate is reported"
+# A second layout group, for clients' shortcuts under a non-Latin layout: the group
+# vinput locks reaches the client.
+stop_vinput
+start_vinput 1280 720 us,ru
+: >"$SMOKE_DIR/rep.events"
+do_input group 1
+wait_for "group 1 reaches the client" has_event rep "modifiers group=1"
+do_input group 0
+wait_for "and group 0 again" has_event rep "modifiers group=0"
 # Just past the limits: a delay of 0 would stop mwc's own repeat, a rate over 1000
 # its interval.
 : >"$SMOKE_DIR/rep.events"
