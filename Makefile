@@ -117,6 +117,27 @@ check: build/mwc-asan
 	@if command -v $(FUZZ_CC) >/dev/null; then $(MAKE) fuzz-replay; \
 	else echo "make check: no $(FUZZ_CC), the fuzz inputs in fuzz/ were not replayed"; fi
 
+# make unit: tests/unit, one program per source file, which includes that file and
+# stubs what it calls of the rest (see tests/unit/unit.h). Always with the
+# sanitizers: an overflow fails the test. Fast, and part of make test.
+UNIT = hints snap
+# float-cast-overflow isn't part of undefined in GCC; sizes from ratios go through it.
+UNIT_FLAGS = -O1 -g -fno-omit-frame-pointer \
+	-fsanitize=address,undefined,float-cast-overflow \
+	-fno-sanitize-recover=undefined,float-cast-overflow -Werror \
+	-ffunction-sections -fdata-sections
+
+build/unit: | build
+	mkdir -p build/unit
+
+build/unit/%: tests/unit/%_test.c tests/unit/unit.h src/%.c src/mwc.h $(PROTO) | build/unit
+	$(CC) $(MWC_CFLAGS) $(CPPFLAGS) $(UNIT_FLAGS) -o $@ $< -Wl,--gc-sections $(MWC_LIBS)
+
+build/unit/main: src/version.h
+
+unit: $(UNIT:%=build/unit/%)
+	@fail=0; for t in $^; do $$t || fail=1; done; exit $$fail
+
 # make analyze: GCC's static analyzer over every source file, findings as errors:
 # NULL dereferences, use after free, double free, leaks on a path. Clean today, so a
 # new finding stops it. At -O0: optimizing first lets GCC drop the very paths that
@@ -132,7 +153,7 @@ analyze: $(PROTO) build/logo.h
 # kernel's checkpatch counts them. Shell scripts are left out: their checks are long
 # conditions that read better whole.
 LINT_MAX = 100
-LINT_FILES = src/*.c src/*.h tests/*.c fuzz/*.c
+LINT_FILES = src/*.c src/*.h tests/*.c tests/unit/*.c tests/unit/*.h fuzz/*.c
 
 lint:
 	@awk -v max=$(LINT_MAX) '{ \
@@ -410,7 +431,7 @@ config-test: mwc build/vinput build/pngtool
 build-test: mwc
 	tests/build.sh
 
-test: smoke input-test wallpaper-test config-test layer-test window-test \
+test: unit smoke input-test wallpaper-test config-test layer-test window-test \
 	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test desktop-test iconbox-test dock-test \
 	build-test
 
@@ -420,4 +441,4 @@ clean:
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN) $(IDLEC_GEN) build/ext-workspace-v1-client.h \
 	build/ext-workspace-v1-code.c
-.PHONY: build-test lint analyze valgrind check fuzz fuzz-replay dock-test iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: unit build-test lint analyze valgrind check fuzz fuzz-replay dock-test iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
