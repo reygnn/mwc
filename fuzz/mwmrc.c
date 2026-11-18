@@ -2,8 +2,8 @@
  * libFuzzer harness for the mwmrc parser: each input is a whole mwmrc. It goes
  * through config_load() as a file, then through everything that reads the rules:
  * lookups, colours, booleans, positions, iconPlacement, the root menu, DoNotTile and
- * TileOnly. config.c is included, so its static parts are reached too; what it calls
- * of the compositor is stubbed below and never reached from here.
+ * TileOnly, and the rules per client. config.c is included, so its static parts are
+ * reached too; the colours of draw.c are stubbed below.
  *
  *   make fuzz          fuzzes for FUZZ_TIME seconds, corpus in fuzz/corpus/mwmrc
  *   make fuzz-replay   runs every kept input once, as make check does
@@ -33,22 +33,6 @@ struct mwc_color color_contrast(struct mwc_color bg)
 	return bg;
 }
 
-const char *view_app_id(struct view *view) { return NULL; }
-struct view *view_parent(struct view *view) { return NULL; }
-void view_theme_changed(struct view *view) {}
-void theme_init(void) {}
-void wallpaper_init(struct server *server) {}
-void wallpaper_place(struct output *output, bool force) {}
-void menu_close(struct server *server) {}
-void input_config_changed(struct server *server) {}
-void outputs_config_changed(struct server *server) {}
-void iconbox_config_changed(struct server *server) {}
-void desktop_config_changed(struct server *server) {}
-void icons_arrange(struct server *server) {}
-void tile_config_changed(struct server *server) {}
-void dock_config_changed(struct server *server) {}
-void wlr_scene_node_set_enabled(struct wlr_scene_node *node, bool enabled) {}
-void wlr_scene_rect_set_color(struct wlr_scene_rect *rect, const float color[4]) {}
 
 /* The log is the parser's answer to bad input: formatted, so its arguments are
  * read, but not printed. */
@@ -101,8 +85,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 		parse_icon_placement(r->value, &ip);
 		config_expand_home(r->value, path, sizeof(path));
 		config_get(r->resource);
-		if (r->client)
+		if (r->client) {
+			struct mwc_shade a, in;
 			config_get_for(r->client, r->resource);
+			config_client_dock(r->client, r->value);
+			config_client_all_desktops(r->value, r->client);
+			config_client_position(r->client, r->client, &pos);
+			config_client_tiles(r->client, r->value);
+			config_client_shades(r->client, r->client, &a, &in);
+		}
 	}
 	for (int i = 0; i < config_root_items(); i++) {
 		const char *label, *command;

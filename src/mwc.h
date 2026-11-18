@@ -888,17 +888,24 @@ void config_root_item(int i, const char **label, const char **command);
 bool config_color(const char *value, struct mwc_color *out);
 /* 1, 0, or -1 for unset or not a boolean; name for the log. */
 int config_bool(const char *name, const char *value);
-void config_view_shades(struct view *view);
-/* DoNotTile, TileOnly. */
-void config_view_tiling(struct view *view);
-bool config_view_all_desktops(struct view *view);
 /* Mwm*NAME*geometry. at_pointer: the title bar's middle at the pointer. */
 struct config_position {
 	int x, y;
 	bool from_right, from_bottom;
 	bool at_pointer;
 };
-bool config_view_position(struct view *view, struct config_position *out);
+/* By a client's instance and class name (X11), or its app_id as both: */
+
+/* Its dock line's place in mwmrc, the dock's order; -1: not docked. */
+int config_client_dock(const char *name, const char *class);
+bool config_client_all_desktops(const char *name, const char *class);
+bool config_client_position(const char *name, const char *class,
+	struct config_position *out);
+/* Whether DoNotTile and TileOnly let it tile. */
+bool config_client_tiles(const char *name, const char *class);
+/* Its frame colours: its own lines, the theme for the rest. */
+void config_client_shades(const char *name, const char *class,
+	struct mwc_shade *active, struct mwc_shade *inactive);
 /* A leading ~/ as $HOME. */
 void config_expand_home(const char *value, char *out, size_t size);
 /* Mwm*iconPlacement: "primary secondary [tight]", default "left bottom". */
@@ -911,8 +918,15 @@ struct config_placement {
 const struct config_placement *config_icon_placement(void);
 /* Mwm*dockPlacement, iconPlacement's syntax; default "right bottom". */
 const struct config_placement *config_dock_placement(void);
-/* Its dock line's place in mwmrc, the dock's order; -1: not docked. */
+
+/* ---- configview.c ------------------------------------------------------- */
+
+/* config_client_*() for a window; dialogs have no dock or place of their own. */
 int config_view_dock(struct view *view);
+bool config_view_all_desktops(struct view *view);
+bool config_view_position(struct view *view, struct config_position *out);
+void config_view_tiling(struct view *view);
+void config_view_shades(struct view *view);
 /* Reload and SIGHUP: mwmrc applied to what runs; no re-exec. */
 void config_reload(struct server *server);
 

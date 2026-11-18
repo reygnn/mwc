@@ -26,7 +26,7 @@ SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
 	src/input.c src/draw.c src/wallpaper.c src/config.c src/layer.c \
 	src/hints.c src/outline.c src/snap.c src/tile.c src/tabs.c src/testhook.c \
 	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c src/iconbox.c \
-	src/dock.c src/outputrc.c src/sizehints.c src/snaprules.c
+	src/dock.c src/outputrc.c src/sizehints.c src/snaprules.c src/configview.c
 # Protocols mwc implements itself, not through wlroots: their glue code too.
 PROTO_CODE = build/fifo-v1-protocol.c build/ext-workspace-v1-protocol.c
 OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)
@@ -121,7 +121,9 @@ check: build/mwc-asan
 # logic kept apart from the display code: real data and libraries, fakes the test
 # fills where needed, no mocks. Always with the sanitizers: an overflow fails the
 # test. Fast, and the first step of make test.
-UNIT = outputrc sizehints snaprules
+UNIT = outputrc sizehints snaprules config
+# What a module needs of another: also linked, real.
+UNIT_WITH_config = src/draw.c
 # float-cast-overflow isn't part of undefined in GCC; sizes from ratios go through it.
 UNIT_FLAGS = -O1 -g -fno-omit-frame-pointer \
 	-fsanitize=address,undefined,float-cast-overflow \
@@ -131,7 +133,10 @@ build/unit: | build
 	mkdir -p build/unit
 
 build/unit/%: tests/unit/%_test.c tests/unit/unit.h src/%.c src/mwc.h $(PROTO) | build/unit
-	$(CC) $(MWC_CFLAGS) $(CPPFLAGS) $(UNIT_FLAGS) -o $@ $< src/$*.c $(MWC_LIBS)
+	$(CC) $(MWC_CFLAGS) $(CPPFLAGS) $(UNIT_FLAGS) -o $@ $< src/$*.c $(UNIT_WITH_$*) \
+		$(MWC_LIBS)
+
+build/unit/config: src/draw.c
 
 unit: $(UNIT:%=build/unit/%)
 	@fail=0; for t in $^; do $$t || fail=1; done; exit $$fail

@@ -527,27 +527,6 @@ static const struct rule *client_rule(const char *name, const char *class,
 	return r;
 }
 
-/* X11 windows go by instance or class, Wayland ones by app_id. */
-static void view_names(struct view *view, const char **name, const char **class)
-{
-	*name = *class = view_app_id(view);
-	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
-		*name = view->xsurface->instance;
-}
-
-static const struct rule *view_rule(struct view *view, const char *resource)
-{
-	const char *name, *class;
-	view_names(view, &name, &class);
-	return client_rule(name, class, resource);
-}
-
-/* Dialogs belong with their window, not in the program's corner or the dock. */
-static bool toplevel(struct view *view)
-{
-	return view->wtype == WT_NORMAL && !view_parent(view);
-}
-
 static bool rule_color(const struct rule *r, struct mwc_color *out)
 {
 	if (!r)
@@ -559,57 +538,49 @@ static bool rule_color(const struct rule *r, struct mwc_color *out)
 	return false;
 }
 
-int config_view_dock(struct view *view)
+int config_client_dock(const char *name, const char *class)
 {
-	if (!toplevel(view))
-		return -1;
-	const struct rule *r = view_rule(view, "dock");
+	const struct rule *r = client_rule(name, class, "dock");
 	return r && config_bool("dock", r->value) == 1 ? (int)(r - rules) : -1;
 }
 
-bool config_view_all_desktops(struct view *view)
+bool config_client_all_desktops(const char *name, const char *class)
 {
-	const struct rule *r = view_rule(view, "allDesktops");
+	const struct rule *r = client_rule(name, class, "allDesktops");
 	return r && config_bool("allDesktops", r->value) == 1;
 }
 
-bool config_view_position(struct view *view, struct config_position *out)
+bool config_client_position(const char *name, const char *class,
+	struct config_position *out)
 {
-	if (!toplevel(view))
-		return false;
-	const struct rule *r = view_rule(view, "geometry");
+	const struct rule *r = client_rule(name, class, "geometry");
 	return r && parse_position(r->value, out);
 }
 
-void config_view_tiling(struct view *view)
+bool config_client_tiles(const char *name, const char *class)
 {
-	view->no_tile = view_docked(view);
-	if (view->no_tile)
-		return;
 	if (tile_filter == FILTER_NONE)
-		return;
-	const char *name, *class;
-	view_names(view, &name, &class);
+		return true;
 	bool listed = false;
 	for (int i = 0; i < n_tile_names && !listed; i++)
 		listed = !strcasecmp(tile_names[i], name) ||
 			!strcasecmp(tile_names[i], class);
-	view->no_tile = tile_filter == FILTER_DENY ? listed : !listed;
+	return tile_filter == FILTER_DENY ? !listed : listed;
 }
 
-/* Pick the frame colours for a window from its class or app_id. */
-void config_view_shades(struct view *view)
+void config_client_shades(const char *name, const char *class,
+	struct mwc_shade *active, struct mwc_shade *inactive)
 {
-	view->shade_active = theme.active;
-	view->shade_inactive = theme.inactive;
+	*active = theme.active;
+	*inactive = theme.inactive;
 	if (!n_rules)
 		return;
 
 	struct mwc_color abg, afg, ibg, ifg;
-	bool has_abg = rule_color(view_rule(view, "activeBackground"), &abg);
-	bool has_afg = rule_color(view_rule(view, "activeForeground"), &afg);
-	bool has_ibg = rule_color(view_rule(view, "background"), &ibg);
-	bool has_ifg = rule_color(view_rule(view, "foreground"), &ifg);
+	bool has_abg = rule_color(client_rule(name, class, "activeBackground"), &abg);
+	bool has_afg = rule_color(client_rule(name, class, "activeForeground"), &afg);
+	bool has_ibg = rule_color(client_rule(name, class, "background"), &ibg);
+	bool has_ifg = rule_color(client_rule(name, class, "foreground"), &ifg);
 
 	if (has_abg || has_afg) {
 		if (!has_abg)
@@ -619,7 +590,7 @@ void config_view_shades(struct view *view)
 		if (!has_afg)
 			afg = theme.has_active_fg ? theme.active_fg :
 				color_contrast(abg);
-		view->shade_active = shade_from(abg, afg);
+		*active = shade_from(abg, afg);
 	}
 	if (has_abg || has_ibg || has_ifg) {
 		/* Unfocused: a paler version of the client's own colour. */
@@ -629,45 +600,6 @@ void config_view_shades(struct view *view)
 		if (!has_ifg)
 			ifg = theme.has_inactive_fg ? theme.inactive_fg :
 				color_contrast(ibg);
-		view->shade_inactive = shade_from(ibg, ifg);
+		*inactive = shade_from(ibg, ifg);
 	}
-}
-
-void config_reload(struct server *server)
-{
-	wlr_log(WLR_INFO, "reloading the configuration");
-	menu_close(server);
-	config_load();
-	/* Before anything rearranges the dock: a window leaving it stays where it is. */
-	struct view *view;
-	wl_list_for_each(view, &server->views, link) {
-		if (view->mapped)
-			view->dock_order = config_view_dock(view);
-	}
-	theme_init();
-	iconbox_config_changed(server);
-	wallpaper_init(server);
-	input_config_changed(server);
-	outputs_config_changed(server);
-
-	const float c[4] = { theme.root.r, theme.root.g, theme.root.b, 1 };
-	struct output *output;
-	wl_list_for_each(output, &server->outputs, link) {
-		wlr_scene_rect_set_color(output->background, c);
-		wlr_scene_node_set_enabled(&output->background->node,
-			!theme.root_none);
-		wallpaper_place(output, true);
-	}
-	wl_list_for_each(view, &server->views, link) {
-		view_theme_changed(view);
-		if (view->mapped)
-			view->all_desktops = config_view_all_desktops(view);
-	}
-	desktop_config_changed(server);
-	/* iconPlacement may have changed: every icon finds its slot anew. */
-	wl_list_for_each(view, &server->views, link)
-		view->icon_placed = false;
-	icons_arrange(server);
-	tile_config_changed(server);
-	dock_config_changed(server);
 }
