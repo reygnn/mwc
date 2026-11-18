@@ -7,7 +7,8 @@ LOG=build/build.log
 . "$(dirname "$0")/lib.sh"
 exec 3>&1 >"$LOG" 2>&1
 
-say() { echo "$1" | tee /dev/fd/3; }
+# Not tee /dev/fd/3: that opens the file again, truncating it if stdout is one.
+say() { echo "$1"; echo "$1" >&3; }
 bad() { echo "FAIL: $1 (see $LOG)" >&3; exit 1; }
 
 # ---- CPPFLAGS ----------------------------------------------------------------------
