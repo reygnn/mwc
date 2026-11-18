@@ -363,6 +363,23 @@ geometry_is "moveOpaque: Escape restores the size" opaque 100 100 300 200
 do_input up left
 stop opaque
 
+# Faster than the client draws, as a 1000 Hz mouse is: each size waits for the one
+# before, as for Wayland, instead of a ConfigureWindow for every motion. 200 motions at
+# once, counted by the ConfigureNotify the X window gets.
+x11 xglide pos=100,100 size=300x200 sizes=1
+settle
+do_input move "$RX" "$RY"
+do_input down left
+before=$(grep -c '^size' "$SMOKE_DIR/xglide.events")
+do_input glide $((RX + 200)) $((RY + 150)) 200
+geometry_is "moveOpaque, X11: many motions end at the last one" xglide 100 100 500 350
+do_input up left
+n=$(($(grep -c '^size' "$SMOKE_DIR/xglide.events") - before))
+[ "$n" -le 60 ] || fail "200 motions resized the X11 window $n times"
+echo "ok: 200 motions resized the X11 window $n times"
+no_grab_left "nothing is left of the grab"
+stop xglide
+
 wayland wopaque size=300x200
 refresh
 WX=$(get wopaque x) WY=$(get wopaque y)

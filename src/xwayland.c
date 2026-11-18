@@ -56,6 +56,8 @@ static void xw_commit(struct wl_listener *listener, void *data)
 	frame_render(view);
 	tabs_sync_sizes(view);
 	dock_view_resized(view);
+	if (view->width == view->xsurface->width && view->height == view->xsurface->height)
+		grab_resize_caught_up(view);
 }
 
 /* wlroots parses only the decoration part of _MOTIF_WM_HINTS. Reading it here
