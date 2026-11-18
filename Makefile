@@ -121,9 +121,10 @@ check: build/mwc-asan
 # logic kept apart from the display code: real data and libraries, fakes the test
 # fills where needed, no mocks. Always with the sanitizers: an overflow fails the
 # test. Fast, and the first step of make test.
-UNIT = outputrc sizehints snaprules config
+UNIT = outputrc sizehints snaprules config draw
 # What a module needs of another: also linked, real.
 UNIT_WITH_config = src/draw.c
+UNIT_WITH_draw = src/config.c
 # float-cast-overflow isn't part of undefined in GCC; sizes from ratios go through it.
 UNIT_FLAGS = -O1 -g -fno-omit-frame-pointer \
 	-fsanitize=address,undefined,float-cast-overflow \
@@ -136,10 +137,14 @@ build/unit/%: tests/unit/%_test.c tests/unit/unit.h src/%.c src/mwc.h $(PROTO) |
 	$(CC) $(MWC_CFLAGS) $(CPPFLAGS) $(UNIT_FLAGS) -o $@ $< src/$*.c $(UNIT_WITH_$*) \
 		$(MWC_LIBS)
 
-build/unit/config: src/draw.c
+build/unit/config: src/draw.c tests/unit/mwmrc.h
+build/unit/draw: src/config.c tests/unit/mwmrc.h
 
+# Leaks are looked for, but not in fontconfig's caches (tests/unit/lsan.supp).
 unit: $(UNIT:%=build/unit/%)
-	@fail=0; for t in $^; do $$t || fail=1; done; exit $$fail
+	@fail=0; for t in $^; do \
+		LSAN_OPTIONS=suppressions=tests/unit/lsan.supp:print_suppressions=0 $$t || fail=1; \
+	done; exit $$fail
 
 # make analyze: GCC's static analyzer over every source file, findings as errors:
 # NULL dereferences, use after free, double free, leaks on a path. Clean today, so a

@@ -24,10 +24,11 @@ CI (`.github/workflows/ci.yml`) runs `make lint`, a `-Werror` build, `make analy
 `make check` in `tests/Containerfile`'s image.
 
 Unit-tested logic lives in modules that call nothing of the display code:
-`outputrc.c`, `sizehints.c`, `snaprules.c`. `NAME_test.c` is linked with `src/NAME.c`
-alone and gets real data (views, outputs, wlroots' client state on the stack). The
-display code asks these modules and acts. Behaviour between clients and mwc stays
-with the scripts.
+`outputrc.c`, `sizehints.c`, `snaprules.c`, `config.c`, `draw.c`. `NAME_test.c` is
+linked with `src/NAME.c` (and `UNIT_WITH_NAME`) and gets real data: views, outputs and
+wlroots' client state on the stack, mwmrc files (`tests/unit/mwmrc.h`), cairo buffers.
+The display code asks these modules and acts. Behaviour between clients and mwc stays
+with the scripts. LeakSanitizer is on, but for fontconfig (`tests/unit/lsan.supp`).
 
 Polling helpers: `check`, `wait_for`, `pixel_is`, `pixel_isnt`, `reload_mwc` in
 `tests/lib.sh`. When a test client can't do what a test needs, extend it
