@@ -1,8 +1,8 @@
 /*
  * unit.h - the little the unit tests need: checks that report and carry on, and a
- * runner. A test file includes the source file it tests, so its static functions are
- * in reach, then this. What that file calls of the rest of mwc it stubs; the linker
- * drops the functions no test reaches (--gc-sections), and with them their calls.
+ * runner. A test is linked with the one module it tests (see make unit), which
+ * keeps its logic apart from the display code; what it gets is real data, or a
+ * fake the test fills, not a mock.
  *
  *   TEST(name) { CHECK(cond); CHECK_INT(got, want); }
  *   int main(void) { RUN(name); ...; return unit_done(); }

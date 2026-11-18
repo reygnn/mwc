@@ -836,6 +836,16 @@ void wallpaper_fini(struct server *server);
 /* force: also at the same size. */
 void wallpaper_place(struct output *output, bool force);
 
+/* ---- outputrc.c --------------------------------------------------------- */
+
+/* Each false for text mwmrc must not have; the out values are left alone then. */
+bool outputrc_mode(const char *value, int *w, int *h, double *hz);
+/* hz 0: the highest refresh rate. */
+struct wlr_output_mode *outputrc_pick_mode(struct wl_list *modes, int w, int h, double hz);
+bool outputrc_scale(const char *value, double *scale);
+bool outputrc_transform(const char *value, enum wl_output_transform *transform);
+bool outputrc_position(const char *value, int *x, int *y);
+
 /* ---- config.c ----------------------------------------------------------- */
 
 void config_load(void);

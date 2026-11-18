@@ -381,38 +381,6 @@ static void output_destroy(struct wl_listener *listener, void *data)
 	free(output);
 }
 
-/* The most a cairo or GL buffer can be. It also keeps sums of outputPosition's range
- * and a size from overflowing. */
-#define MODE_MAX 32767
-
-/* WIDTHxHEIGHT or WIDTHxHEIGHT@HZ, hz 0 if none. strtol, not %d: past the range of
- * int that would be undefined. */
-static bool parse_mode(const char *value, int *pw, int *ph, double *phz)
-{
-	char *end;
-	long w = strtol(value, &end, 10);
-	if (end == value || *end != 'x')
-		return false;
-	const char *hs = end + 1;
-	long h = strtol(hs, &end, 10);
-	if (end == hs)
-		return false;
-	double hz = 0;
-	if (*end == '@') {
-		const char *zs = end + 1;
-		hz = strtod(zs, &end);
-		/* Written so that NaN fails it too. */
-		if (end == zs || !(hz > 0 && hz <= 1000))
-			return false;
-	}
-	if (*end || w < 1 || w > MODE_MAX || h < 1 || h > MODE_MAX)
-		return false;
-	*pw = (int)w;
-	*ph = (int)h;
-	*phz = hz;
-	return true;
-}
-
 /* Mwm*NAME*outputMode: WIDTHxHEIGHT or WIDTHxHEIGHT@HZ. The highest refresh rate if
  * none is given. A backend without a mode list, nested or headless, takes any size. */
 static bool configure_mode(struct wlr_output *o, struct wlr_output_state *state)
@@ -422,26 +390,17 @@ static bool configure_mode(struct wlr_output *o, struct wlr_output_state *state)
 		return false;
 	int w, h;
 	double hz;
-	if (!parse_mode(value, &w, &h, &hz)) {
+	if (!outputrc_mode(value, &w, &h, &hz)) {
 		wlr_log(WLR_ERROR, "ignoring outputMode \"%s\" for %s: expected "
-			"WIDTHxHEIGHT or WIDTHxHEIGHT@HZ, up to %dx%d@1000", value, o->name,
-			MODE_MAX, MODE_MAX);
+			"WIDTHxHEIGHT or WIDTHxHEIGHT@HZ, up to 32767x32767@1000", value,
+			o->name);
 		return false;
 	}
 	if (wl_list_empty(&o->modes)) {
 		wlr_output_state_set_custom_mode(state, w, h, (int)(hz * 1000));
 		return true;
 	}
-	struct wlr_output_mode *best = NULL, *m;
-	wl_list_for_each(m, &o->modes, link) {
-		if (m->width != w || m->height != h)
-			continue;
-		/* Within half a Hz: 59.94 is what most people mean by 60. */
-		if (hz > 0 && abs(m->refresh - (int)(hz * 1000)) > 500)
-			continue;
-		if (!best || m->refresh > best->refresh)
-			best = m;
-	}
+	struct wlr_output_mode *best = outputrc_pick_mode(&o->modes, w, h, hz);
 	if (!best) {
 		wlr_log(WLR_ERROR, "ignoring outputMode \"%s\": %s has no such mode",
 			value, o->name);
@@ -454,45 +413,18 @@ static bool configure_mode(struct wlr_output *o, struct wlr_output_state *state)
 static void configure_scale(struct wlr_output *o, struct wlr_output_state *state)
 {
 	const char *value = config_get_for(o->name, "outputScale");
-	char *end;
-	double scale = value ? strtod(value, &end) : 1;
-	/* Written so that NaN fails it too. Below this the layout overflows. */
-	if (value && (end == value || *end || !(scale >= 0.1 && scale <= 10))) {
+	double scale = 1;
+	if (value && !outputrc_scale(value, &scale))
 		wlr_log(WLR_ERROR, "ignoring outputScale \"%s\" for %s", value, o->name);
-		scale = 1;
-	}
 	wlr_output_state_set_scale(state, scale);
 }
 
 static void configure_transform(struct wlr_output *o, struct wlr_output_state *state)
 {
-	static const struct {
-		const char *name;
-		enum wl_output_transform transform;
-	} table[] = {
-		{ "normal", WL_OUTPUT_TRANSFORM_NORMAL },
-		{ "90", WL_OUTPUT_TRANSFORM_90 },
-		{ "180", WL_OUTPUT_TRANSFORM_180 },
-		{ "270", WL_OUTPUT_TRANSFORM_270 },
-		{ "flipped", WL_OUTPUT_TRANSFORM_FLIPPED },
-		{ "flipped-90", WL_OUTPUT_TRANSFORM_FLIPPED_90 },
-		{ "flipped-180", WL_OUTPUT_TRANSFORM_FLIPPED_180 },
-		{ "flipped-270", WL_OUTPUT_TRANSFORM_FLIPPED_270 },
-	};
 	const char *value = config_get_for(o->name, "outputTransform");
 	enum wl_output_transform transform = WL_OUTPUT_TRANSFORM_NORMAL;
-	if (value) {
-		bool known = false;
-		for (size_t i = 0; i < sizeof(table) / sizeof(*table) && !known; i++) {
-			if (!strcasecmp(table[i].name, value)) {
-				transform = table[i].transform;
-				known = true;
-			}
-		}
-		if (!known)
-			wlr_log(WLR_ERROR, "ignoring outputTransform \"%s\" for %s", value,
-				o->name);
-	}
+	if (value && !outputrc_transform(value, &transform))
+		wlr_log(WLR_ERROR, "ignoring outputTransform \"%s\" for %s", value, o->name);
 	wlr_output_state_set_transform(state, transform);
 }
 
@@ -536,21 +468,11 @@ static struct wlr_output_layout_output *output_place(struct server *server,
 	struct wlr_output *o)
 {
 	const char *value = config_get_for(o->name, "outputPosition");
-	if (value) {
-		/* The limit keeps sums of positions and sizes from overflowing. strtol,
-		 * not %d: past the range of int that would be undefined. */
-		char *end;
-		long x = strtol(value, &end, 10), y = 0;
-		bool ok = end != value && *end == ',';
-		if (ok) {
-			const char *ys = end + 1;
-			y = strtol(ys, &end, 10);
-			ok = end != ys && *end == '\0';
-		}
-		if (ok && x >= -1000000 && x <= 1000000 && y >= -1000000 && y <= 1000000)
-			return wlr_output_layout_add(server->output_layout, o, (int)x, (int)y);
+	int x, y;
+	if (value && outputrc_position(value, &x, &y))
+		return wlr_output_layout_add(server->output_layout, o, x, y);
+	if (value)
 		wlr_log(WLR_ERROR, "ignoring outputPosition \"%s\" for %s", value, o->name);
-	}
 	return wlr_output_layout_add_auto(server->output_layout, o);
 }
 
