@@ -51,22 +51,40 @@ TODO
   0x0 ohne Formate und erneuert sich nur bei einem Commit mit neuem Modus oder
   Renderformat; mwc schaltet ihn aber mit dem alten Modus wieder ein. Ein wayvnc,
   der während DPMS-aus startet, bekommt so nie ein Bild, bis jemand den Modus
-  ändert. wlroots 0.20.2 behebt das (die Quelle hört dort auch auf ENABLED).
+  ändert. wlroots 0.19.3 und 0.20.2 beheben das (die Quelle hört dort auch auf
+  ENABLED; 0.19.3: 0f9a1f1).
   Bestätigt von wayrdp im Code und im Versuch (2026-11-11): erste Aufnahme bei
   ausgeschaltetem Monitor, dann ein: kein Bild; nach einem Moduswechsel wieder.
   Ein erzwungener Moduswechsel beim Einschalten würde es in mwc umgehen, wird
   aber bewusst nicht gebaut (Entscheidung 2026-11-11: keine Umgehungen für
   Fehler, die wlroots schon behoben hat). Erledigt sich mit dem Umstieg auf
-  0.20.2; bis dahin hilft ein Moduswechsel per Hand (outputc apply, wlr-randr).
+  0.19.3 oder 0.20.2; bis dahin hilft ein Moduswechsel per Hand (outputc apply, wlr-randr).
   wayrdp löst es nicht selbst aus (schaltet vor jeder Aufnahme ein), bleibt
   aber ohne Bild, wenn ein anderes Programm (grim, wayvnc, capturec) zuerst
   bei abgeschaltetem Monitor aufgenommen hat: Es bekommt dieselbe leere Quelle.
   Abnahme nach dem Umstieg: session.sh schaltet mit powerc aus, startet
   capturec, schaltet ein und bekommt ein Bild.
 
+* wlroots 0.19.3 (Review 2026-11-18). Erschienen, mit zwei Fixes, auf die
+  mwc wartet: 4279ee5 (wlr_buffer_finish im shm-Allocator, src/shmalloc.c wird
+  überflüssig) und 0f9a1f1 (Aufnahmequelle nach dem Einschalten, siehe oben),
+  dazu 878aebf (virtueller Zeiger setzt die Achsenquelle bei jeder Achse).
+  Keine API-Änderung, also der kleinere Schritt vor 0.20.
+  Zu klären: wlroots' shm-Allocator legt seine Puffer auch in 0.19.3 und 0.20.2
+  mit shm_open in /dev/shm an. Mit shmalloc.c fällt der Schutz über memfd und
+  posix_fallocate weg, und ein Puffer größer als /dev/shm (64 MiB in einem
+  Container) bringt mwc wieder mit SIGBUS zu Fall. Entweder diesen Teil von
+  shmalloc.c behalten (dann ohne Versionsabfrage und mit eigener Begründung)
+  oder die Grenze in CAVEATS. Ubuntu-Paket mit 0.19.3 prüfen; die distrobox
+  baut wlroots sonst selbst.
+  Abnahme: make check gegen 0.19.3, tests/fifo.sh und die Aufnahme nach dem
+  Einschalten (session.sh mit powerc und capturec) bestehen; ein Test mit
+  einem Output größer als /dev/shm, falls der memfd-Teil bleibt.
+
 * wlroots 0.20. Ubuntu-Paket libwlroots-0.20-dev prüfen. 0.20.2 behebt beides,
   was mwc heute umgeht oder offen lässt: den shm-Allocator ohne
-  wlr_buffer_finish (src/shmalloc.c fällt dann weg) und die Aufnahmequelle, die
+  wlr_buffer_finish (src/shmalloc.c fällt dann weg, bis auf die Frage nach
+  /dev/shm beim Eintrag zu 0.19.3) und die Aufnahmequelle, die
   beim Einschalten nicht neu wird (siehe oben, hört dort auch auf
   WLR_OUTPUT_STATE_ENABLED). Nicht behoben ist der Absturz in
   wlr-output-management (head_send_state, 40640950 nur auf master):
