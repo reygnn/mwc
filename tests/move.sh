@@ -172,19 +172,31 @@ geometry_is "Escape: the window stays where it was" mover 159 139 300 200
 
 # Its own repeat follows mwmrc as the clients' does; with rate 0 a held arrow is one
 # step. (A reload ends the move, so it can't change the rate in the middle of one.)
+# Measured at fixed times, not polled: the defaults would get anywhere in the end.
 printf 'Mwm*keyboardRepeatDelay: 100\nMwm*keyboardRepeatRate: 50\n' >"$RC"
 reload_mwc
 do_input key alt+F7
 do_input press Right
-check "a shorter delay, a faster repeat" "[ \"\$(global outline x)\" -ge 259 ]"
+sleep 0.45
+refresh
+early=$(global outline x)
+sleep 0.55
+refresh
+late=$(global outline x)
 do_input lift Right
+# The defaults, 600 ms then 25 a second, are still at the first step (169) at 0.45 s,
+# and at 1 s no further than 389 even with the short delay; 50 a second makes 600 or so.
+[ "$early" -gt 169 ] || fail "no repeat after 0.45 s: the delay isn't mwmrc's 100 ms"
+echo "ok: a shorter delay ($early at 0.45 s)"
+[ "$late" -ge 500 ] || fail "at 1 s the outline is at $late: the rate isn't mwmrc's 50"
+echo "ok: a faster repeat ($late at 1 s)"
 do_input key Escape
 printf 'Mwm*keyboardRepeatDelay: 100\nMwm*keyboardRepeatRate: 0\n' >"$RC"
 reload_mwc
 do_input key alt+F7
 do_input press Right
 outline_is "rate 0: one step" 169 139 "$OW" "$OH"
-sleep 0.5 # five times the delay
+sleep 0.8 # past the default delay too, which would have shown a second step
 outline_is "and no more" 169 139 "$OW" "$OH"
 do_input lift Right
 do_input key Escape
