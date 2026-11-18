@@ -98,6 +98,12 @@ TODO
   (head_send_state, 40640950 nur auf master):
   Mwm*outputManagement bleibt nötig. src/fifo.c fällt zugunsten von wlroots'
   wlr_fifo_manager_v1 weg (vorher prüfen, dass tests/fifo.sh weiter besteht).
+  0.20 meldet einer Oberfläche mit abgeschaltetem Scene-Knoten, dass sie ihren
+  Output verlassen hat (ef19f52, Review 2026-11-18 #8): dann bekommt auch ein
+  minimiertes FIFO-Fenster etwa ein Update pro Sekunde. In tests/fifo.sh den
+  Fall mit "fifoc minimized 5" ergänzen (2.5 bis 6 s; auf 0.19 sind es 0.14 s,
+  fifoc wartet dort vergeblich auf wl_surface.leave), CAVEATS "Minimized games"
+  streichen.
   Ein eigener Branch, mit allen API-Änderungen von 0.19 auf 0.20.
 
 * Wallpaper beim Reload nur neu laden, wenn es sich geändert hat (Review

@@ -6,6 +6,8 @@
  *   fifoc release N   N updates with the barrier, then the wp_fifo_v1 goes
  *   fifoc quit N      N updates with the barrier, then exit while they are held
  *   fifoc hold N      fullscreen, N updates with the barrier, print "held" and stay
+ *   fifoc minimized N minimized, N updates with the barrier
+ *   fifoc unseen N    the same on the monitor as it is, for one switched off
  *   fifoc twice       a second wp_fifo_v1 for the same surface
  *   fifoc gone        set_barrier after the surface was destroyed
  *
@@ -13,6 +15,10 @@
  * print: refreshes=R, how many refresh periods of the output passed from the first
  * update until the last callback came. Held back by the barrier that is about N-1;
  * without it, the updates replace each other and it is one or two.
+ * Off screen there are no frame callbacks: minimized and unseen go by the release of
+ * each update's own buffer, which comes once the update is applied, or the next one,
+ * and print seconds=S, from the first update until the buffer of the one before last
+ * came back. Held back by the barrier, about a second each, that is N-3 to N-2.
  * twice and gone print the protocol error they get: error=wp_fifo_manager_v1:0 or
  * error=wp_fifo_v1:0. Exits 0 on success, 1 on failure, 2 on a usage error.
  */
@@ -41,6 +47,8 @@ static int32_t refresh_mhz;
 static bool configured;
 static int callbacks_done;
 static double last_done;
+static int outputs_entered;
+static double released[64]; /* when each update's buffer came back, 0 before */
 
 static double now_ms(void)
 {
@@ -140,6 +148,30 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time)
 
 static const struct wl_callback_listener frame_listener = { frame_done };
 
+static void surface_enter(void *data, struct wl_surface *s, struct wl_output *o)
+{
+	outputs_entered++;
+}
+
+static void surface_leave(void *data, struct wl_surface *s, struct wl_output *o)
+{
+	outputs_entered--;
+}
+
+static const struct wl_surface_listener wl_surface_listener = {
+	.enter = surface_enter,
+	.leave = surface_leave,
+};
+
+static void buffer_release(void *data, struct wl_buffer *buffer)
+{
+	double *when = data;
+	if (!*when)
+		*when = now_ms();
+}
+
+static const struct wl_buffer_listener buffer_listener = { buffer_release };
+
 static struct wl_buffer *make_buffer(void)
 {
 	int stride = SIZE * 4, size = stride * SIZE;
@@ -160,9 +192,45 @@ static struct wl_buffer *make_buffer(void)
 	return buffer;
 }
 
+/* N updates with the barrier while nobody sees the window; see the top. */
+static int off_screen_updates(struct wl_display *display, struct wl_surface *surface,
+	struct xdg_toplevel *toplevel, bool minimize, int n)
+{
+	if (minimize) {
+		xdg_toplevel_set_minimized(toplevel);
+		wl_surface_commit(surface);
+		while (outputs_entered > 0)
+			if (wl_display_dispatch(display) < 0)
+				return 1;
+	}
+	struct wl_buffer *buffers[64];
+	for (int i = 0; i < n; i++) {
+		buffers[i] = make_buffer();
+		if (!buffers[i])
+			return 1;
+		wl_buffer_add_listener(buffers[i], &buffer_listener, &released[i]);
+	}
+	struct wp_fifo_v1 *fifo = wp_fifo_manager_v1_get_fifo(fifo_manager, surface);
+	double start = now_ms();
+	for (int i = 0; i < n; i++) {
+		wp_fifo_v1_set_barrier(fifo);
+		wp_fifo_v1_wait_barrier(fifo);
+		wl_surface_attach(surface, buffers[i], 0, 0);
+		wl_surface_damage_buffer(surface, 0, 0, SIZE, SIZE);
+		wl_surface_commit(surface);
+	}
+	wl_display_flush(display);
+	while (!released[n - 2])
+		if (wl_display_dispatch(display) < 0)
+			return 1;
+	printf("seconds=%.2f\n", (released[n - 2] - start) / 1000);
+	return 0;
+}
+
 static int usage(void)
 {
-	fprintf(stderr, "usage: fifoc fifo|plain|release|quit|hold N | twice | gone\n");
+	fprintf(stderr, "usage: fifoc fifo|plain|release|quit|hold|minimized|unseen N | "
+		"twice | gone\n");
 	return 2;
 }
 
@@ -186,9 +254,13 @@ int main(int argc, char *argv[])
 		return usage();
 	const char *mode = argv[1];
 	int n = argc > 2 ? atoi(argv[2]) : 0;
+	bool off_screen = !strcmp(mode, "minimized") || !strcmp(mode, "unseen");
 	bool updates = !strcmp(mode, "fifo") || !strcmp(mode, "plain") ||
-		!strcmp(mode, "release") || !strcmp(mode, "quit") || !strcmp(mode, "hold");
+		!strcmp(mode, "release") || !strcmp(mode, "quit") || !strcmp(mode, "hold") ||
+		off_screen;
 	if (updates ? n < 2 : strcmp(mode, "twice") && strcmp(mode, "gone"))
+		return usage();
+	if (off_screen && n > (int)(sizeof(released) / sizeof(*released)))
 		return usage();
 
 	struct wl_display *display = wl_display_connect(NULL);
@@ -210,6 +282,7 @@ int main(int argc, char *argv[])
 	}
 
 	struct wl_surface *surface = wl_compositor_create_surface(compositor);
+	wl_surface_add_listener(surface, &wl_surface_listener, NULL);
 
 	if (!strcmp(mode, "twice")) {
 		wp_fifo_manager_v1_get_fifo(fifo_manager, surface);
@@ -247,11 +320,15 @@ int main(int argc, char *argv[])
 	wl_surface_damage_buffer(surface, 0, 0, SIZE, SIZE);
 	wl_callback_add_listener(wl_surface_frame(surface), &frame_listener, NULL);
 	wl_surface_commit(surface);
-	while (callbacks_done < 1)
+	/* On a monitor that is off nothing is drawn, nor called back. */
+	while (callbacks_done < 1 && strcmp(mode, "unseen"))
 		if (wl_display_dispatch(display) < 0)
 			return 1;
 	callbacks_done = 0;
 	usleep(200 * 1000);
+	if (off_screen)
+		return off_screen_updates(display, surface, toplevel, !strcmp(mode, "minimized"),
+			n);
 
 	struct wp_fifo_v1 *fifo = NULL;
 	if (strcmp(mode, "plain"))

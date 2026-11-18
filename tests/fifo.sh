@@ -5,7 +5,9 @@
 LOG=build/fifo.log
 . "$(dirname "$0")/lib.sh"
 
-[ -x build/fifoc ] || { echo "FAIL: build/fifoc not built"; exit 1; }
+for tool in build/fifoc build/powerc; do
+	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
+done
 fifoc() { WAYLAND_DISPLAY=wayland-0 timeout 10 build/fifoc "$@" 2>&1; }
 # libwayland reports a protocol error on stderr itself: that goes to the log.
 fifoc_quiet() { WAYLAND_DISPLAY=wayland-0 timeout 10 build/fifoc "$@" 2>>"$LOG"; }
@@ -23,6 +25,19 @@ refreshes_between() {
 	echo "ok: $what ($r refreshes)"
 }
 
+# seconds_between <description> <min> <max> <fifoc args...>
+seconds_between() {
+	local what=$1 min=$2 max=$3 out t
+	shift 3
+	out=$(fifoc "$@") || fail "$what: fifoc $*: $out"
+	echo "fifoc $*: $out" >>"$LOG"
+	t=$(sed -n 's/^seconds=\([0-9.]*\).*/\1/p' <<<"$out")
+	[ -n "$t" ] || fail "$what: no result from fifoc: $out"
+	awk -v t="$t" -v lo="$min" -v hi="$max" 'BEGIN { exit !(t >= lo && t <= hi) }' ||
+		fail "$what: $t s, expected $min to $max"
+	echo "ok: $what ($t s)"
+}
+
 export MWC_TEST_STATE=$SMOKE_DIR/state # for the unplug hook
 start_mwc 'exec sleep 300'
 
@@ -36,6 +51,16 @@ refreshes_between "a second run in a new window too" 25 45 fifo 30
 refreshes_between "more than 64 at once don't all wait" 0 120 fifo 300
 # The wp_fifo_v1 goes after the first: the held ones must come at once.
 refreshes_between "destroying the wp_fifo_v1 lets the held updates go" 0 6 release 30
+
+# Nobody sees it: about one update a second, as Xwayland does, not every refresh (a
+# hidden game at full speed) nor never (one stuck for good). Five updates: from the
+# first until the fourth is through, three to four seconds. (Minimized too once
+# wlroots 0.20 tells a hidden surface it left its output: TODO, `fifoc minimized`.)
+WAYLAND_DISPLAY=wayland-0 build/powerc off || fail "powerc off"
+seconds_between "a window on a monitor switched off gets about one update a second" \
+	2.5 6 unseen 5
+WAYLAND_DISPLAY=wayland-0 build/powerc on || fail "powerc on"
+refreshes_between "on again, one per refresh" 25 45 fifo 30
 
 # A client that goes while updates are held: wlroots drops them with the surface.
 out=$(fifoc quit 30) || fail "fifoc quit: $out"
