@@ -4,15 +4,14 @@
  * edge to the whole usable area. A Motif-bevelled outline shows the target while
  * dragging. Super+arrow keys step between the same positions, as in Windows 11.
  * Halves and quarters keep MWC_GAP to the edges and to each other, as the tiling
- * layout does, so the desktop stays in reach; maximized is the whole area.
+ * layout does, so the desktop stays in reach; maximized is the whole area. Where
+ * each of these goes, snaprules.c works out; this file asks it and acts.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <wlr/util/box.h>
 #include "mwc.h"
 
-#define SNAP_EDGE 2    /* pointer this close to an output's edge */
-#define SNAP_CORNER 64 /* corner zone along each edge */
-#define PREVIEW_W 8    /* outline thickness */
+#define PREVIEW_W 8 /* outline thickness */
 
 /* Four strips: the inside is empty, and one picture of the whole box would be the
  * output's size, 32 MB at 4K, made anew with each zone. */
@@ -21,99 +20,16 @@ static struct wlr_scene_buffer *preview_strip[4];
 static struct wlr_box preview_box;
 static bool preview_visible;
 
-struct wlr_box snap_rect(enum snap s, struct wlr_box a)
-{
-	if (s == SNAP_NONE || s == SNAP_MAXIMIZE)
-		return a;
-	/* The gap around, then the two halves with the gap between them. */
-	const int g = MWC_GAP;
-	struct wlr_box in = { a.x + g, a.y + g, a.width - 2 * g, a.height - 2 * g };
-	int lw = (in.width - g) / 2, rw = in.width - g - lw;
-	int th = (in.height - g) / 2, bh = in.height - g - th;
-	int rx = in.x + lw + g, by = in.y + th + g;
-	switch (s) {
-	case SNAP_LEFT:
-		return (struct wlr_box){ in.x, in.y, lw, in.height };
-	case SNAP_RIGHT:
-		return (struct wlr_box){ rx, in.y, rw, in.height };
-	case SNAP_TOP_LEFT:
-		return (struct wlr_box){ in.x, in.y, lw, th };
-	case SNAP_TOP_RIGHT:
-		return (struct wlr_box){ rx, in.y, rw, th };
-	case SNAP_BOTTOM_LEFT:
-		return (struct wlr_box){ in.x, by, lw, bh };
-	case SNAP_BOTTOM_RIGHT:
-		return (struct wlr_box){ rx, by, rw, bh };
-	default:
-		return a;
-	}
-}
-
-/* Beside a dock along the bottom or top a column of positions may have its strip.
- * The column decides as one, so that a half and the quarters in it line up. A dock
- * along a side would narrow some positions and not others, which then overlap. */
 struct wlr_box snap_area(struct server *server, enum snap s, double px, double py)
 {
 	struct output *o = output_at(server, px, py);
-	if (!o)
-		return output_usable_area(server, px, py);
-	bool left = s == SNAP_LEFT || s == SNAP_TOP_LEFT || s == SNAP_BOTTOM_LEFT;
-	bool right = s == SNAP_RIGHT || s == SNAP_TOP_RIGHT || s == SNAP_BOTTOM_RIGHT;
-	if (!dock_horizontal() || !(left || right))
-		return o->usable;
-	struct wlr_box column = snap_rect(left ? SNAP_LEFT : SNAP_RIGHT, o->open);
-	return output_dock_in_the_way(o, column) ? o->usable : o->open;
-}
-
-const char *snap_name(enum snap s)
-{
-	switch (s) {
-	case SNAP_LEFT: return "Left half";
-	case SNAP_RIGHT: return "Right half";
-	case SNAP_TOP_LEFT: return "Top left";
-	case SNAP_TOP_RIGHT: return "Top right";
-	case SNAP_BOTTOM_LEFT: return "Bottom left";
-	case SNAP_BOTTOM_RIGHT: return "Bottom right";
-	case SNAP_MAXIMIZE: return "Maximize";
-	default: return "";
-	}
+	return o ? snap_area_on(o, dock_horizontal(), s) : output_usable_area(server, px, py);
 }
 
 enum snap snap_zone_at(struct view *view, double px, double py)
 {
-	if (!(view->funcs & FUNC_RESIZE) || view->fullscreen)
-		return SNAP_NONE;
-	struct wlr_box m = output_full_area(view->server, px, py);
-	bool left = px <= m.x + SNAP_EDGE;
-	bool right = px >= m.x + m.width - 1 - SNAP_EDGE;
-	bool top = py <= m.y + SNAP_EDGE;
-	bool bottom = py >= m.y + m.height - 1 - SNAP_EDGE;
-	bool near_top = py < m.y + SNAP_CORNER;
-	bool near_bottom = py >= m.y + m.height - SNAP_CORNER;
-	bool near_left = px < m.x + SNAP_CORNER;
-	bool near_right = px >= m.x + m.width - SNAP_CORNER;
-
-	if (left || right) {
-		if (near_top)
-			return left ? SNAP_TOP_LEFT : SNAP_TOP_RIGHT;
-		if (near_bottom)
-			return left ? SNAP_BOTTOM_LEFT : SNAP_BOTTOM_RIGHT;
-		return left ? SNAP_LEFT : SNAP_RIGHT;
-	}
-	if (top) {
-		if (near_left)
-			return SNAP_TOP_LEFT;
-		if (near_right)
-			return SNAP_TOP_RIGHT;
-		return (view->funcs & FUNC_MAXIMIZE) ? SNAP_MAXIMIZE : SNAP_NONE;
-	}
-	if (bottom) {
-		if (near_left)
-			return SNAP_BOTTOM_LEFT;
-		if (near_right)
-			return SNAP_BOTTOM_RIGHT;
-	}
-	return SNAP_NONE;
+	return snap_zone(output_full_area(view->server, px, py), view->funcs,
+		view->fullscreen, px, py);
 }
 
 /* The outline of snap position s on the output at (px, py), hidden for SNAP_NONE:
@@ -197,96 +113,17 @@ bool snap_preview_get(struct wlr_box *box)
 	return preview_visible;
 }
 
-/* Super+arrow keys, as in Windows 11: halves left and right, up to a top quarter
- * or maximized, down to a bottom quarter, back, or minimized. */
 void snap_step(struct view *view, enum snap_dir dir)
 {
 	if (!view || view->minimized || view->fullscreen ||
 			!(view->funcs & FUNC_RESIZE))
 		return;
-	enum snap cur = view->snap, next = cur;
-	bool maxed = view->maximized;
-
-	switch (dir) {
-	case SNAP_DIR_LEFT:
-		if (cur == SNAP_NONE)
-			next = SNAP_LEFT;
-		else if (cur == SNAP_RIGHT)
-			next = SNAP_NONE;
-		else if (cur == SNAP_TOP_RIGHT)
-			next = SNAP_TOP_LEFT;
-		else if (cur == SNAP_BOTTOM_RIGHT)
-			next = SNAP_BOTTOM_LEFT;
-		break;
-	case SNAP_DIR_RIGHT:
-		if (cur == SNAP_NONE)
-			next = SNAP_RIGHT;
-		else if (cur == SNAP_LEFT)
-			next = SNAP_NONE;
-		else if (cur == SNAP_TOP_LEFT)
-			next = SNAP_TOP_RIGHT;
-		else if (cur == SNAP_BOTTOM_LEFT)
-			next = SNAP_BOTTOM_RIGHT;
-		break;
-	case SNAP_DIR_UP:
-		if (maxed)
-			return;
-		if (cur == SNAP_NONE && (view->funcs & FUNC_MAXIMIZE))
-			next = SNAP_MAXIMIZE;
-		else if (cur == SNAP_LEFT)
-			next = SNAP_TOP_LEFT;
-		else if (cur == SNAP_RIGHT)
-			next = SNAP_TOP_RIGHT;
-		else if (cur == SNAP_BOTTOM_LEFT)
-			next = SNAP_LEFT;
-		else if (cur == SNAP_BOTTOM_RIGHT)
-			next = SNAP_RIGHT;
-		break;
-	case SNAP_DIR_DOWN:
-		if (maxed) {
-			next = SNAP_NONE;
-			break;
-		}
-		if (cur == SNAP_NONE) {
-			if (view->funcs & FUNC_MINIMIZE)
-				view_minimize(view);
-			return;
-		}
-		if (cur == SNAP_LEFT)
-			next = SNAP_BOTTOM_LEFT;
-		else if (cur == SNAP_RIGHT)
-			next = SNAP_BOTTOM_RIGHT;
-		else if (cur == SNAP_TOP_LEFT)
-			next = SNAP_LEFT;
-		else if (cur == SNAP_TOP_RIGHT)
-			next = SNAP_RIGHT;
-		break;
-	}
-	if (next == cur && !maxed)
-		return;
-	view_snap(view, next, view->x + (view->width + frame_extra_w(view)) / 2.0,
-		view->y + (view->height + frame_extra_h(view)) / 2.0);
-}
-
-/* A window larger than the area keeps its left or top edge in. */
-static struct wlr_box edge_box(struct wlr_box a, enum snap_dir dir, int x, int y,
-	int w, int h)
-{
-	switch (dir) {
-	case SNAP_DIR_LEFT:
-		x = a.x;
-		break;
-	case SNAP_DIR_RIGHT:
-		x = a.x + a.width - w > a.x ? a.x + a.width - w : a.x;
-		break;
-	case SNAP_DIR_UP:
-		y = a.y;
-		break;
-	case SNAP_DIR_DOWN:
-		y = a.y + a.height - h > a.y ? a.y + a.height - h : a.y;
-		break;
-	}
-	return (struct wlr_box){ x, y, w, h };
+	struct snap_move m = snap_next(view->snap, view->maximized, view->funcs, dir);
+	if (m.minimize)
+		view_minimize(view);
+	else if (m.snap)
+		view_snap(view, m.to, view->x + (view->width + frame_extra_w(view)) / 2.0,
+			view->y + (view->height + frame_extra_h(view)) / 2.0);
 }
 
 /* Super+Shift+arrow: push a floating window flush against that edge of its output's
@@ -296,22 +133,11 @@ void view_move_to_edge(struct view *view, enum snap_dir dir)
 	if (!view || view->minimized || view->fullscreen || view->maximized ||
 			view->snap != SNAP_NONE || !(view->funcs & FUNC_MOVE))
 		return;
-	int w = view->width + frame_extra_w(view);
-	int h = view->height + frame_extra_h(view);
-	struct output *o = output_at(view->server, view->x + w / 2.0, view->y + h / 2.0);
-	/* Beside the dock as far as the output's edge, else to the usable area's; one
-	 * that would now cover the dock moves out of its strip as well. */
-	struct wlr_box b = o ? edge_box(o->open, dir, view->x, view->y, w, h) :
-		(struct wlr_box){ 0 };
-	if (!o || output_dock_in_the_way(o, b)) {
-		struct wlr_box a = output_usable_area(view->server, view->x + w / 2.0,
-			view->y + h / 2.0);
-		b = edge_box(a, dir, view->x, view->y, w, h);
-		if (b.x + w > a.x + a.width)
-			b.x = a.x + a.width - w > a.x ? a.x + a.width - w : a.x;
-		if (b.y + h > a.y + a.height)
-			b.y = a.y + a.height - h > a.y ? a.y + a.height - h : a.y;
-	}
+	struct wlr_box f = { view->x, view->y, view->width + frame_extra_w(view),
+		view->height + frame_extra_h(view) };
+	double cx = f.x + f.width / 2.0, cy = f.y + f.height / 2.0;
+	struct wlr_box b = snap_edge_place(output_at(view->server, cx, cy),
+		output_usable_area(view->server, cx, cy), dir, f);
 	view->gravity_edges = 0;
 	view_set_position(view, b.x, b.y);
 }

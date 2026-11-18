@@ -12,7 +12,7 @@ test tools. `distrobox enter mwc-dev -- bash -lc 'cd ~/data/C-Projects/mwc && ..
 | Target | |
 |---|---|
 | `make` | mwc |
-| `make unit` | `tests/unit`: one program per source file, always under ASan and UBSan; part of `make test` |
+| `make unit` | `tests/unit`: a program per module, always under ASan and UBSan; part of `make test` |
 | `make test` | the scripts in `tests/`; one alone: `make NAME-test`, log in `build/NAME.log` |
 | `make check` | the same under ASan and UBSan with `-Werror`, then the kept fuzz inputs |
 | `make analyze` | `gcc -fanalyzer` over the sources, findings as errors |
@@ -23,8 +23,11 @@ test tools. `distrobox enter mwc-dev -- bash -lc 'cd ~/data/C-Projects/mwc && ..
 CI (`.github/workflows/ci.yml`) runs `make lint`, a `-Werror` build, `make analyze` and
 `make check` in `tests/Containerfile`'s image.
 
-Unit tests include the source file they test and stub what it calls (`tests/unit/unit.h`):
-for arithmetic and parsing. Behaviour between clients and mwc stays with the scripts.
+Unit-tested logic lives in modules that call nothing of the display code:
+`outputrc.c`, `sizehints.c`, `snaprules.c`. `NAME_test.c` is linked with `src/NAME.c`
+alone and gets real data (views, outputs, wlroots' client state on the stack). The
+display code asks these modules and acts. Behaviour between clients and mwc stays
+with the scripts.
 
 Polling helpers: `check`, `wait_for`, `pixel_is`, `pixel_isnt`, `reload_mwc` in
 `tests/lib.sh`. When a test client can't do what a test needs, extend it

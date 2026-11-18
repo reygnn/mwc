@@ -792,12 +792,29 @@ int tile_stacking(struct server *server);
 /* All tiled windows above or below all floating ones. */
 void tile_stack(struct server *server, bool raise);
 
-/* ---- snap.c ------------------------------------------------------------- */
+/* ---- snaprules.c -------------------------------------------------------- */
+
+/* What Super+arrow does: snap to `to`, minimize, or neither. */
+struct snap_move {
+	bool snap, minimize;
+	enum snap to;
+};
 
 struct wlr_box snap_rect(enum snap s, struct wlr_box area);
-/* What snap_rect() divides for s at (px, py): with the dock's strip beside the dock. */
-struct wlr_box snap_area(struct server *server, enum snap s, double px, double py);
+/* What snap_rect() divides for s on o: with the dock's strip beside the dock. */
+struct wlr_box snap_area_on(const struct output *o, bool horizontal_dock, enum snap s);
 const char *snap_name(enum snap s);
+/* The zone at (px, py) on an output of box m, for a window with these funcs. */
+enum snap snap_zone(struct wlr_box m, int funcs, bool fullscreen, double px, double py);
+struct snap_move snap_next(enum snap cur, bool maximized, int funcs, enum snap_dir dir);
+/* Where frame f goes, pushed to that edge of o's area (no o: of usable). */
+struct wlr_box snap_edge_place(const struct output *o, struct wlr_box usable,
+	enum snap_dir dir, struct wlr_box f);
+
+/* ---- snap.c ------------------------------------------------------------- */
+
+/* snap_area_on() for the output at (px, py). */
+struct wlr_box snap_area(struct server *server, enum snap s, double px, double py);
 enum snap snap_zone_at(struct view *view, double px, double py);
 void snap_preview(struct view *view, enum snap s, double px, double py);
 void snap_preview_box(struct view *view, struct wlr_box box);
