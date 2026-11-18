@@ -283,7 +283,20 @@ void views_update_layers(struct server *server)
 		if (v->activated)
 			focus = v;
 	}
-	wl_list_for_each(v, &server->views, link) {
+	/* The window keeps the focus, but the keys go to a top-layer surface, a
+	 * launcher or a prompt: it has to be seen, so on its output the window leaves
+	 * the fullscreen layer for its own and stays below it (layer_raise_keyboard()).
+	 * On another output it stays where it is. */
+	struct output *keys = layer_keyboard_output(server);
+	if (keys && focus) {
+		struct view *root = view_transient_root(focus);
+		if (output_at(server, root->x + root->width / 2.0,
+				root->y + root->height / 2.0) == keys)
+			focus = NULL;
+	}
+	/* Bottom first: a node goes on top of its new layer, so windows moving together,
+	 * a fullscreen one and its dialog, keep their order. */
+	wl_list_for_each_reverse(v, &server->views, link) {
 		enum view_layer layer = own_layer(v, focus);
 		/* Dialogs follow the window they belong to into its layer, at
 		 * least the normal one. */
@@ -304,11 +317,14 @@ void views_update_layers(struct server *server)
 		};
 		wlr_scene_node_reparent(&v->tree->node, tree[layer]);
 	}
+	/* Windows above the others share the top layer with the surface that has the keys. */
+	layer_raise_keyboard(server);
 }
 
 void view_raise_one(struct view *view)
 {
 	wlr_scene_node_raise_to_top(&view->tree->node);
+	layer_raise_keyboard(view->server);
 	wl_list_remove(&view->link);
 	wl_list_insert(&view->server->views, &view->link);
 	view->raise_seq = ++view->server->raise_hi;
@@ -392,17 +408,24 @@ void view_focus(struct view *view)
 		return;
 	}
 
+	/* An on-demand layer surface lets go of the keys here, before the window comes
+	 * up: else it would be raised back over a window above the others. */
+	bool from_layer = server->focused_layer && !server->exclusive_layer;
+	if (from_layer)
+		server->focused_layer = NULL;
 	struct view *prev = focused_view(server);
 	if (prev && prev != view)
 		view_set_activated(prev, false);
 	if (!view->activated)
 		view_set_activated(view, true);
+	/* Already activated, it stayed below the top layer while the keys were there. */
+	else if (from_layer)
+		views_update_layers(server);
 	view_raise(view);
 
 	/* An exclusive layer surface keeps the keyboard until it goes away. */
 	if (server->exclusive_layer)
 		return;
-	server->focused_layer = NULL;
 	struct wlr_surface *surface = view_surface(view);
 	if (surface) {
 		/* A client's menu closes when the focus goes elsewhere, and only then does

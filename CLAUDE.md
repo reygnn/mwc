@@ -22,9 +22,9 @@ test tools. `distrobox enter mwc-dev -- bash -lc 'cd ~/data/C-Projects/mwc && ..
 CI (`.github/workflows/ci.yml`) runs `make lint`, a `-Werror` build, `make analyze` and
 `make check` in `tests/Containerfile`'s image.
 
-Polling helpers: `check`, `wait_for`, `pixel_is`, `reload_mwc` in `tests/lib.sh`. When
-a test client can't do what a test needs, extend it (`tests/xdgc.c`, `xclient.c`,
-`layerc.c`, `badclient.c`, `vinput.c`, `idlec.c`).
+Polling helpers: `check`, `wait_for`, `pixel_is`, `pixel_isnt`, `reload_mwc` in
+`tests/lib.sh`. When a test client can't do what a test needs, extend it
+(`tests/xdgc.c`, `xclient.c`, `layerc.c`, `badclient.c`, `vinput.c`, `idlec.c`).
 
 
 ## Rules

@@ -46,6 +46,16 @@ or a screen saver such as displayOff). Virtual keyboard and pointer are the exce
 they exist only with `MWC_VIRTUAL_INPUT=1` or in the tests.
 
 
+## Virtual input
+
+With `MWC_VIRTUAL_INPUT=1` and wlroots before 0.19.3, a virtual pointer that scrolls on
+both axes in one frame with an axis source other than the wheel (finger, continuous or
+wheel tilt) ends the session where wlroots is built with assertions, as Ubuntu's is.
+wlroots applies the source to one axis only, leaves the other at the wheel and aborts
+on the mismatch. Any client of the protocol can send that; whether wayrdp does is
+unchecked. wlroots 0.19.3 fixes it (commit 878aebf).
+
+
 ## Output management
 
 wlr-output-management is off unless `Mwm*outputManagement: true`. wlroots up to 0.20

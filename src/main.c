@@ -15,7 +15,6 @@
 #include <unistd.h>
 #include <wlr/backend.h>
 #include <wlr/render/allocator.h>
-#include <wlr/version.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
@@ -958,9 +957,8 @@ int main(int argc, char *argv[])
 		wlr_log(WLR_ERROR, "failed to create wlr_allocator");
 		return 1;
 	}
-#if WLR_VERSION_NUM < ((0 << 16) | (19 << 8) | 3)
-	/* Where wlroots took its shm allocator, which before 0.19.3 frees buffers
-	 * without telling the renderer: see shmalloc.c. */
+	/* Where wlroots took its shm allocator, which puts buffers in /dev/shm: see
+	 * shmalloc.c. */
 	if (server.allocator->buffer_caps == (WLR_BUFFER_CAP_SHM | WLR_BUFFER_CAP_DATA_PTR)) {
 		struct wlr_allocator *shm = shm_allocator_create();
 		if (shm) {
@@ -968,7 +966,6 @@ int main(int argc, char *argv[])
 			server.allocator = shm;
 		}
 	}
-#endif
 
 	server.compositor = wlr_compositor_create(server.display, 6,
 		server.renderer);

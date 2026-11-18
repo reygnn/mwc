@@ -814,6 +814,10 @@ void layer_output_gone(struct output *output);
 void layer_handle_click(struct server *server, struct wlr_surface *surface);
 bool layer_surface_is_desktop(struct wlr_surface *surface);
 bool layer_keyboard_back(struct server *server);
+/* Where a top-layer surface has the keyboard: no fullscreen window covers it there. */
+struct output *layer_keyboard_output(struct server *server);
+/* Raises that surface above the windows sharing the top layer with it. */
+void layer_raise_keyboard(struct server *server);
 /* Of the layer surface this popup parent belongs to. */
 bool layer_root_coords(struct wlr_surface *surface, int *lx, int *ly);
 
@@ -966,7 +970,7 @@ void fifo_init(struct server *server);
 
 /* ---- shmalloc.c ----------------------------------------------------------- */
 
-/* Tells who kept a buffer that it is gone. */
+/* Buffers in memfds, not in /dev/shm, which may be too small for them. */
 struct wlr_allocator *shm_allocator_create(void);
 
 #endif

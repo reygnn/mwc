@@ -400,7 +400,7 @@ iconbox-test: mwc build/vinput build/pngtool build/xdgc build/workspacec build/l
 dock-test: mwc build/vinput build/xclient build/xdgc build/pngtool build/workspacec
 	tests/dock.sh
 
-layer-test: mwc build/vinput build/pngtool build/layerc build/xdgc
+layer-test: mwc build/vinput build/pngtool build/layerc build/xdgc build/xclient
 	tests/layer.sh
 
 config-test: mwc build/vinput build/pngtool

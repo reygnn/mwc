@@ -6,7 +6,7 @@ LOG=build/layer.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools foot xterm Xwayland grim
-for tool in build/vinput build/pngtool build/layerc build/xdgc; do
+for tool in build/vinput build/pngtool build/layerc build/xdgc build/xclient; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -38,11 +38,12 @@ output_is() { # <description> <x> <y> <w> <h>: the usable area
 }
 
 marker='touch "$SMOKE_DIR/$0"; exec sleep 120'
-start_mwc "foot sh -c '$marker' foot-up & \
+start_mwc "echo \"\$DISPLAY\" > \"\$SMOKE_DIR/display\"; foot sh -c '$marker' foot-up & \
 	while [ ! -e \"\$SMOKE_DIR/foot-up\" ]; do sleep 0.1; done; \
 	exec xterm -e sh -c '$marker' xterm-up"
 wait_for "foot connected (Wayland)" test -e "$SMOKE_DIR/foot-up"
 wait_for "xterm connected (XWayland)" test -e "$SMOKE_DIR/xterm-up"
+X_DISPLAY=$(cat "$SMOKE_DIR/display")
 start_vinput
 check "both windows are mapped" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get XTerm x)\" ]"
 B=$(global theme border)
@@ -125,20 +126,63 @@ layerc_stop bgtool
 do_input key alt+F11
 check "foot is fullscreen, over the whole output" \
 	"[ \"\$(get foot full)\" = 1 ] && [ \"\$(get foot y)\" = 0 ] && [ \"\$(get foot h)\" = 720 ]"
-sleep 0.2
-WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/shot.png" || fail "a screenshot"
-got=$(build/pngtool pixel "$SMOKE_DIR/shot.png" 640 10)
-[ -n "$got" ] && [ "$got" != "$PANEL" ] ||
-	fail "a focused fullscreen window should cover the panel, not show ${got:-nothing}"
-echo "ok: a focused fullscreen window covers the panel"
+pixel_isnt "a focused fullscreen window covers the panel" 640 10 "$PANEL"
 do_input key alt+Tab
 check "xterm has the focus" "[ \"\$(get XTerm active)\" = 1 ] && [ \"\$(get foot full)\" = 1 ]"
 pixel_is "without the focus, the panel is visible again" 640 10 "$PANEL"
 do_input key alt+Tab
 check "foot has the focus again" "[ \"\$(get foot active)\" = 1 ]"
+# A launcher or a prompt in the top layer takes the keys: it must be seen, or every key
+# goes into a surface under the fullscreen window and Alt+Tab can't get past it.
+layerc_start prompt layer=top size=200x100 keyboard=exclusive color=00ff00
+wait_for "the prompt has the keyboard" has_event prompt keyboard-enter
+pixel_is "a top-layer surface with the keyboard is above the fullscreen window" \
+	640 360 00ff00
+do_input key a
+wait_for "the keys go to the prompt one can see" has_event prompt "key 30"
+layerc_stop prompt
+check "foot has the keyboard back, still fullscreen" \
+	"[ \"\$(get foot kbfocus)\" = 1 ] && [ \"\$(get foot full)\" = 1 ]"
+pixel_isnt "with the prompt gone, foot covers the panel again" 640 10 "$PANEL"
+# On demand, as it appears: the same, and a click on foot takes the keys back.
+layerc_stop top
+layerc_start top layer=top anchor=top,left,right size=0x30 exclusive=30 \
+	keyboard=on-demand color=$PANEL
+wait_for "an on-demand panel appearing has the keyboard" has_event top keyboard-enter
+pixel_is "and is above the fullscreen window" 640 10 "$PANEL"
+do_input move 640 360
+do_input click left
+check "a click on foot takes the keyboard back" "[ \"\$(get foot kbfocus)\" = 1 ]"
+pixel_isnt "a click on foot puts it back over the panel" 640 10 "$PANEL"
+layerc_stop top
+layerc_start top layer=top anchor=top,left,right size=0x30 exclusive=30 color=$PANEL
 do_input key alt+F11
 check "foot leaves fullscreen" "[ \"\$(get foot full)\" = 0 ]"
 pixel_is "the panel is back on top" 640 10 "$PANEL"
+# An X11 window both fullscreen and above the others (mpv --ontop --fs) leaves the
+# fullscreen layer for the one it shares with top-layer surfaces: there too the
+# prompt must stay above it.
+DISPLAY=$X_DISPLAY build/xclient class=XOnTop state=above,fullscreen color=0000ff \
+	>"$SMOKE_DIR/xontop.log" 2>&1 &
+XONTOP=$!
+check "the X11 window is fullscreen" "[ \"\$(get XOnTop full)\" = 1 ]"
+# Drawn at its new size before the click, or the click lands on what was there.
+pixel_is "it is drawn over the output" 640 360 0000ff
+do_input move 640 360
+do_input click left
+check "and has the focus" "[ \"\$(get XOnTop active)\" = 1 ]"
+pixel_isnt "it covers the panel" 640 10 "$PANEL"
+layerc_start prompt layer=top size=200x100 keyboard=exclusive color=00ff00
+wait_for "the prompt has the keyboard" has_event prompt keyboard-enter
+pixel_is "the prompt is above a fullscreen window that is above the others" 640 360 00ff00
+do_input move 100 600
+do_input click left
+pixel_is "and stays there when that window is clicked beside it" 640 360 00ff00
+layerc_stop prompt
+check "the X11 window has the focus back" "[ \"\$(get XOnTop kbfocus)\" = 1 ]"
+kill "$XONTOP"
+wait "$XONTOP" 2>/dev/null
+check "the X11 window is gone" "[ -z \"\$(get XOnTop x)\" ]"
 
 # ---- clicks and the desktop ---------------------------------------------------
 

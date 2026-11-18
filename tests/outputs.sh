@@ -123,6 +123,26 @@ do_input move 0 360
 preview_is "the other output has all its room" 8 8 628 704
 do_input key Escape
 do_input up left
+# A prompt with the keyboard on one output leaves a fullscreen window on the other
+# where it is, over that output's panel.
+WIN=808080
+do_input key alt+F11
+check "fullscreen on the second output" \
+	"[ \"\$(get win full)\" = 1 ] && [ \"\$(get win x)\" = 1280 ]"
+pixel_is "it covers the panel there" 1920 10 "$WIN"
+do_input move 640 360
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=top size=200x100 keyboard=exclusive \
+	color=00ff00 >"$SMOKE_DIR/prompt.events" 2>&1 &
+PID_prompt=$!
+wait_for "a prompt on the first output has the keyboard" \
+	grep -q keyboard-enter "$SMOKE_DIR/prompt.events"
+pixel_is "it is drawn there" 640 360 00ff00
+pixel_is "the window on the other output still covers its panel" 1920 10 "$WIN"
+kill "$PID_prompt"
+wait "$PID_prompt" 2>/dev/null
+check "the window has the keyboard back" "[ \"\$(get win kbfocus)\" = 1 ]"
+do_input key alt+F11
+check "not fullscreen any more" "[ \"\$(get win full)\" = 0 ]"
 kill "$PID_panel"
 wait "$PID_panel" 2>/dev/null
 

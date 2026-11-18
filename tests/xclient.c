@@ -12,7 +12,7 @@
  *     type=dialog|utility|splash|dock|desktop|notification|toolbar
  *     motif=FUNCS,DECOR   _MOTIF_WM_HINTS
  *     input=0             WM_HINTS without input focus
- *     state=above|below|fullscreen|maximized|sticky   initial _NET_WM_STATE
+ *     state=S[,S...]      initial _NET_WM_STATE, S: above|below|fullscreen|maximized|sticky
  *     ask_before=fullscreen|maximized  ask with a _NET_WM_STATE message, while unmapped
  *     ask_later=fullscreen|maximized   ask with one 2 s after mapping
  *     ask_after=fullscreen|maximized   ask with one right after XMapWindow, unsynced,
@@ -254,18 +254,21 @@ static Window create_window(const struct options *o, const char *class,
 		set_atom_list(win, "_NET_WM_WINDOW_TYPE", name);
 	}
 	if (o->state) {
-		Atom a[2];
-		int n = 1;
-		if (strcmp(o->state, "maximized") == 0) {
-			a[0] = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
-			a[1] = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-			n = 2;
-		} else {
+		Atom a[8];
+		int n = 0;
+		char list[128];
+		snprintf(list, sizeof(list), "%s", o->state);
+		for (char *s = strtok(list, ","); s && n < 7; s = strtok(NULL, ",")) {
+			if (strcmp(s, "maximized") == 0) {
+				a[n++] = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+				a[n++] = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+				continue;
+			}
 			char name[64];
-			snprintf(name, sizeof(name), "_NET_WM_STATE_%s", o->state);
+			snprintf(name, sizeof(name), "_NET_WM_STATE_%s", s);
 			for (char *p = name + 14; *p; p++)
 				*p = *p >= 'a' && *p <= 'z' ? *p - 32 : *p;
-			a[0] = XInternAtom(dpy, name, False);
+			a[n++] = XInternAtom(dpy, name, False);
 		}
 		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STATE", False),
 			XA_ATOM, 32, PropModeReplace, (unsigned char *)a, n);

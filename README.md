@@ -346,10 +346,11 @@ through ext-data-control-v1 or wlr-data-control.
 Programs using wlr-layer-shell work: panels, docks, launchers, wallpaper tools. Space a
 panel reserves stays free of maximized and new windows, icons and menus; a reservation
 leaving less than 100 px is ignored. The top layer stays above windows, but a focused
-fullscreen window covers it. A click on the background layer counts as a click on the
-desktop. A surface asking for the keyboard exclusively gets it, the one in the highest
-layer first; one asking on demand gets it when it appears or is clicked. While a surface
-holds the keyboard exclusively, the window bindings are off, except VT switching and
+fullscreen window covers it, unless a surface in it on the same output has the
+keyboard. A click on the background layer counts as a click on the desktop. A surface
+asking for the keyboard exclusively gets it, the one in the highest layer first; one
+asking on demand gets it when it appears or is clicked. While a surface holds the
+keyboard exclusively, the window bindings are off, except VT switching and
 Ctrl+Alt+Backspace.
 
 X11 panels work as well: a dock window with `_NET_WM_STRUT_PARTIAL` reserves space, and

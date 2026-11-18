@@ -121,6 +121,22 @@ pixel_is() {
 	fail "$what: pixel $x,$y is ${got:-unreadable}, expected $want"
 }
 
+# pixel_isnt <description> <x> <y> <rrggbb>: poll until something else is drawn there.
+pixel_isnt() {
+	local what=$1 x=$2 y=$3 unwanted=$4 shot=$SMOKE_DIR/shot.png got i
+	for ((i = 0; i < 50; i++)); do
+		if WAYLAND_DISPLAY=wayland-0 grim "$shot" 2>/dev/null; then
+			got=$(build/pngtool pixel "$shot" "$x" "$y")
+			if [ -n "$got" ] && [ "$got" != "$unwanted" ]; then
+				echo "ok: $what"
+				return 0
+			fi
+		fi
+		sleep 0.1
+	done
+	fail "$what: pixel $x,$y is ${got:-unreadable}, should not be $unwanted"
+}
+
 # reload_mwc: SIGHUP, and wait until mwc has read mwmrc again, by its log line.
 reload_mwc() {
 	local n

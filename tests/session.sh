@@ -179,12 +179,12 @@ output_is "a reload still applies to a monitor that is on" HEADLESS-1 0 0 800 50
 check "and leaves it on" "[ \"\$(global output on)\" = 1 ]"
 finish
 
-# Every mode change throws away the output's buffers. wlroots 0.19.2's shm allocator
-# did it without telling the renderer, which wrote into them when mwc ended, and now
-# and then glibc aborted (see src/shmalloc.c). Whether that hits glibc's bookkeeping
-# depends on the heap's layout, so this runs mwc under valgrind, which sees every
-# such write (its report lands in the log): without valgrind it only checks that mwc
-# ends cleanly.
+# Every mode change throws away the output's buffers. src/shmalloc.c tells the renderer
+# and the scene that they are gone. wlroots 0.19.2's own allocator didn't: renderer and
+# scene wrote into them when mwc ended, and now and then glibc aborted. Whether that
+# hits glibc's bookkeeping depends on the heap's layout, so this runs mwc under
+# valgrind, which sees every such write (its report lands in the log): without valgrind
+# it only checks that mwc ends cleanly.
 echo 'Mwm*outputManagement: true' >"$RC"
 # Not with a sanitizer build (make check), where valgrind doesn't work, nor under
 # make valgrind, which runs mwc in it already.

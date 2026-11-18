@@ -1,26 +1,26 @@
 /*
- * shmalloc.c - a shared memory allocator for wlroots before 0.19.3
- *
- * The shm allocator of wlroots 0.19.2 frees a buffer without sending its destroy
- * signal (fixed upstream in 16cb509a, "render/allocator: add missing
- * wlr_buffer_finish() in destroy impls", in 0.19.3). The pixman renderer and the
- * scene's damage rings keep an entry for every buffer they saw and drop it on
- * that signal, so each buffer freed by a mode change or an unplugged output
- * leaves one behind. When they are torn down at exit, they write into the freed
- * buffers, and glibc aborts with "corrupted size vs. prev_size". This is the
- * same allocator with the signal, used where wlroots would pick its own.
+ * shmalloc.c - mwc's shared memory allocator, used where wlroots would pick its own
  *
  * The memory comes from memfd_create(), not /dev/shm: wlroots' allocator puts its
- * buffers there, and one larger than what is free in it kills mwc with SIGBUS
- * when it is first touched (a container gives /dev/shm 64 MiB). A memfd is only
- * limited by memory itself; posix_fallocate() takes the pages up front, so where
- * there isn't enough the OOM killer acts at once rather than at the first frame.
+ * buffers there with shm_open() and ftruncate() (still in 0.19.3 and 0.20.2), and
+ * one larger than what is free in it kills mwc with SIGBUS when it is first
+ * touched. Docker and Podman give /dev/shm 64 MiB by default, room for barely two
+ * buffers of a 4K headless output for a VNC or RDP server, shared with anything
+ * else that uses shm_open(). A memfd is only limited by memory (with a container's
+ * memory limit); posix_fallocate() takes the pages up front, so where there isn't
+ * enough the buffer fails at once, or the OOM killer acts then, rather than at the
+ * first frame.
  *
- * Taken or not is decided when mwc is compiled, by the wlroots headers: a binary
- * built against 0.19.3 and run with 0.19.2 has the bug again. wlroots' udmabuf
- * allocator has the same gap in 0.19.2 and isn't replaced here; wlroots only
- * takes it for a renderer that wants DMA-BUFs without a DRM device, which mwc's
- * usual setups (pixman headless, a GPU with DRM) never are.
+ * A buffer's destroy sends its destroy signal through wlr_buffer_finish(), as
+ * every allocator must: the pixman renderer and the scene's damage rings drop
+ * their entry for it on that signal. wlroots' own shm allocator forgot it in
+ * 0.19.2, which left freed buffers behind for glibc to abort on at exit; fixed in
+ * 0.19.3 (4279ee5, "render/allocator: add missing wlr_buffer_finish() in destroy
+ * impls").
+ *
+ * wlroots' udmabuf allocator lacks the signal in 0.19.2 as well and isn't replaced
+ * here; wlroots only takes it for a renderer that wants DMA-BUFs without a DRM
+ * device, which mwc's usual setups (pixman headless, a GPU with DRM) never are.
  */
 #define _GNU_SOURCE
 #include <drm_fourcc.h>
@@ -77,7 +77,7 @@ static struct shm_buffer *shm_buffer(struct wlr_buffer *wlr_buffer)
 static void buffer_destroy(struct wlr_buffer *wlr_buffer)
 {
 	struct shm_buffer *buffer = shm_buffer(wlr_buffer);
-	/* What wlroots 0.19.2 forgets: whoever keeps track of the buffer lets go. */
+	/* Whoever keeps track of the buffer lets go. */
 	wlr_buffer_finish(wlr_buffer);
 	munmap(buffer->data, buffer->size);
 	close(buffer->shm.fd);

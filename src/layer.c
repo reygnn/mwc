@@ -214,6 +214,31 @@ void layers_arrange_all(struct server *server)
 
 /* ---- keyboard focus ------------------------------------------------------- */
 
+/* The top-layer surface with the keyboard, or NULL. */
+static struct layer_surface *top_with_keyboard(struct server *server)
+{
+	struct wlr_layer_surface_v1 *wlr = server->focused_layer;
+	struct layer_surface *ls = wlr ? wlr->data : NULL;
+	/* Where its nodes are, which layer_raise_keyboard() relies on. */
+	return ls && ls->layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP ? ls : NULL;
+}
+
+struct output *layer_keyboard_output(struct server *server)
+{
+	struct layer_surface *ls = top_with_keyboard(server);
+	return ls ? ls->output : NULL;
+}
+
+void layer_raise_keyboard(struct server *server)
+{
+	struct layer_surface *ls = top_with_keyboard(server);
+	if (!ls)
+		return;
+	/* Both steps leave nodes already in place alone: no damage on each call. */
+	wlr_scene_node_raise_to_top(&ls->popups->node);
+	wlr_scene_node_place_below(&ls->scene->tree->node, &ls->popups->node);
+}
+
 static void give_keyboard(struct layer_surface *ls)
 {
 	ls->server->focused_layer = ls->wlr;
@@ -221,6 +246,10 @@ static void give_keyboard(struct layer_surface *ls)
 	input_end_client_grab(ls->server);
 	iconbox_blur();
 	input_keyboard_enter(ls->server, ls->wlr->surface);
+	/* A focused fullscreen window would hide it: the keys would go where no one sees. */
+	views_update_layers(ls->server);
+	/* What lies under the pointer may have changed. */
+	input_pointer_changed_soon(ls->server);
 }
 
 /* One that insists on the keyboard and hasn't got it: a topmost one, if there are more. */
@@ -254,6 +283,7 @@ static void take_keyboard_back(struct server *server)
 	}
 	server->focused_layer = NULL;
 	server->exclusive_layer = NULL;
+	views_update_layers(server);
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
 		if (v->activated && v->mapped) {
@@ -397,6 +427,12 @@ static void layer_commit(struct wl_listener *listener, void *data)
 	if (layer_changed || wlr->current.keyboard_interactive != ls->keyboard_interactive) {
 		ls->keyboard_interactive = wlr->current.keyboard_interactive;
 		update_keyboard(ls, false);
+	}
+	/* Between top and overlay it keeps the keys, so update_keyboard() did nothing;
+	 * whether a fullscreen window may cover the top panels changes all the same. */
+	if (layer_changed && ls->server->focused_layer == wlr) {
+		views_update_layers(ls->server);
+		input_pointer_changed_soon(ls->server);
 	}
 }
 
