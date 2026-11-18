@@ -255,6 +255,7 @@ struct view {
 	uint32_t gravity_edges;
 	int gravity_extra_w, gravity_extra_h; /* the frame's size then */
 	int requested_w, requested_h; /* xdg */
+	bool configure_pending; /* X11: configured since its last commit */
 	int icon_x, icon_y;
 	bool icon_placed;
 	long icon_seq;   /* order of becoming an icon */

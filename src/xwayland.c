@@ -28,15 +28,9 @@ static void um_destroy(struct wl_listener *listener, void *data);
 
 /* ---- managed windows -------------------------------------------------- */
 
-static void xw_commit(struct wl_listener *listener, void *data)
+/* Its new size, kept where a resize from the left or top anchors it. */
+static void xw_size_committed(struct view *view, struct wlr_surface *s)
 {
-	struct view *view = wl_container_of(listener, view, commit);
-	struct wlr_surface *s = view->xsurface->surface;
-	/* wlroots doesn't tell when WM_NORMAL_HINTS change. */
-	view_update_properties(view);
-	if (s->current.width == view->width &&
-			s->current.height == view->height)
-		return;
 	/* Reuse the resize anchoring of the xdg path. */
 	struct server *server = view->server;
 	if (server->cursor_mode == CURSOR_RESIZE &&
@@ -56,8 +50,24 @@ static void xw_commit(struct wl_listener *listener, void *data)
 	frame_render(view);
 	tabs_sync_sizes(view);
 	dock_view_resized(view);
-	if (view->width == view->xsurface->width && view->height == view->xsurface->height)
+}
+
+static void xw_commit(struct wl_listener *listener, void *data)
+{
+	struct view *view = wl_container_of(listener, view, commit);
+	struct wlr_surface *s = view->xsurface->surface;
+	/* wlroots doesn't tell when WM_NORMAL_HINTS change. */
+	view_update_properties(view);
+	if (s->current.width != view->width || s->current.height != view->height)
+		xw_size_committed(view, s);
+	/* Any commit answers the last configure, whatever its size: one drawn before it,
+	 * through a viewport, or as asked. Not xsurface->width, which every
+	 * ConfigureNotify sets, stale or sent by another client. A resize sends no more
+	 * sizes than the window draws. */
+	if (view->configure_pending) {
+		view->configure_pending = false;
 		grab_resize_caught_up(view);
+	}
 }
 
 /* wlroots parses only the decoration part of _MOTIF_WM_HINTS. Reading it here

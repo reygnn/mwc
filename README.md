@@ -410,7 +410,7 @@ want the keyboard follow the same rule.
 
 Programs that wait for the refresh through wp_fifo_v1, as SDL 3 and Mesa's Vulkan FIFO
 mode do, get one update per refresh; on a monitor that is off, about one a second.
-Minimized ones too, from wlroots 0.20 on (see CAVEATS).
+Hidden ones too, from wlroots 0.20 on (see CAVEATS).
 
 X11 programs find `_NET_FRAME_EXTENTS`, `_NET_WORKAREA` and `_MOTIF_WM_INFO`.
 

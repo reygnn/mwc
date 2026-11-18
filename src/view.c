@@ -163,6 +163,7 @@ void view_send_size(struct view *view, int w, int h)
 		wlr_xwayland_surface_configure(view->xsurface,
 			view->x + frame_left(view), view->y + frame_top(view),
 			w, h);
+		view->configure_pending = true;
 	}
 }
 

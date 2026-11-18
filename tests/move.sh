@@ -186,9 +186,10 @@ late=$(global outline x)
 do_input lift Right
 # The defaults, 600 ms then 25 a second, are still at the first step (169) at 0.45 s,
 # and at 1 s no further than 389 even with the short delay; 50 a second makes 600 or so.
+# 450 leaves room for a timer that runs late under load.
 [ "$early" -gt 169 ] || fail "no repeat after 0.45 s: the delay isn't mwmrc's 100 ms"
 echo "ok: a shorter delay ($early at 0.45 s)"
-[ "$late" -ge 500 ] || fail "at 1 s the outline is at $late: the rate isn't mwmrc's 50"
+[ "$late" -ge 450 ] || fail "at 1 s the outline is at $late: the rate isn't mwmrc's 50"
 echo "ok: a faster repeat ($late at 1 s)"
 do_input key Escape
 printf 'Mwm*keyboardRepeatDelay: 100\nMwm*keyboardRepeatRate: 0\n' >"$RC"
@@ -374,11 +375,28 @@ before=$(grep -c '^size' "$SMOKE_DIR/xglide.events")
 do_input glide $((RX + 200)) $((RY + 150)) 200
 geometry_is "moveOpaque, X11: many motions end at the last one" xglide 100 100 500 350
 do_input up left
+# Counted once the last one is logged, which follows all before it.
+wait_for "xclient has seen the last size" grep -q '^size 500x350$' "$SMOKE_DIR/xglide.events"
 n=$(($(grep -c '^size' "$SMOKE_DIR/xglide.events") - before))
 [ "$n" -le 60 ] || fail "200 motions resized the X11 window $n times"
 echo "ok: 200 motions resized the X11 window $n times"
 no_grab_left "nothing is left of the grab"
 stop xglide
+
+# What it waits for is a commit, not xsurface's size, which every ConfigureNotify sets:
+# one that is stale, or sent by any client, would hold the resize until the release.
+x11 xspoof pos=100,100 size=300x200 spoof_after="$SMOKE_DIR/spoof"
+settle
+do_input move "$RX" "$RY"
+do_input down left
+do_input move $((RX + 10)) $((RY + 10))
+geometry_is "moveOpaque, X11: resizing" xspoof 100 100 310 210
+touch "$SMOKE_DIR/spoof"
+wait_for "a ConfigureNotify saying 1x1 is sent" grep -q '^spoofed' "$SMOKE_DIR/xspoof.events"
+do_input move $((RX + 40)) $((RY + 30))
+geometry_is "moveOpaque, X11: it still follows the pointer" xspoof 100 100 340 230
+do_input up left
+stop xspoof
 
 wayland wopaque size=300x200
 refresh

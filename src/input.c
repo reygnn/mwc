@@ -471,11 +471,10 @@ static void process_resize(struct server *server)
 		show_outline(server);
 	else if (view->type == VIEW_XDG ?
 			view->xdg_toplevel->base->current.configure_serial < view->anchor_serial :
-			view->xsurface->width != view->width ||
-			view->xsurface->height != view->height)
+			view->configure_pending)
 		/* Still busy with the last size: a mouse sends far more events than a
 		 * client can draw frames. This one goes out when it has caught up: an xdg
-		 * client acks it, an X11 window commits the size it was configured to. */
+		 * client acks it, an X11 window commits again (see xw_commit()). */
 		server->grab_resize_waiting = true;
 	else
 		resize_to(view, &target);

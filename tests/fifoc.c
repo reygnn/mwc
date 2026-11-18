@@ -6,7 +6,8 @@
  *   fifoc release N   N updates with the barrier, then the wp_fifo_v1 goes
  *   fifoc quit N      N updates with the barrier, then exit while they are held
  *   fifoc hold N      fullscreen, N updates with the barrier, print "held" and stay
- *   fifoc minimized N minimized, N updates with the barrier
+ *   fifoc minimized N minimized, N updates with the barrier; waits for wl_surface.leave
+ *                     first, which wlroots 0.19 never sends (see CAVEATS)
  *   fifoc unseen N    the same on the monitor as it is, for one switched off
  *   fifoc twice       a second wp_fifo_v1 for the same surface
  *   fifoc gone        set_barrier after the surface was destroyed
@@ -18,7 +19,7 @@
  * Off screen there are no frame callbacks: minimized and unseen go by the release of
  * each update's own buffer, which comes once the update is applied, or the next one,
  * and print seconds=S, from the first update until the buffer of the one before last
- * came back. Held back by the barrier, about a second each, that is N-3 to N-2.
+ * came back. Held back by the barrier, about a second each, that is N-2 to N-1.
  * twice and gone print the protocol error they get: error=wp_fifo_manager_v1:0 or
  * error=wp_fifo_v1:0. Exits 0 on success, 1 on failure, 2 on a usage error.
  */

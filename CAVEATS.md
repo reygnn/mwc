@@ -56,10 +56,12 @@ on the mismatch. Any client of the protocol can send that; whether wayrdp does i
 unchecked. wlroots 0.19.3 fixes it (commit 878aebf).
 
 
-## Minimized games
+## Games out of sight
 
-A minimized window using wp_fifo_v1 (SDL 3, Mesa's Vulkan FIFO mode) gets an update
-every second refresh, not about one a second as on a monitor that is off. wlroots 0.19
+A window using wp_fifo_v1 (SDL 3, Mesa's Vulkan FIFO mode) that is hidden gets an
+update every refresh, or every second one when nothing else on that monitor redraws,
+not about one a second as on a monitor that is off. Hidden means minimized, on another
+desktop, a tab in the background or a dialog hidden with its window. wlroots 0.19
 doesn't tell a surface whose scene node is switched off that it left its output, so
 mwc can't tell it apart from one in sight. wlroots 0.20 does (commit ef19f52).
 

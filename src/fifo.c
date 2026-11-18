@@ -7,8 +7,8 @@
  * when its window is hidden. SDL 3 takes Wayland only where a compositor offers
  * this; elsewhere it prefers X11, and an SDL program in mwc ran through Xwayland.
  *
- * wlroots 0.19 has no implementation (0.20 brings wlr_fifo_v1); this one is built
- * on the surface's synced state and its cached-state locks:
+ * wlroots has no implementation, 0.20.2 neither; this one is built on the surface's
+ * synced state and its cached-state locks:
  *
  * - set_barrier and wait_barrier are double-buffered, so they live in a
  *   wlr_surface_synced state and travel with the commit they came with.
@@ -22,10 +22,8 @@
  * - The protocol lets a compositor clear the barrier early for the client to make
  *   progress. mwc does after two refresh periods if no presentation comes (the
  *   window is covered, or the update changed nothing on screen), after a second
- *   if the surface is on no output (minimized, on a monitor that is off), and at
- *   once if it isn't mapped.
- *
- * Once mwc moves to wlroots 0.20 this file goes in favour of wlr_fifo_manager_v1.
+ *   if the surface is on no output (on a monitor that is off; hidden ones too from
+ *   wlroots 0.20 on, see CAVEATS), and at once if it isn't mapped.
  */
 #include <stdint.h>
 #include <stdlib.h>

@@ -96,14 +96,16 @@ TODO
   prüfen: auf 0.20 hätte er einen anderen Hash. src/shmalloc.c bleibt auch
   mit 0.20. Nicht behoben ist der Absturz in wlr-output-management
   (head_send_state, 40640950 nur auf master):
-  Mwm*outputManagement bleibt nötig. src/fifo.c fällt zugunsten von wlroots'
-  wlr_fifo_manager_v1 weg (vorher prüfen, dass tests/fifo.sh weiter besteht).
+  Mwm*outputManagement bleibt nötig. src/fifo.c bleibt: wlroots hat auch in
+  0.20.2 kein wp_fifo_v1 (geprüft am Quellbaum von 0.20.2 und master).
   0.20 meldet einer Oberfläche mit abgeschaltetem Scene-Knoten, dass sie ihren
-  Output verlassen hat (ef19f52, Review 2026-11-18 #8): dann bekommt auch ein
-  minimiertes FIFO-Fenster etwa ein Update pro Sekunde. In tests/fifo.sh den
-  Fall mit "fifoc minimized 5" ergänzen (2.5 bis 6 s; auf 0.19 sind es 0.14 s,
-  fifoc wartet dort vergeblich auf wl_surface.leave), CAVEATS "Minimized games"
-  streichen.
+  Output verlassen hat (ef19f52, Review 2026-11-18 #8): dann bekommt ein
+  verstecktes FIFO-Fenster (minimiert, anderer Desktop, Tab im Hintergrund,
+  Dialog mit seinem Fenster versteckt) über den Timer von src/fifo.c etwa ein
+  Update pro Sekunde. In tests/fifo.sh den Fall "fifoc minimized 5" ergänzen
+  (2.5 bis 6 s). Auf 0.19 kommt fifoc darin nicht weiter, es wartet vergeblich
+  auf wl_surface.leave; ohne dieses Warten gemessen waren es 0.14 s. CAVEATS
+  "Games out of sight" streichen.
   Ein eigener Branch, mit allen API-Änderungen von 0.19 auf 0.20.
 
 * Wallpaper beim Reload nur neu laden, wenn es sich geändert hat (Review

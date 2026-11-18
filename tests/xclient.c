@@ -72,6 +72,9 @@
  *     withdraw_after=FILE once FILE exists, withdraw the main window; says "withdrawn"
  *     nomap=1             never map the main window, an owner kept out of sight
  *     urgent_after=FILE   once FILE exists, set XUrgencyHint in WM_HINTS; says "urgent"
+ *     spoof_after=FILE    once FILE exists, send the root a synthetic ConfigureNotify
+ *                         that says the main window is 1x1, as any client can; says
+ *                         "spoofed"
  *     dialog_type=TYPE    the dialog's explicit window type, as for type=, also normal
  *     pulldown=1          a press posts an override-redirect menu and grabs the pointer,
  *                         as Motif does for press-drag-release; logs what follows
@@ -119,7 +122,7 @@ struct options {
 	bool has_motif;
 	bool no_input, workarea, clipboard, move_press, pulldown;
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
-	const char *dialog_after, *withdraw_after, *urgent_after;
+	const char *dialog_after, *withdraw_after, *urgent_after, *spoof_after;
 	bool nomap;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	int decor_later, decor_ms;
@@ -530,6 +533,8 @@ int main(int argc, char *argv[])
 			o.nomap = atoi(v);
 		else if (!strcmp(k, "urgent_after"))
 			o.urgent_after = v;
+		else if (!strcmp(k, "spoof_after"))
+			o.spoof_after = v;
 		else if (!strcmp(k, "ask_before"))
 			o.ask_before = v;
 		else if (!strcmp(k, "ask_later"))
@@ -723,6 +728,19 @@ int main(int argc, char *argv[])
 		XFree(h);
 		XSync(dpy, False);
 		printf("urgent\n");
+		fflush(stdout);
+	}
+	if (o.spoof_after) {
+		XSync(dpy, False);
+		wait_for_file(o.spoof_after);
+		XEvent e = { 0 };
+		e.xconfigure.type = ConfigureNotify;
+		e.xconfigure.event = DefaultRootWindow(dpy);
+		e.xconfigure.window = main_win;
+		e.xconfigure.width = e.xconfigure.height = 1;
+		XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureNotifyMask, &e);
+		XSync(dpy, False);
+		printf("spoofed\n");
 		fflush(stdout);
 	}
 	Window dialog_win = None;
