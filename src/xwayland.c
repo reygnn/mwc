@@ -173,8 +173,8 @@ static void xw_map(struct wl_listener *listener, void *data)
 	 * unless it asked for another place in the meantime. */
 	if (view->placed && (!view->been_mapped || xs->x != view->unmap_x ||
 			xs->y != view->unmap_y))
-		view_gravity_to_frame(view, xs->x, xs->y, view->width, view->height,
-			&view->x, &view->y);
+		view_gravity_to_frame(view, frame_size(view), xs->x, xs->y, view->width,
+			view->height, &view->x, &view->y);
 	view->been_mapped = true;
 
 	view->commit.notify = xw_commit;
@@ -298,12 +298,13 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 		return;
 	}
 	int fx0, fy0;
-	view_gravity_to_frame(view, 0, 0, view->xsurface->width, view->xsurface->height,
-		&fx0, &fy0);
+	struct frame_size f = frame_size(view);
+	view_gravity_to_frame(view, f, 0, 0, view->xsurface->width,
+		view->xsurface->height, &fx0, &fy0);
 	int vx = (ev->mask & XCB_CONFIG_WINDOW_X) ? ev->x : view->x - fx0;
 	int vy = (ev->mask & XCB_CONFIG_WINDOW_Y) ? ev->y : view->y - fy0;
 	int fx, fy;
-	view_gravity_to_frame(view, vx, vy, w, h, &fx, &fy);
+	view_gravity_to_frame(view, f, vx, vy, w, h, &fx, &fy);
 	/* During a move or resize the outline decides; the request still gets its
 	 * answer. */
 	struct server *server = view->server;

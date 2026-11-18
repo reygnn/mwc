@@ -620,23 +620,33 @@ void views_clear_dock(struct output *output);
 void views_layout_changed(struct server *server);
 void views_output_gone(struct output *output);
 
-/* ---- hints.c ------------------------------------------------------------ */
+/* ---- sizehints.c -------------------------------------------------------- */
 
 /* Largest window size; beyond it frame sizes and placement overflow. */
 #define VIEW_MAX_SIZE (1 << 20)
 #define X11_MAX_SIZE 32767
+
+/* The frame around a client: where the client sits in it, and what it adds. */
+struct frame_size {
+	int left, top, extra_w, extra_h;
+};
+
+void read_xwayland_size_hints(struct view *view);
+void read_xdg_size_hints(struct view *view);
+bool view_fixed(struct view *view);
+bool view_has_aspect(const struct view *view);
+void view_aspect_follow(struct view *view, int *pw, int *ph, bool width_given);
+void view_apply_size_hints(struct view *view, int *w, int *h, bool incr);
+void view_gravity_to_frame(struct view *view, struct frame_size f, int x, int y, int w,
+	int h, int *fx, int *fy);
+
+/* ---- hints.c ------------------------------------------------------------ */
 
 /* Type and size limits from the client; decor and funcs from them. */
 void view_update_properties(struct view *view);
 /* wm_capabilities from funcs, sent on a change. */
 void xdg_publish_caps(struct view *view);
 void view_update_decorations(struct view *view);
-bool view_fixed(struct view *view);
-bool view_has_aspect(const struct view *view);
-void view_aspect_follow(struct view *view, int *pw, int *ph, bool width_given);
-void view_apply_size_hints(struct view *view, int *w, int *h, bool incr);
-void view_gravity_to_frame(struct view *view, int x, int y, int w, int h, int *fx,
-	int *fy);
 struct view *view_parent(struct view *view);
 /* Nothing else follows from it. */
 void view_show(struct view *view, bool show);
@@ -672,6 +682,7 @@ int frame_left(struct view *view);
 int frame_top(struct view *view);
 int frame_extra_w(struct view *view);
 int frame_extra_h(struct view *view);
+struct frame_size frame_size(struct view *view);
 /* For a window opened at the pointer. */
 void frame_title_center(struct view *view, int *x, int *y);
 int frame_height(struct view *view);

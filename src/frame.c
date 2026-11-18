@@ -61,6 +61,12 @@ int frame_extra_h(struct view *view)
 	return 2 * frame_border(view) + frame_title(view);
 }
 
+struct frame_size frame_size(struct view *view)
+{
+	return (struct frame_size){ frame_left(view), frame_top(view),
+		frame_extra_w(view), frame_extra_h(view) };
+}
+
 int frame_height(struct view *view)
 {
 	return view->shaded && view->tiled && frame_title(view) ? frame_extra_h(view) :
