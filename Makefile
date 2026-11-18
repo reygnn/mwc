@@ -120,7 +120,7 @@ check: build/mwc-asan
 # make unit: tests/unit, one program per source file, which includes that file and
 # stubs what it calls of the rest (see tests/unit/unit.h). Always with the
 # sanitizers: an overflow fails the test. Fast, and part of make test.
-UNIT = hints snap
+UNIT = hints snap main
 # float-cast-overflow isn't part of undefined in GCC; sizes from ratios go through it.
 UNIT_FLAGS = -O1 -g -fno-omit-frame-pointer \
 	-fsanitize=address,undefined,float-cast-overflow \

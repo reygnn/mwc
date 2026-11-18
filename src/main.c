@@ -381,6 +381,38 @@ static void output_destroy(struct wl_listener *listener, void *data)
 	free(output);
 }
 
+/* The most a cairo or GL buffer can be. It also keeps sums of outputPosition's range
+ * and a size from overflowing. */
+#define MODE_MAX 32767
+
+/* WIDTHxHEIGHT or WIDTHxHEIGHT@HZ, hz 0 if none. strtol, not %d: past the range of
+ * int that would be undefined. */
+static bool parse_mode(const char *value, int *pw, int *ph, double *phz)
+{
+	char *end;
+	long w = strtol(value, &end, 10);
+	if (end == value || *end != 'x')
+		return false;
+	const char *hs = end + 1;
+	long h = strtol(hs, &end, 10);
+	if (end == hs)
+		return false;
+	double hz = 0;
+	if (*end == '@') {
+		const char *zs = end + 1;
+		hz = strtod(zs, &end);
+		/* Written so that NaN fails it too. */
+		if (end == zs || !(hz > 0 && hz <= 1000))
+			return false;
+	}
+	if (*end || w < 1 || w > MODE_MAX || h < 1 || h > MODE_MAX)
+		return false;
+	*pw = (int)w;
+	*ph = (int)h;
+	*phz = hz;
+	return true;
+}
+
 /* Mwm*NAME*outputMode: WIDTHxHEIGHT or WIDTHxHEIGHT@HZ. The highest refresh rate if
  * none is given. A backend without a mode list, nested or headless, takes any size. */
 static bool configure_mode(struct wlr_output *o, struct wlr_output_state *state)
@@ -388,13 +420,12 @@ static bool configure_mode(struct wlr_output *o, struct wlr_output_state *state)
 	const char *value = config_get_for(o->name, "outputMode");
 	if (!value)
 		return false;
-	int w, h, consumed = 0;
-	double hz = 0;
-	if (sscanf(value, "%dx%d%n", &w, &h, &consumed) != 2 || w <= 0 || h <= 0 ||
-			(value[consumed] && (sscanf(value + consumed, "@%lf", &hz) != 1 ||
-			hz <= 0))) {
+	int w, h;
+	double hz;
+	if (!parse_mode(value, &w, &h, &hz)) {
 		wlr_log(WLR_ERROR, "ignoring outputMode \"%s\" for %s: expected "
-			"WIDTHxHEIGHT or WIDTHxHEIGHT@HZ", value, o->name);
+			"WIDTHxHEIGHT or WIDTHxHEIGHT@HZ, up to %dx%d@1000", value, o->name,
+			MODE_MAX, MODE_MAX);
 		return false;
 	}
 	if (wl_list_empty(&o->modes)) {
