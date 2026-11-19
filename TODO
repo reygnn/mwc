@@ -183,6 +183,34 @@ TODO
   Abnahme: desktop.sh, zwei Karten, eine bekommt spät eine allDesktops-app_id;
   auf Desktop 2 ist die Gruppe zu sehen und jede Karte zeigbar.
 
+* Matrixtest über Invarianten, eigener Branch (test/invariant-matrix). Die
+  Tests prüfen Floating, Tabs, Tiling, Shading und Desktops je für sich; die
+  Fehler der drei Reviews des Branches fix/review-2026-11-18-low lagen in den
+  Kombinationen (allDesktops in einer Gruppe, Tab löst sich unter einem
+  Launcher, Dialog einer Karte, Sticky nach einem Remap).
+  - Invarianten statt erwarteter Werte, nach jedem Schritt aus der State-Datei
+    geprüft: höchstens ein Fenster aktiv, die Tastatur bei ihm, einer
+    Layer-Surface oder der Iconbox; sichtbar heißt nicht minimiert, keine
+    verdeckte Karte, auf dem aktuellen Desktop oder sticky; eine Gruppe hat
+    genau eine gezeigte Karte, alle auf einem Desktop; Tile-Zellen überlappen
+    nicht, liegen in der nutzbaren Fläche und füllen sie, ein Shaded-Fenster
+    behält seine Zelle; ein Sticky-Fenster samt Dialogen ist auf jedem Desktop
+    zu sehen, _NET_WM_STATE stimmt bei X11. Fehlende Felder in testhook.c.
+  - Matrix: ein Floating-Client; zwei Floating-Clients als Tabs; drei tiled,
+    alle sichtbar; drei tiled, einer shaded; tiled und tabbed; jede mit und
+    ohne Sticky. Je Operation einmal: Minimieren und Wiederherstellen,
+    Maximieren, Fullscreen, Shade, Super+G und Lösen, Karte wechseln,
+    Desktopwechsel, Schließen, Reload, Client ändert Titel, app_id oder Größe.
+    Eine mwc-Instanz, Reset zwischen den Fällen; etwa 3 bis 5 Minuten, Teil
+    von make test.
+  - Zufallslauf: dieselben Operationen in zufälliger Folge mit Seed
+    (make walk, WALK_STEPS, WALK_SEED, wie make fuzz), für Folgen aus drei und
+    mehr Schritten; der Seed reproduziert einen Fehler. In der CI kurz.
+  Grenze: Invarianten finden inkonsistenten Zustand, nicht falschen, aber
+  stimmigen (ein Fenster am falschen Ort); dafür bleiben die einzelnen Tests.
+  Abnahme: Matrix in make test, make walk mit 1000 Schritten ohne Befund oder
+  mit den Befunden als eigene Tests.
+
 * Opakes Resize von X11-Fenstern von links oder oben: die gegenüberliegende
   Kante zittert (Review 2026-11-17). view_set_geometry() setzt die neue
   Position sofort, das Fenster hat aber noch die alte Größe, bis Xwayland
