@@ -1004,6 +1004,34 @@ pixel_is "black around it" 5 5 000000
 pixel_is "black beside it" 300 360 000000
 pixel_is "the window itself in the middle" 640 360 808080
 stop fixedres
+# Its popups are placed by where it is drawn: one at its right edge slides back onto the
+# output. 400 wide in the middle of 1280 is drawn from 440; a popup 600 wide at 350
+# would end at 1390, so it slides 110 to the left (Review 2026-11-18 #23).
+wayland fixedpop size=400x300 own_size=1 pre=full popup=350,100,600,100 \
+	popup_after="$SMOKE_DIR/popup"
+mapped fixedpop
+check "it is fullscreen" "[ \"\$(get fixedpop full)\" = 1 ] && [ \"\$(get fixedpop w)\" = 400 ]"
+touch "$SMOKE_DIR/popup"
+saw "its popup slides back onto the output" fixedpop '^popup at 240 100$'
+stop fixedpop
+
+# ---- the window menu a client asks for -------------------------------------------------
+
+# show_window_menu says where in surface coordinates, which include a shadow drawn
+# around the window geometry (GTK): the menu opens there, not 20 px off.
+wayland shadowed size=300x200 shadow=20 menu_at=50,40
+mapped shadowed
+refresh
+SX=$(get shadowed x) SY=$(get shadowed y)
+do_input move $((SX + 150)) $((SY + $(border shadowed) + $(title shadowed) + 100))
+do_input click left
+saw "it asks for its window menu" shadowed '^menu asked'
+check "the menu opens at that point of its surface" \
+	"[ \"\$(global menu open)\" = 1 ] && \
+	 [ \"\$(global menu x)\" = \$((SX + \$(border shadowed) + 30)) ] && \
+	 [ \"\$(global menu y)\" = \$((SY + \$(border shadowed) + \$(title shadowed) + 20)) ]"
+do_input key Escape
+stop shadowed
 
 # ---- what a window is offered ----------------------------------------------------------------
 

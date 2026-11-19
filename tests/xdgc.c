@@ -35,6 +35,11 @@
  *                  at buffer scale S
  *     menu_at=X,Y  a button press asks for the window menu at X,Y, any int32;
  *                  says "menu asked"
+ *     shadow=N     a margin of N around the window geometry, as GTK draws its shadow
+ *                  in: the surface is N larger on each side
+ *     popup=X,Y,W,H  once the file popup_after=FILE exists, a WxH popup anchored at
+ *                  X,Y of the window geometry, growing right and down, slid back
+ *                  onto the output if it must be; says "popup at X Y", where it went
  */
 #define _GNU_SOURCE
 #include <stdbool.h>
@@ -73,6 +78,9 @@ static int32_t menu_x, menu_y;
 static struct wl_seat *the_seat;
 static struct xdg_toplevel *menu_toplevel;
 static struct wl_surface *cursor_surf;
+static int shadow;
+static int popup_x, popup_y, popup_w, popup_h;
+static const char *popup_after;
 
 struct window {
 	struct wl_surface *surface;
@@ -122,7 +130,9 @@ static void wait_dispatching(struct wl_display *display, int ms)
 
 static void draw(struct window *win)
 {
-	int bw = win->w, bh = win->h;
+	int bw = win->w + 2 * shadow, bh = win->h + 2 * shadow;
+	if (shadow && win->toplevel)
+		xdg_surface_set_window_geometry(win->xdg, shadow, shadow, win->w, win->h);
 	if (win->viewport) {
 		wp_viewport_set_destination(win->viewport, win->w, win->h);
 		bw = bh = 1;
@@ -397,6 +407,54 @@ static struct window *open_window(const char *app, struct window *parent,
 	return win;
 }
 
+static void popup_surface_configure(void *data, struct xdg_surface *xdg, uint32_t serial)
+{
+	xdg_surface_ack_configure(xdg, serial);
+	draw(data);
+}
+
+static const struct xdg_surface_listener popup_surface_listener = {
+	.configure = popup_surface_configure,
+};
+
+static void popup_configure(void *data, struct xdg_popup *p, int32_t x, int32_t y,
+	int32_t w, int32_t h)
+{
+	printf("popup at %d %d\n", x, y);
+	fflush(stdout);
+}
+
+static void popup_done(void *data, struct xdg_popup *p)
+{
+}
+
+static const struct xdg_popup_listener popup_listener = {
+	.configure = popup_configure,
+	.popup_done = popup_done,
+};
+
+static void open_popup(struct window *parent)
+{
+	struct window *win = calloc(1, sizeof(*win));
+	win->w = popup_w;
+	win->h = popup_h;
+	win->surface = wl_compositor_create_surface(compositor);
+	win->xdg = xdg_wm_base_get_xdg_surface(wm_base, win->surface);
+	xdg_surface_add_listener(win->xdg, &popup_surface_listener, win);
+	struct xdg_positioner *pos = xdg_wm_base_create_positioner(wm_base);
+	xdg_positioner_set_size(pos, popup_w, popup_h);
+	xdg_positioner_set_anchor_rect(pos, popup_x, popup_y, 1, 1);
+	xdg_positioner_set_anchor(pos, XDG_POSITIONER_ANCHOR_TOP_LEFT);
+	xdg_positioner_set_gravity(pos, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+	xdg_positioner_set_constraint_adjustment(pos,
+		XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X |
+		XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y);
+	struct xdg_popup *popup = xdg_surface_get_popup(win->xdg, parent->xdg, pos);
+	xdg_popup_add_listener(popup, &popup_listener, win);
+	xdg_positioner_destroy(pos);
+	wl_surface_commit(win->surface);
+}
+
 int main(int argc, char *argv[])
 {
 	const char *app = NULL, *dialog = NULL;
@@ -453,6 +511,12 @@ int main(int argc, char *argv[])
 			sscanf(v, "%dx%d@%d", &cursor_w, &cursor_h, &cursor_scale);
 		else if (!strcmp(argv[i], "menu_at"))
 			menu_asked = sscanf(v, "%d,%d", &menu_x, &menu_y) == 2;
+		else if (!strcmp(argv[i], "shadow"))
+			shadow = atoi(v);
+		else if (!strcmp(argv[i], "popup"))
+			sscanf(v, "%d,%d,%d,%d", &popup_x, &popup_y, &popup_w, &popup_h);
+		else if (!strcmp(argv[i], "popup_after"))
+			popup_after = v;
 	}
 	if (!app) {
 		fprintf(stderr, "xdgc: app= is required\n");
@@ -525,6 +589,12 @@ int main(int argc, char *argv[])
 		wl_display_flush(display);
 		printf("grown\n");
 		fflush(stdout);
+	}
+	if (popup_w > 0 && popup_after) {
+		while (access(popup_after, F_OK) != 0)
+			wait_dispatching(display, 50);
+		open_popup(main_win);
+		wl_display_flush(display);
 	}
 	while (open_windows > 0 && wl_display_dispatch(display) != -1) {
 	}

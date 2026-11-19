@@ -1942,11 +1942,17 @@ static void xdg_request_show_window_menu(struct wl_listener *listener,
 	if (!view->activated ||
 			!wlr_seat_client_validate_event_serial(event->seat, event->serial))
 		return;
-	/* Within the window: the client may say any int32. */
-	int x = event->x < 0 ? 0 : event->x > view->width ? view->width : event->x;
-	int y = event->y < 0 ? 0 : event->y > view->height ? view->height : event->y;
-	menu_open_window(view->server, view, view->x + frame_left(view) + x,
-		view->y + frame_top(view) + y);
+	/* Surface-local: from the surface's origin, which the scene has with the frame, a
+	 * shadow outside the window geometry and the centering of a small fullscreen
+	 * window in it. Within the window geometry: the client may say any int32. */
+	struct wlr_box *g = &view->xdg_toplevel->base->geometry;
+	int ox, oy;
+	wlr_scene_node_coords(&view->content_tree->node, &ox, &oy);
+	int x = event->x < g->x ? g->x : event->x > g->x + view->width ?
+		g->x + view->width : event->x;
+	int y = event->y < g->y ? g->y : event->y > g->y + view->height ?
+		g->y + view->height : event->y;
+	menu_open_window(view->server, view, ox + x, oy + y);
 }
 
 static void xdg_set_title(struct wl_listener *listener, void *data)
@@ -2092,17 +2098,17 @@ static void popup_unconstrain(struct popup *popup)
 	if (view && view->type == VIEW_XDG) {
 		/* On the output where it opens from, its anchor: for a window across two
 		 * monitors, a menu opened on the right one stays there. */
-		struct wlr_box *g = &view->xdg_toplevel->base->geometry;
 		struct wlr_xdg_popup *xp = popup->xdg_popup;
 		struct wlr_box ar = xp->scheduled.rules.anchor_rect;
 		int ax = ar.x + ar.width / 2, ay = ar.y + ar.height / 2;
 		/* The anchor is in the parent's window geometry. wlroots adds the parent
-		 * popups' positions up to the toplevel's surface, which starts at
-		 * view->x + frame_left - g->x in the layout. */
-		int tx, ty;
+		 * popups' positions up to the toplevel's surface, whose origin the scene
+		 * has, a small fullscreen window's centering included. */
+		int tx, ty, ox, oy;
 		wlr_xdg_popup_get_toplevel_coords(xp, ax, ay, &tx, &ty);
-		double lx = view->x + frame_left(view) - g->x + tx;
-		double ly = view->y + frame_top(view) - g->y + ty;
+		wlr_scene_node_coords(&view->content_tree->node, &ox, &oy);
+		double lx = ox + tx;
+		double ly = oy + ty;
 		/* Off every monitor, the window's corner decides, as before. */
 		if (!wlr_output_layout_output_at(view->server->output_layout, lx, ly)) {
 			lx = view->x + 1;
@@ -2115,8 +2121,8 @@ static void popup_unconstrain(struct popup *popup)
 			frame_height(view) };
 		if (o && !output_dock_in_the_way(o, vb))
 			a = o->open;
-		a.x -= view->x + frame_left(view) - g->x;
-		a.y -= view->y + frame_top(view) - g->y;
+		a.x -= ox;
+		a.y -= oy;
 		/* wlroots wants the box relative to the toplevel, however deep the popup
 		 * is nested. */
 		wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup, &a);
