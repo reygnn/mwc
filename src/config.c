@@ -114,11 +114,12 @@ static void add_rule(char *key, const char *value, int line)
 	while (resource > key && resource[-1] != '*' && resource[-1] != '.')
 		resource--;
 	bool ok = key[prefix] && prefix == 3 && !strncasecmp(key, "mwm", 3) && *resource;
-	/* Empty parts, as in "Mwm**resource", name nothing. */
+	/* Empty parts, as in "Mwm**resource", name nothing; nor does a client of more than
+	 * one part, as "XTerm*vt100", since a window has one name to match. */
 	char *client = NULL;
 	if (ok && resource - key > (ptrdiff_t)prefix + 1) {
 		size_t len = resource - key - prefix - 2;
-		ok = len > 0;
+		ok = len > 0 && !memchr(key + prefix + 1, '*', len);
 		if (ok) {
 			client = strndup(key + prefix + 1, len);
 			if (!client) {

@@ -321,7 +321,8 @@ switch_to 1
 # as for colours, dock and tiling.
 printf 'Mwm*outputManagement: true\nMwm*lateall*allDesktops: true\n' >"$RC"
 reload_mwc
-wayland latewin size=200x100 late_app=lateall late_ms=300
+# Long enough to be seen under its first name, under valgrind too.
+wayland latewin size=200x100 late_app=lateall late_ms=1500
 wait_for "it takes its name" said latewin "late app"
 check "and is everywhere now" "[ \"\$(get lateall everywhere)\" = 1 ]"
 switch_to 2
@@ -341,6 +342,23 @@ switch_to 1
 kill "$PID_xlate"
 wait "$PID_xlate" 2>/dev/null
 check "it is gone" "[ -z \"\$(get lateall x)\" ]"
+# Its dialog with it, and _NET_WM_STATE says sticky: from desktop 2, where both are out
+# of sight, they come into it.
+x11 xfam size=200x100 class_later=lateall class_after="$SMOKE_DIR/famclass" \
+	dialog=xfamdlg netstate=1
+check "its dialog is mapped" "[ -n \"\$(get xfamdlg x)\" ]"
+switch_to 2
+check "both out of sight" "[ \"\$(get xfam visible)\" = 0 ] && [ \"\$(get xfamdlg visible)\" = 0 ]"
+touch "$SMOKE_DIR/famclass"
+wait_for "it takes its class" said xfam "class set"
+check "in sight on desktop 2" "[ \"\$(get lateall visible)\" = 1 ]"
+check "its dialog as well" "[ \"\$(get xfamdlg visible)\" = 1 ]"
+wait_for "sticky, it says" eval "grep '^net-more' \"\$SMOKE_DIR/xfam.log\" | tail -1 | \
+	grep -q 'sticky=1'"
+switch_to 1
+kill "$PID_xfam"
+wait "$PID_xfam" 2>/dev/null
+check "it is gone" "[ -z \"\$(get lateall x)\" ] && [ -z \"\$(get xfamdlg x)\" ]"
 echo 'Mwm*outputManagement: true' >"$RC"
 reload_mwc
 

@@ -33,15 +33,18 @@
  *                  a window of any size for next to no memory
  *     cursor=WxH@S a cursor of its own while the pointer is over it: a WxH buffer
  *                  at buffer scale S
- *     menu_at=X,Y  a button press asks for the window menu at X,Y, any int32;
+ *     menu_at=X,Y  a button or key press asks for the window menu at X,Y, any int32;
  *                  says "menu asked"
+ *     geometry_at=X,Y  the window geometry at X,Y of the surface, any int32
  *     titles=N     once mapped, N different titles in one burst, the last "last";
  *                  says "titles sent"
  *     shadow=N     a margin of N around the window geometry, as GTK draws its shadow
- *                  in: the surface is N larger on each side
+ *                  in: the surface is N larger on each side, the margin 402020
  *     popup=X,Y,W,H  once the file popup_after=FILE exists, a WxH popup anchored at
  *                  X,Y of the window geometry, growing right and down, slid back
  *                  onto the output if it must be; says "popup at X Y", where it went
+ *     fixed_after=FILE  once FILE exists, its size becomes its smallest and largest;
+ *                  says "fixed"
  */
 #define _GNU_SOURCE
 #include <stdbool.h>
@@ -81,8 +84,10 @@ static struct wl_seat *the_seat;
 static struct xdg_toplevel *menu_toplevel;
 static struct wl_surface *cursor_surf;
 static int shadow, titles;
+static bool geometry_at;
+static int32_t geom_x, geom_y;
 static int popup_x, popup_y, popup_w, popup_h;
-static const char *popup_after;
+static const char *popup_after, *fixed_after;
 
 struct window {
 	struct wl_surface *surface;
@@ -135,6 +140,8 @@ static void draw(struct window *win)
 	int bw = win->w + 2 * shadow, bh = win->h + 2 * shadow;
 	if (shadow && win->toplevel)
 		xdg_surface_set_window_geometry(win->xdg, shadow, shadow, win->w, win->h);
+	if (geometry_at && win->toplevel)
+		xdg_surface_set_window_geometry(win->xdg, geom_x, geom_y, win->w, win->h);
 	if (win->viewport) {
 		wp_viewport_set_destination(win->viewport, win->w, win->h);
 		bw = bh = 1;
@@ -146,8 +153,11 @@ static void draw(struct window *win)
 		exit(1);
 	}
 	uint32_t *px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	for (size_t i = 0; i < size / 4; i++)
-		px[i] = clear ? 0 : 0xff808080;
+	for (size_t i = 0; i < size / 4; i++) {
+		int x = i % bw, y = i / bw;
+		bool margin = x < shadow || y < shadow || x >= bw - shadow || y >= bh - shadow;
+		px[i] = clear ? 0 : margin ? 0xff402020 : 0xff808080;
+	}
 	munmap(px, size);
 	struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
 	struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0, bw, bh,
@@ -220,6 +230,43 @@ static const struct wl_pointer_listener pointer_listener = {
 	.motion = pointer_motion,
 	.button = pointer_button,
 	.axis = pointer_axis,
+};
+
+static void keyboard_keymap(void *data, struct wl_keyboard *kb, uint32_t format, int fd,
+	uint32_t size)
+{
+	close(fd);
+}
+
+static void keyboard_enter(void *data, struct wl_keyboard *kb, uint32_t serial,
+	struct wl_surface *surface, struct wl_array *keys)
+{
+}
+
+static void keyboard_leave(void *data, struct wl_keyboard *kb, uint32_t serial,
+	struct wl_surface *surface)
+{
+}
+
+/* A key asks for the menu as a button does: for a window whose surface is out of
+ * the pointer's reach. */
+static void keyboard_key(void *data, struct wl_keyboard *kb, uint32_t serial,
+	uint32_t time, uint32_t key, uint32_t state)
+{
+	pointer_button(data, NULL, serial, time, 0, state);
+}
+
+static void keyboard_modifiers(void *data, struct wl_keyboard *kb, uint32_t serial,
+	uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group)
+{
+}
+
+static const struct wl_keyboard_listener keyboard_listener = {
+	.keymap = keyboard_keymap,
+	.enter = keyboard_enter,
+	.leave = keyboard_leave,
+	.key = keyboard_key,
+	.modifiers = keyboard_modifiers,
 };
 
 static void xdg_configure(void *data, struct xdg_surface *xdg, uint32_t serial)
@@ -326,6 +373,9 @@ static void registry_global(void *data, struct wl_registry *registry,
 		/* The tests always have a pointer, so its capability is not awaited. */
 		the_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
 		wl_pointer_add_listener(wl_seat_get_pointer(the_seat), &pointer_listener, NULL);
+		if (menu_asked)
+			wl_keyboard_add_listener(wl_seat_get_keyboard(the_seat),
+				&keyboard_listener, NULL);
 	}
 	else if (strcmp(interface, wl_output_interface.name) == 0 && n_outputs < 4)
 		outputs[n_outputs++] = wl_registry_bind(registry, name, &wl_output_interface, 1);
@@ -517,10 +567,14 @@ int main(int argc, char *argv[])
 			shadow = atoi(v);
 		else if (!strcmp(argv[i], "titles"))
 			titles = atoi(v);
+		else if (!strcmp(argv[i], "geometry_at"))
+			geometry_at = sscanf(v, "%d,%d", &geom_x, &geom_y) == 2;
 		else if (!strcmp(argv[i], "popup"))
 			sscanf(v, "%d,%d,%d,%d", &popup_x, &popup_y, &popup_w, &popup_h);
 		else if (!strcmp(argv[i], "popup_after"))
 			popup_after = v;
+		else if (!strcmp(argv[i], "fixed_after"))
+			fixed_after = v;
 	}
 	if (!app) {
 		fprintf(stderr, "xdgc: app= is required\n");
@@ -612,6 +666,16 @@ int main(int argc, char *argv[])
 			wait_dispatching(display, 50);
 		open_popup(main_win);
 		wl_display_flush(display);
+	}
+	if (fixed_after) {
+		while (access(fixed_after, F_OK) != 0)
+			wait_dispatching(display, 50);
+		xdg_toplevel_set_min_size(main_win->toplevel, main_win->w, main_win->h);
+		xdg_toplevel_set_max_size(main_win->toplevel, main_win->w, main_win->h);
+		wl_surface_commit(main_win->surface);
+		wl_display_flush(display);
+		printf("fixed\n");
+		fflush(stdout);
 	}
 	while (open_windows > 0 && wl_display_dispatch(display) != -1) {
 	}

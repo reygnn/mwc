@@ -3,6 +3,7 @@
  * shared with XWayland windows (focus, stacking, maximize, iconify).
  */
 #define _POSIX_C_SOURCE 200809L
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <wlr/types/wlr_cursor.h>
@@ -103,8 +104,8 @@ static struct wlr_box area_for(struct server *server, struct wlr_box b)
 	return output_dock_in_the_way(o, b) ? o->usable : o->open;
 }
 
-/* Position of the client content inside the window tree. xdg clients may
- * draw shadows outside their window geometry, which we hide by offset. */
+/* Position of the client content inside the window tree: for xdg its window geometry,
+ * as wlroots' scene tree puts the surface, a shadow drawn around it, at -geometry. */
 static void view_update_content_pos(struct view *view)
 {
 	int x = frame_left(view), y = frame_top(view);
@@ -124,10 +125,6 @@ static void view_update_content_pos(struct view *view)
 		}
 	} else {
 		wlr_scene_node_set_enabled(&backdrop->node, false);
-	}
-	if (view->type == VIEW_XDG) {
-		x -= view->xdg_toplevel->base->geometry.x;
-		y -= view->xdg_toplevel->base->geometry.y;
 	}
 	wlr_scene_node_set_position(&view->content_tree->node, x, y);
 }
@@ -1046,10 +1043,10 @@ void view_update_title(struct view *view)
 	/* Programs that set a progress or the current line as their title may set the
 	 * same one again and again. */
 	const char *title = view_title(view);
-	if (view->drawn_title && title && strcmp(view->drawn_title, title) == 0)
+	if (view->known_title && title && strcmp(view->known_title, title) == 0)
 		return;
-	free(view->drawn_title);
-	view->drawn_title = title ? strdup(title) : NULL;
+	free(view->known_title);
+	view->known_title = title ? strdup(title) : NULL;
 	/* A program may send thousands in a burst: at most one drawn a refresh, the last. */
 	throttle_call(&view->title_redraw, view->server->event_loop);
 }
@@ -1060,7 +1057,6 @@ static void title_redraw(void *data)
 	/* The tabs of a group are all drawn by the shown view. */
 	frame_render_title(view->tab_hidden ? view->group->shown : view);
 	view->title_draws++;
-	view->title_drawn_len = strlen(view_title(view));
 	/* The icon's label is the title only without an app_id. */
 	const char *app_id = view_app_id(view);
 	if (view->minimized && (!app_id || !*app_id))
@@ -1625,6 +1621,9 @@ void view_handle_unmap(struct view *view)
 		menu_close(server);
 	if (server->last_click_view == view)
 		server->last_click_view = NULL;
+	/* Titles set meanwhile aren't seen: the map draws what it has, whatever comes. */
+	free(view->known_title);
+	view->known_title = NULL;
 	tabs_view_gone(view);
 	/* Dialogs hidden with it have nothing left to come back with. */
 	struct view *v, *shown = NULL;
@@ -1682,7 +1681,7 @@ void view_handle_destroy(struct view *view)
 	throttle_cancel(&view->title_redraw);
 	wlr_scene_node_destroy(&view->icon_node->node);
 	wlr_scene_node_destroy(&view->tree->node);
-	free(view->drawn_title);
+	free(view->known_title);
 	free(view->known_app_id);
 	free(view);
 }
@@ -1938,17 +1937,17 @@ static void xdg_request_show_window_menu(struct wl_listener *listener,
 	if (!view->activated ||
 			!wlr_seat_client_validate_event_serial(event->seat, event->serial))
 		return;
-	/* Surface-local: from the surface's origin, which the scene has with the frame, a
-	 * shadow outside the window geometry and the centering of a small fullscreen
-	 * window in it. Within the window geometry: the client may say any int32. */
+	/* Surface-local, so from the window geometry's origin, which the scene has with
+	 * the frame and the centering of a small fullscreen window, less the geometry's
+	 * offset in the surface (a shadow). Within the window geometry: the client may
+	 * say any int32, the offset too. */
 	struct wlr_box *g = &view->xdg_toplevel->base->geometry;
 	int ox, oy;
 	wlr_scene_node_coords(&view->content_tree->node, &ox, &oy);
-	int x = event->x < g->x ? g->x : event->x > g->x + view->width ?
-		g->x + view->width : event->x;
-	int y = event->y < g->y ? g->y : event->y > g->y + view->height ?
-		g->y + view->height : event->y;
-	menu_open_window(view->server, view, ox + x, oy + y);
+	long long x = (long long)event->x - g->x, y = (long long)event->y - g->y;
+	x = x < 0 ? 0 : x > view->width ? view->width : x;
+	y = y < 0 ? 0 : y > view->height ? view->height : y;
+	menu_open_window(view->server, view, ox + (int)x, oy + (int)y);
 }
 
 static void xdg_set_title(struct wl_listener *listener, void *data)
@@ -2085,6 +2084,11 @@ static struct view *view_from_tree(struct wlr_scene_tree *tree)
 	return n ? n->data : NULL;
 }
 
+static int clamp_int(long long v)
+{
+	return v < INT_MIN ? INT_MIN : v > INT_MAX ? INT_MAX : (int)v;
+}
+
 static void popup_unconstrain(struct popup *popup)
 {
 	struct wlr_scene_tree *tree = popup->xdg_popup->base->data;
@@ -2096,13 +2100,16 @@ static void popup_unconstrain(struct popup *popup)
 		struct wlr_box ar = xp->scheduled.rules.anchor_rect;
 		int ax = ar.x + ar.width / 2, ay = ar.y + ar.height / 2;
 		/* The anchor is in the parent's window geometry. wlroots adds the parent
-		 * popups' positions up to the toplevel's surface, whose origin the scene
-		 * has, a small fullscreen window's centering included. */
+		 * popups' positions up to the toplevel's surface: its origin is the window
+		 * geometry's in the scene, with a small fullscreen window's centering, less
+		 * the geometry's offset in the surface. */
+		struct wlr_box *g = &view->xdg_toplevel->base->geometry;
 		int tx, ty, ox, oy;
 		wlr_xdg_popup_get_toplevel_coords(xp, ax, ay, &tx, &ty);
 		wlr_scene_node_coords(&view->content_tree->node, &ox, &oy);
-		double lx = ox + tx;
-		double ly = oy + ty;
+		long long sx = (long long)ox - g->x, sy = (long long)oy - g->y;
+		double lx = (double)sx + tx;
+		double ly = (double)sy + ty;
 		/* Off every monitor, the window's corner decides, as before. */
 		if (!wlr_output_layout_output_at(view->server->output_layout, lx, ly)) {
 			lx = view->x + 1;
@@ -2115,8 +2122,8 @@ static void popup_unconstrain(struct popup *popup)
 			frame_height(view) };
 		if (o && !output_dock_in_the_way(o, vb))
 			a = o->open;
-		a.x -= ox;
-		a.y -= oy;
+		a.x = clamp_int((long long)a.x - sx);
+		a.y = clamp_int((long long)a.y - sy);
 		/* wlroots wants the box relative to the toplevel, however deep the popup
 		 * is nested. */
 		wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup, &a);

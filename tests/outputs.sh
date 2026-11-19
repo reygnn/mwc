@@ -403,6 +403,14 @@ pixel_is "the first output has its own wallpaper" 400 360 0000ff
 WAYLAND_DISPLAY=wayland-0 build/outputc apply "$right" off || fail "$right off"
 check "the second output is out of the layout" "[ \"\$(global output_$right w)\" = 0 ]"
 pixel_is "and the first still has its own wallpaper" 400 360 0000ff
+# A wallpaper changed while it is off is the one it shows when it comes back.
+build/pngtool stripes "$SMOKE_DIR/wall.png" 1280 720 00ff00 00ff00
+reload_mwc
+pixel_is "the first output has the new wallpaper" 400 360 00ff00
+WAYLAND_DISPLAY=wayland-0 build/outputc apply "$right" on 2560x720 || fail "$right on"
+check "the second output is back, 2560 wide" "[ \"\$(global output_$right w)\" = 2560 ]"
+refresh
+pixel_is "with the new wallpaper" $(($(global output_$right x) + 1280)) 360 00ff00
 rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 stop_mwc
 echo "PASS: outputs"

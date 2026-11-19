@@ -134,6 +134,7 @@ Per program:
 | Resource | Meaning |
 |---|---|
 | `activeBackground`, `background` | its frame colours; unfocused it defaults to a paler shade of its own |
+| `activeForeground`, `foreground` | its title text |
 | `geometry` | where its windows appear, see below |
 | `allDesktops` | `true`: its windows are on every desktop |
 | `dock` | `true`: its windows go into the dock, see Dock |

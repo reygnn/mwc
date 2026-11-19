@@ -83,11 +83,9 @@ struct cairo_buffer {
 struct cairo_buffer *cairo_buffer_create(int width, int height);
 /* The scene keeps it while shown. */
 void cairo_buffer_drop(struct cairo_buffer *buf);
-/* Top, bottom, left, right of a w x h ring, th and tw thick; the corners go with top
- * and bottom. */
+/* Top, bottom, left, right of a w x h ring, th and tw thick, corners top and bottom. */
 void ring_strips(struct wlr_box out[4], int w, int h, int th, int tw);
-/* Each strip node gets its part of the ring draw paints over the whole w x h box,
- * placed relative to the box; an empty strip shows nothing. */
+/* Paints draw's w x h ring into the four nodes (NULL skipped), an empty strip blank. */
 void ring_render(struct wlr_scene_buffer *node[4], int w, int h, int th, int tw,
 	void (*draw)(cairo_t *cr, int w, int h, void *data), void *data);
 
@@ -199,10 +197,10 @@ struct view {
 	struct wlr_scene_rect *frame_fill;
 	struct wlr_scene_rect *backdrop; /* black behind a fullscreen window (xdg-shell) */
 	int drawn_w, drawn_h;  /* at the last frame_render() */
-	char *drawn_title;     /* see view_update_title() */
+	char *known_title;     /* the last one seen while mapped, to skip repeats */
 	struct throttle title_redraw;
 	int title_draws;       /* for the tests, */
-	size_t title_drawn_len; /* and the length of the title last drawn */
+	size_t title_drawn_len; /* and the length of the title the strip shows */
 	char *known_app_id;    /* see view_app_id_changed() */
 	struct wlr_scene_buffer *icon_node;
 

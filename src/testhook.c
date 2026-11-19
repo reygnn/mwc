@@ -127,8 +127,8 @@ static int dump_state(int signal, void *data)
 	}
 	sensitive[n] = '\0';
 	const struct menu *m = &server->menu;
-	fprintf(f, "menu open=%d x=%d y=%d items=%d title=%s sensitive=%s armed=%d ay=%d "
-		"renders=%d\n", m->open, m->x, m->y, m->n_items,
+	fprintf(f, "menu open=%d x=%d y=%d h=%d items=%d title=%s sensitive=%s armed=%d "
+		"ay=%d renders=%d\n", m->open, m->x, m->y, m->height, m->n_items,
 		m->open && m->title ? "yes" : "no", sensitive, m->armed,
 		m->open && m->armed >= 0 ? m->y + m->item_y[m->armed] : -1, m->renders);
 	struct output *o = output_at(server, 0, 0);
@@ -155,7 +155,7 @@ static int dump_state(int signal, void *data)
 	int focused = 0;
 	wl_list_for_each(v, &server->views, link)
 		focused += v->activated;
-	fprintf(f, "focus any=%d\n", focused);
+	fprintf(f, "focus any=%d layer=%d\n", focused, server->focused_layer != NULL);
 	struct wlr_box box;
 	bool outline = outline_get(&box);
 	fprintf(f, "outline shown=%d x=%d y=%d w=%d h=%d\n", outline, box.x, box.y,

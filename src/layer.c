@@ -234,13 +234,16 @@ void layer_raise_keyboard(struct server *server)
 	wlr_scene_node_place_below(&ls->scene->tree->node, &ls->popups->node);
 }
 
-/* The icon box had the keys when a surface took them: it gets them back, as a window. */
+/* The icon box had the keys when the surfaces took them: it gets them back, as a
+ * window. */
 static bool box_had_keys;
 
 static void give_keyboard(struct layer_surface *ls)
 {
-	if (iconbox_has_focus())
-		box_had_keys = true;
+	/* Taken from outside the layers: anew, as a window clicked since may have ended
+	 * what an earlier surface knew. Passed from one surface to the next: kept. */
+	if (!ls->server->focused_layer)
+		box_had_keys = iconbox_has_focus();
 	ls->server->focused_layer = ls->wlr;
 	/* A window's open menu would keep the keys, a password typed here among them. */
 	input_end_client_grab(ls->server);
@@ -272,7 +275,7 @@ static struct layer_surface *waiting_exclusive(struct server *server)
 	return NULL;
 }
 
-/* Back to the window that had the focus, or to nobody. */
+/* Back to the window that had the focus, or the icon box, or to nobody. */
 static void take_keyboard_back(struct server *server)
 {
 	struct layer_surface *waiting = waiting_exclusive(server);

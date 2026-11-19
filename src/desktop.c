@@ -152,23 +152,41 @@ void view_set_desktop(struct view *view, int n)
 	focus_after(server, lost);
 }
 
+/* One of desktop_recheck()'s family; true if it went out of sight or into it. */
+static bool recheck_one(struct view *v, bool *lost)
+{
+	if (!v->mapped)
+		return false;
+	xwayland_publish_state(v); /* sticky as it is now */
+	/* A window in sight stays in sight: one that is no longer everywhere stays
+	 * on the current desktop. A dialog goes with its window. */
+	if (!v->off_desktop || view_transient_root(v) != v)
+		v->desktop = desktop_for(v);
+	bool now = off(v);
+	if (now == v->off_desktop)
+		return false;
+	*lost |= now && v->activated;
+	v->off_desktop = now;
+	apply(v);
+	if (!now)
+		v->attention = false;
+	return true;
+}
+
 void desktop_recheck(struct view *view)
 {
-	if (!view->mapped)
-		return;
-	/* A window in sight stays in sight: one that is no longer everywhere stays
-	 * on the current desktop. */
-	if (!view->off_desktop || view_transient_root(view) != view)
-		view->desktop = desktop_for(view);
-	bool now = off(view);
-	if (now == view->off_desktop)
-		return;
-	bool lost = now && view->activated;
-	view->off_desktop = now;
-	apply(view);
-	if (!now)
-		view->attention = false;
-	focus_after(view->server, lost);
+	/* Its dialogs and tabs depend on whether it is everywhere: the window first,
+	 * which they follow. */
+	struct view *root = view_transient_root(view);
+	bool lost = false, changed = recheck_one(root, &lost);
+	struct view *v;
+	wl_list_for_each(v, &view->server->views, link) {
+		struct view *r = view_transient_root(v);
+		if (v != root && (r == root || (root->group && r->group == root->group)))
+			changed |= recheck_one(v, &lost);
+	}
+	if (changed)
+		focus_after(view->server, lost);
 }
 
 /* Out of sight or into it, as each window's desktop now says; the arranging after it

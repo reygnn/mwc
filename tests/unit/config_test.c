@@ -90,11 +90,15 @@ TEST(lines_malformed)
 		"Mwm**fontList: Sans 9\n"   /* an empty client names nothing */
 		"Mwmx*fontList: Sans 9\n"
 		"*fontList: Sans 9\n"
+		"Mwm*XTerm**background: red\n"             /* a client never matches */
+		"Mwm*XTerm*vt100*activeBackground: red\n"  /* as an X resource names it */
 		"Mwm*terminal: mwt\n");
 	CHECK(is(config_get("terminal"), "mwt"));
 	CHECK(config_get("fontList") == NULL);
 	CHECK_INT(log_lines("missing ':'"), 1);
-	CHECK_INT(log_lines("expected Mwm*resource or Mwm*client*resource"), 6);
+	CHECK_INT(log_lines("expected Mwm*resource or Mwm*client*resource"), 8);
+	CHECK_INT(log_lines("mwmrc:8: expected"), 1);
+	CHECK_INT(log_lines("mwmrc:9: expected"), 1);
 	CHECK(strstr(logged, "mwmrc:1: missing") != NULL); /* with the line */
 }
 
@@ -115,6 +119,36 @@ TEST(unknown_resources)
 	/* fontList is global only: for one program it means nothing. */
 	CHECK_INT(log_lines("mwmrc:6: unknown resource fontList"), 1);
 	CHECK(is(config_get("terminal"), "foot")); /* still read as before */
+}
+
+/* What docs/mwmrc names, in its examples too, is read: the lists of known resources
+ * have them all (run from the top of the tree). */
+TEST(documented_resources)
+{
+	FILE *f = fopen("docs/mwmrc", "r");
+	CHECK(f != NULL);
+	static char text[16384];
+	size_t n = 0;
+	char line[512];
+	while (f && fgets(line, sizeof(line), f)) {
+		const char *l = line;
+		if (*l == '!') {
+			l += strspn(l + 1, " ") + 1;
+			if (strncmp(l, "Mwm", 3))
+				continue;
+		}
+		size_t len = strlen(l);
+		if (n + len < sizeof(text)) {
+			memcpy(text + n, l, len);
+			n += len;
+		}
+	}
+	text[n] = '\0';
+	if (f)
+		fclose(f);
+	load(text);
+	CHECK(config_get("rootBackground") != NULL); /* it was read */
+	CHECK_INT(log_lines("unknown resource"), 0);
 }
 
 /* ---- values ------------------------------------------------------------------ */
@@ -427,6 +461,7 @@ int main(void)
 	RUN(no_file);
 	RUN(no_path);
 	RUN(unknown_resources);
+	RUN(documented_resources);
 	RUN(lines_and_lookups);
 	RUN(lines_malformed);
 	RUN(booleans);

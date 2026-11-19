@@ -23,9 +23,9 @@
  *     color=rrggbb        background
  *     dialog=NAME         also open a transient dialog with this WM_CLASS
  *     workarea=1          print the root's _NET_WORKAREA whenever it changes
- *     netstate=1          print "net-state vert=V horz=H" whenever _NET_WM_STATE changes:
- *                         and "net-more sticky=S shaded=R hidden=I" after it,
- *                         whether it says maximized vertically and horizontally
+ *     netstate=1          print "net-state vert=V horz=H" whenever _NET_WM_STATE changes,
+ *                         whether it says maximized vertically and horizontally, then
+ *                         "net-more sticky=S shaded=R hidden=I"
  *     moveresize=1        don't map; ask for _NET_WM_MOVERESIZE, destroy the window
  *     override=late       create it normal, set override-redirect, then map
  *     override=clear      create it override-redirect, clear that, then map
@@ -58,6 +58,10 @@
  *                         and what WM_STATE then is
  *     rehide_ms=MS        wait that long before each, default 700
  *     rehide_drop=1       delete _NET_WM_STATE while withdrawn, as a client may
+ *     rehide_after=FILE   map it again once FILE exists, not after 400 ms
+ *     rehide_title=TEXT   set WM_NAME to TEXT before mapping it again; once the file
+ *                         retitle_after=FILE exists, back to the one before (title_later
+ *                         or the class); says "retitled"
  *     script=+v,-h,...    once mapped, _NET_WM_STATE messages one at a time about the
  *                         vertical or horizontal axis, or s for sticky, r for shaded
  *                         (rolled up), i for hidden (an icon); says "sent N" each time
@@ -137,6 +141,7 @@ struct options {
 	const char *dialog_after, *withdraw_after, *urgent_after, *spoof_after;
 	const char *normalize_after, *activate_after, *focus_main_after;
 	const char *class_later, *class_after, *moveresize_after, *override_after;
+	const char *rehide_after, *rehide_title, *retitle_after;
 	bool nomap;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	int decor_later, decor_ms;
@@ -516,6 +521,12 @@ int main(int argc, char *argv[])
 			o.rehide_ms = atoi(v);
 		else if (!strcmp(k, "rehide_drop"))
 			o.rehide_drop = atoi(v);
+		else if (!strcmp(k, "rehide_after"))
+			o.rehide_after = v;
+		else if (!strcmp(k, "rehide_title"))
+			o.rehide_title = v;
+		else if (!strcmp(k, "retitle_after"))
+			o.retitle_after = v;
 		else if (!strcmp(k, "title_later"))
 			o.title_later = v;
 		else if (!strcmp(k, "script"))
@@ -805,15 +816,6 @@ int main(int argc, char *argv[])
 		printf("spoofed\n");
 		fflush(stdout);
 	}
-	if (o.class_later && o.class_after) {
-		XSync(dpy, False);
-		wait_for_file(o.class_after);
-		XClassHint ch = { (char *)o.class_later, (char *)o.class_later };
-		XSetClassHint(dpy, main_win, &ch);
-		XSync(dpy, False);
-		printf("class set\n");
-		fflush(stdout);
-	}
 	Window dialog_win = None;
 	if (o.dialog) {
 		if (o.dialog_ms) {
@@ -832,6 +834,15 @@ int main(int argc, char *argv[])
 		d.x = d.y = 0;
 		dialog_win = create_window(&d, o.dialog, main_win);
 		XMapWindow(dpy, dialog_win);
+	}
+	if (o.class_later && o.class_after) {
+		XSync(dpy, False);
+		wait_for_file(o.class_after);
+		XClassHint ch = { (char *)o.class_later, (char *)o.class_later };
+		XSetClassHint(dpy, main_win, &ch);
+		XSync(dpy, False);
+		printf("class set\n");
+		fflush(stdout);
 	}
 	if (o.iconify_ms) {
 		XSync(dpy, False);
@@ -968,7 +979,12 @@ int main(int argc, char *argv[])
 		if (o.rehide_drop)
 			XDeleteProperty(dpy, main_win, XInternAtom(dpy, "_NET_WM_STATE", False));
 		XSync(dpy, False);
-		usleep(400000);
+		if (o.rehide_after)
+			wait_for_file(o.rehide_after);
+		else
+			usleep(400000);
+		if (o.rehide_title)
+			XStoreName(dpy, main_win, o.rehide_title);
 		XMapWindow(dpy, main_win);
 		XSync(dpy, False);
 		usleep(300000);
@@ -984,6 +1000,14 @@ int main(int argc, char *argv[])
 		if (data)
 			XFree(data);
 		printf("reshown %d\nwm_state %ld\n", i + 1, state);
+		fflush(stdout);
+		if (o.rehide_title && o.retitle_after) {
+			wait_for_file(o.retitle_after);
+			XStoreName(dpy, main_win, o.title_later ? o.title_later : o.class);
+			XSync(dpy, False);
+			printf("retitled\n");
+			fflush(stdout);
+		}
 	}
 	XFlush(dpy);
 	printf("up\n");

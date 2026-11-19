@@ -1047,6 +1047,22 @@ n=$(get titled tdraws)
 echo "ok: 2000 titles drew the title bar $n times"
 stop titled
 
+# A title set while the window was withdrawn is the one drawn when it comes back; the
+# one before it, set again then, is drawn too, not taken for a repeat.
+x11 retitle size=300x200 title_later=before rehide=1 rehide_title=elsewhere \
+	rehide_after="$SMOKE_DIR/back" retitle_after="$SMOKE_DIR/retitle"
+mapped retitle
+check "it sets a title while mapped" "[ \"\$(get retitle tdrawn)\" = 6 ]"
+check "it is withdrawn" "[ -z \"\$(get retitle x)\" ]"
+touch "$SMOKE_DIR/back"
+saw "it is shown again" retitle '^reshown 1'
+check "with the title it set meanwhile" \
+	"[ \"\$(get retitle tlen)\" = 9 ] && [ \"\$(get retitle tdrawn)\" = 9 ]"
+touch "$SMOKE_DIR/retitle"
+saw "it sets its first title again" retitle '^retitled'
+check "that is drawn" "[ \"\$(get retitle tlen)\" = 6 ] && [ \"\$(get retitle tdrawn)\" = 6 ]"
+stop retitle
+
 # ---- the window menu a client asks for -------------------------------------------------
 
 # show_window_menu says where in surface coordinates, which include a shadow drawn
@@ -1055,13 +1071,21 @@ wayland shadowed size=300x200 shadow=20 menu_at=50,40
 mapped shadowed
 refresh
 SX=$(get shadowed x) SY=$(get shadowed y)
+# The window geometry fills the frame, the shadow lies around it (wlroots' scene tree
+# offsets the surface; mwc did it once more).
+IX=$((SX + $(border shadowed))) IY=$((SY + $(border shadowed) + $(title shadowed)))
+pixel_is "the window geometry starts in the frame's corner" $IX $IY 808080
+pixel_is "and ends in the opposite one" $((IX + 299)) $((IY + 199)) 808080
+pixel_is "the shadow lies right of it" $((IX + 305)) $((IY + 100)) 402020
 do_input move $((SX + 150)) $((SY + $(border shadowed) + $(title shadowed) + 100))
 do_input click left
 saw "it asks for its window menu" shadowed '^menu asked'
+check "the menu is open" "[ \"\$(global menu open)\" = 1 ]"
+# Unless that is too low for it: the window's cascade slot depends on the tests above.
+my=$((IY + 20)) bottom=$(($(global output uy) + $(global output uh) - $(global menu h)))
+[ "$my" -le "$bottom" ] || my=$bottom
 check "the menu opens at that point of its surface" \
-	"[ \"\$(global menu open)\" = 1 ] && \
-	 [ \"\$(global menu x)\" = \$((SX + \$(border shadowed) + 30)) ] && \
-	 [ \"\$(global menu y)\" = \$((SY + \$(border shadowed) + \$(title shadowed) + 20)) ]"
+	"[ \"\$(global menu x)\" = \$((IX + 30)) ] && [ \"\$(global menu y)\" = $my ]"
 do_input key Escape
 stop shadowed
 

@@ -393,6 +393,8 @@ static void render_strip(struct view *view, int i, const struct wlr_box *r, int 
 	}
 	cairo_translate(buf->cr, -r->x, -r->y);
 	draw_frame(buf->cr, view, W, H, i == 0);
+	if (i == 0)
+		view->title_drawn_len = strlen(view_title(view));
 	wlr_scene_buffer_set_buffer(node, &buf->base);
 	cairo_buffer_drop(buf);
 	wlr_scene_node_set_position(&node->node, r->x, r->y);

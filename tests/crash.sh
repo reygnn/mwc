@@ -361,6 +361,16 @@ check "the menu opens on the screen" "[ \"\$(global menu open)\" = 1 ] && \
 	[ \"\$(global menu x)\" -lt 1280 ] && [ \"\$(global menu y)\" -lt 720 ]"
 do_input key Escape
 alive "a window menu asked for at INT32_MAX"
+# Its window geometry there as well, out of the surface: wlroots takes it as it is. The
+# surface is out of the pointer's reach, so a key asks.
+wayland geomfar size=300x200 menu_at=2147483647,2147483647 geometry_at=2147483600,2147483600
+check "a window with its geometry at INT32_MAX is mapped" "[ -n \"\$(get geomfar x)\" ]"
+do_input key a
+wait_for "it asks for the window menu" grep -q 'menu asked' "$SMOKE_DIR/geomfar.events"
+check "the menu opens on the screen" "[ \"\$(global menu open)\" = 1 ] && \
+	[ \"\$(global menu x)\" -lt 1280 ] && [ \"\$(global menu y)\" -lt 720 ]"
+do_input key Escape
+alive "a window menu with the window geometry at INT32_MAX"
 finish
 
 # ---- a keymap that doesn't exist --------------------------------------------------------------

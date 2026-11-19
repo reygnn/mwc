@@ -104,9 +104,10 @@ static void pass_icon(struct view *from, struct view *to)
 
 /*
  * A view that is on its way out, gone, can't be told anything any more, but its place
- * still counts.
+ * still counts. own: the program's doing, as gone is, not the user's.
  */
-static void switch_to(struct tab_group *g, struct view *to, struct view *from, bool gone)
+static void switch_to(struct tab_group *g, struct view *to, struct view *from, bool gone,
+	bool own)
 {
 	struct server *server = to->server;
 	/* The focus stays with the group, also if a dialog of the old one had it. */
@@ -181,7 +182,7 @@ static void switch_to(struct tab_group *g, struct view *to, struct view *from, b
 	g->busy = false;
 
 	/* One that went away by itself takes no keys from where the user types. */
-	if (focus && gone)
+	if (focus && (gone || own))
 		view_focus_instead(to);
 	else if (focus)
 		view_focus(to);
@@ -261,7 +262,7 @@ void tabs_show(struct view *view)
 {
 	struct tab_group *g = view->group;
 	if (g && g->shown != view)
-		switch_to(g, view, g->shown, false);
+		switch_to(g, view, g->shown, false, false);
 }
 
 void tabs_bring(struct view *view)
@@ -322,7 +323,7 @@ bool tabs_join(struct view *view, struct view *target)
 	view->sticky = target->sticky;
 	view->desktop = target->desktop;
 	wl_list_insert(g->members.prev, &view->tab_link);
-	switch_to(g, view, g->shown, false);
+	switch_to(g, view, g->shown, false, false);
 	return true;
 }
 
@@ -348,7 +349,9 @@ struct view *tabs_nth(struct view *view, int n)
 	return NULL;
 }
 
-void tabs_detach(struct view *view)
+/* own: the program left by itself, and takes no keys; the user's taking it out gives it
+ * them. */
+static void detach(struct view *view, bool own)
 {
 	struct tab_group *g = view->group;
 	if (!g)
@@ -356,7 +359,7 @@ void tabs_detach(struct view *view)
 	if (view->fullscreen)
 		view_set_fullscreen(view, false);
 	if (g->shown == view)
-		switch_to(g, neighbour(view), view, false);
+		switch_to(g, neighbour(view), view, false, own);
 	remove_member(view);
 	struct server *server = view->server;
 	tell_suspended(view, false);
@@ -375,9 +378,17 @@ void tabs_detach(struct view *view)
 	view->width = width;
 	view->height = height;
 	frame_render(view);
-	view_focus(view);
+	if (own)
+		views_update_layers(server);
+	else
+		view_focus(view);
 	tile_arrange(server);
 	input_pointer_changed(server);
+}
+
+void tabs_detach(struct view *view)
+{
+	detach(view, false);
 }
 
 void tabs_view_gone(struct view *view)
@@ -386,14 +397,14 @@ void tabs_view_gone(struct view *view)
 	if (!g)
 		return;
 	if (g->shown == view)
-		switch_to(g, neighbour(view), view, true);
+		switch_to(g, neighbour(view), view, true, false);
 	remove_member(view);
 }
 
 void tabs_view_changed(struct view *view)
 {
 	if (view->group && !view->group->busy && !tab_material(view))
-		tabs_detach(view);
+		detach(view, true);
 }
 
 void tabs_sync_sizes(struct view *view)

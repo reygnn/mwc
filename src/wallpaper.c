@@ -65,8 +65,12 @@ void wallpaper_place(struct output *output, bool force)
 	 * buffer's own size it would cover another output's. */
 	bool in_layout = !wlr_box_empty(&box);
 	wlr_scene_node_set_enabled(&output->wallpaper->node, in_layout);
-	if (!in_layout)
+	if (!in_layout) {
+		/* Rendered anew when it comes back, from the wallpaper there is then. */
+		wlr_scene_buffer_set_buffer(output->wallpaper, NULL);
+		output->wallpaper_w = output->wallpaper_h = 0;
 		return;
+	}
 	wlr_scene_node_set_position(&output->wallpaper->node, box.x, box.y);
 	wlr_scene_buffer_set_dest_size(output->wallpaper, box.width, box.height);
 
