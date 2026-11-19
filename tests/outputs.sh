@@ -355,6 +355,40 @@ rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 stop_vinput
 stop_mwc
 
+# The dock and the icon box are on the first monitor: unplugged, they go to the one that
+# is first now, and its usable area leaves the dock's strip free (Review 2026-11-18 #36).
+printf 'Mwm*HEADLESS-1*outputPosition: 0,0\nMwm*HEADLESS-2*outputPosition: 1280,0\n%s\n%s\n' \
+	'Mwm*dtool*dock: true' 'Mwm*useIconBox: true' >"$XDG_CONFIG_HOME/mwc/mwmrc"
+start_mwc 'exec sleep 300'
+oldest=$(sed -n 's/.*new output \(HEADLESS-[0-9]*\).*/\1/p' "$LOG" | head -1)
+case $oldest in HEADLESS-1) other=HEADLESS-2 ;; HEADLESS-2) other=HEADLESS-1 ;;
+*) fail "which output came first: '$oldest'" ;; esac
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=dtool size=100x40 >/dev/null 2>&1 &
+PID_dtool=$!
+check "a tool in the dock" "[ -n \"\$(get dtool x)\" ] && [ \"\$(global dock w)\" -gt 0 ]"
+refresh
+OX=$(global "output_$oldest" x) NX=$(global "output_$other" x)
+inside() { # <x> <w> <output x>: x..x+w within that output
+	[ "$1" -ge "$3" ] && [ $(($1 + $2)) -le $(($3 + 1280)) ]
+}
+inside "$(global dock x)" "$(global dock w)" "$OX" || fail "the dock isn't on $oldest"
+inside "$(global iconbox x)" "$(global iconbox w)" "$OX" || fail "the icon box isn't on $oldest"
+echo "ok: the dock and the icon box are on the first monitor"
+echo "$oldest" >"$MWC_TEST_STATE.unplug"
+kill -USR2 "$pid"
+check "$oldest is unplugged" "[ -z \"\$(global output_$oldest x)\" ]"
+check "the dock went to the other monitor" \
+	"inside \"\$(global dock x)\" \"\$(global dock w)\" $NX && [ \"\$(global dock w)\" -gt 0 ]"
+check "its tool with it" "inside \"\$(get dtool x)\" \"\$(get dtool w)\" $NX"
+check "the icon box too" "inside \"\$(global iconbox x)\" \"\$(global iconbox w)\" $NX"
+check "that monitor's usable area leaves the dock's strip free" \
+	"[ \"\$(global output ux)\" = $NX ] && \
+	 [ \$((\$(global output uy) + \$(global output uh))) -le \"\$(global dock y)\" ]"
+kill "$PID_dtool"
+wait "$PID_dtool" 2>/dev/null
+rm "$XDG_CONFIG_HOME/mwc/mwmrc"
+stop_mwc
+
 # An output a client switches off has no place in the layout, and no wallpaper to show:
 # the one rendered for it must not turn up at the layout's origin, over the other one.
 # Rendered for 2560x720 its red edge is 640 wide, against 320 on the first output's own.
