@@ -9,7 +9,7 @@ LOG=build/desktop.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools Xwayland
-for tool in build/vinput build/xclient build/xdgc build/workspacec build/outputc; do
+for tool in build/vinput build/xclient build/xdgc build/workspacec build/outputc build/layerc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 

@@ -508,31 +508,35 @@ static void xw_focus_in(struct wl_listener *listener, void *data)
 		return;
 	/* wlroots lets a program move the X focus between its own windows. One on
 	 * another desktop must not get it: back to where it is, and that one is marked.
-	 * Nor while a panel has the keys, see xwayland_may_take_focus(). (A Wayland
-	 * window or the icon box with the keys took the X focus away, and wlroots lets
-	 * none through then.) */
+	 * Nor while a panel, the icon box or a Wayland window has the keys, see
+	 * xwayland_may_take_focus(): the X focus mwc took away may have been elsewhere
+	 * by then, on a window of the program that takes no input. */
 	struct server *server = view->server;
-	if (!view->off_desktop && !server->focused_layer) {
+	if (!view->off_desktop && xwayland_may_take_focus(server)) {
 		view_focus(view);
 		return;
 	}
 	struct view *focused = view_focused(server);
 	if (!focused || focused->type != VIEW_XWAYLAND) {
 		wlr_xwayland_surface_activate(view->xsurface, false);
-	} else if (server->x11_refocused == focused) {
-		/* It was given the focus back and passed it on again, as Java does to a
-		 * modal dialog. Setting it back again gets the same answer: mwc follows to
-		 * a window in sight, and the panel keeps the keys. One out of sight loses
-		 * the X focus instead. */
+	} else if (server->x11_refocused == focused &&
+			now_msec() - server->x11_refocused_msec < 3000) {
+		/* It was given the focus back and passed it on again soon after, as Java
+		 * does to a modal dialog. Setting it back again gets the same answer: mwc
+		 * follows to a window in sight, and the panel keeps the keys. One out of
+		 * sight loses the X focus under a panel; else it keeps it, with the keys
+		 * going to its own program, as the loop is worse. */
 		if (!view->off_desktop && view_focusable(view) && !view->minimized &&
 				!view->tab_hidden && !view->hidden_with_parent) {
 			view_focus_instead(view);
 			return;
 		}
-		wlr_xwayland_surface_activate(view->xsurface, false);
+		if (server->focused_layer)
+			wlr_xwayland_surface_activate(view->xsurface, false);
 	} else {
 		wlr_xwayland_surface_activate(focused->xsurface, true);
 		server->x11_refocused = focused;
+		server->x11_refocused_msec = now_msec();
 	}
 	if (view->off_desktop)
 		desktop_attention(view);

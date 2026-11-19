@@ -508,6 +508,7 @@ struct server {
 	uint32_t last_click_msec;
 	struct view *last_click_view;
 	struct view *x11_refocused; /* given the X focus back by xw_focus_in() */
+	uint32_t x11_refocused_msec;
 	enum frame_part last_click_part;
 
 	struct menu menu;
@@ -751,6 +752,8 @@ void tabs_leave(struct view *view);
 void tabs_show(struct view *view);
 /* Also out of an icon or fullscreen. */
 void tabs_bring(struct view *view);
+/* The same without taking the keys: from an on-demand layer surface, or from elsewhere. */
+void tabs_bring_instead(struct view *view);
 void tabs_step(struct view *view, bool forward);
 void tabs_show_nth(struct view *view, int n);
 /* Unmapping: the next takes over without its help. */

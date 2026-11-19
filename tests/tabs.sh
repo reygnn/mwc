@@ -6,7 +6,7 @@ LOG=build/tabs.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools Xwayland grim
-for tool in build/vinput build/xclient build/xdgc; do
+for tool in build/vinput build/xclient build/xdgc build/layerc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -359,7 +359,8 @@ do_input key super+Tab
 check "and comes back with it" "[ \"\$(get dk hidden)\" = 0 ]"
 stop pa
 stop qa
-# Not while a launcher has the keyboard: the tab stays behind, the launcher keeps them.
+# Under a launcher the tab comes to the front all the same, and its dialog has the focus
+# below the launcher, then the keyboard when it goes.
 x11 tpa dialog=tdk dialog_after="$SMOKE_DIR/tdk" size=300x200
 x11 tqa size=400x300
 do_input key super+g
@@ -370,13 +371,30 @@ PID_launcher=$!
 wait_for "a launcher has the keyboard" grep -q keyboard-enter "$SMOKE_DIR/launcher.log"
 touch "$SMOKE_DIR/tdk"
 check "the dialog of the hidden tab is mapped" "[ -n \"\$(get tdk x)\" ]"
-check "the tab stays behind, the launcher keeps the keyboard" \
-	"[ \"\$(get tpa tab_hidden)\" = 1 ] && [ \"\$(global focus layer)\" = 1 ]"
+check "the tab is in front, its dialog active, the launcher keeps the keyboard" \
+	"[ \"\$(get tpa tab_hidden)\" = 0 ] && [ \"\$(get tdk visible)\" = 1 ] && \
+	 [ \"\$(get tdk active)\" = 1 ] && [ \"\$(global focus layer)\" = 1 ]"
 grep -q keyboard-leave "$SMOKE_DIR/launcher.log" && fail "the launcher lost the keyboard"
 kill "$PID_launcher"
 wait "$PID_launcher" 2>/dev/null
+check "the launcher gone, the dialog has the keyboard" "[ \"\$(get tdk kbfocus)\" = 1 ]"
 stop tpa
 stop tqa
+# With a Wayland window outside the group focused: the tab and its dialog come to the
+# front, in sight, and the keyboard stays.
+x11 upa dialog=udk dialog_after="$SMOKE_DIR/udk" size=300x200
+x11 uqa size=400x300
+do_input key super+g
+shown "a tab in front of the other" uqa
+wayland uw size=300x200
+touch "$SMOKE_DIR/udk"
+check "the dialog of the hidden tab is mapped" "[ -n \"\$(get udk x)\" ]"
+check "the tab is in front, the dialog in sight, the Wayland window keeps the keyboard" \
+	"[ \"\$(get upa tab_hidden)\" = 0 ] && [ \"\$(get udk visible)\" = 1 ] && \
+	 [ \"\$(get uw kbfocus)\" = 1 ]"
+stop uw
+stop upa
+stop uqa
 
 # ---- clicks only reach what is shown -------------------------------------------------------
 

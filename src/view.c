@@ -1624,8 +1624,12 @@ void view_handle_map(struct view *view, bool focus)
 	/* A prompt must not stay out of sight in a hidden tab, unless the group is an icon:
 	 * then it waits, as any dialog of a window that is an icon by now. */
 	struct view *root = view_transient_root(view);
-	if (focus && root != view && root->tab_hidden && !root->group->shown->minimized)
-		tabs_bring(root);
+	if (root != view && root->tab_hidden && !root->group->shown->minimized) {
+		if (focus)
+			tabs_bring(root);
+		else
+			tabs_bring_instead(root);
+	}
 	struct view *parent = view_parent(view);
 	/* Hidden with it, not for being on another desktop: it goes there too, and
 	 * shows when that one does. */
@@ -1653,15 +1657,22 @@ void view_handle_map(struct view *view, bool focus)
 		desktop_attention(view);
 		return;
 	}
-	/* In sight, the keyboard where it is: the user decides. */
+	/* In sight, the keyboard where it is: the user decides. A dialog of the window
+	 * with the focus has it next, when the panel above lets go. */
 	if (!focus) {
-		view_raise(view);
+		if (root != view && root->activated)
+			view_focus_instead(view);
+		else
+			view_raise(view);
+		input_pointer_changed(view->server);
 		return;
 	}
-	if (view->wtype != WT_SPLASH && !view_docked(view))
+	if (view->wtype != WT_SPLASH && !view_docked(view)) {
 		view_focus(view);
-	else
+	} else {
 		view_raise(view);
+		input_pointer_changed(view->server);
+	}
 }
 
 void view_handle_unmap(struct view *view)

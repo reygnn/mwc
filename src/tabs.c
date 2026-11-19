@@ -106,8 +106,10 @@ static void pass_icon(struct view *from, struct view *to)
  * A view that is on its way out, gone, can't be told anything any more, but its place
  * still counts. own: the program's doing; the focus stays where it is, with from.
  */
+/* own: the focus stays where it is; instead: it moves to the group, but an on-demand
+ * layer surface keeps the keys. */
 static void switch_to(struct tab_group *g, struct view *to, struct view *from, bool gone,
-	bool own)
+	bool own, bool instead)
 {
 	struct server *server = to->server;
 	/* The focus stays with the group, also if a dialog of the old one had it. */
@@ -182,7 +184,7 @@ static void switch_to(struct tab_group *g, struct view *to, struct view *from, b
 	g->busy = false;
 
 	/* One that went away by itself takes no keys from where the user types. */
-	if (focus && gone)
+	if (focus && (gone || instead))
 		view_focus_instead(to);
 	else if (focus && !own)
 		view_focus(to);
@@ -262,7 +264,7 @@ void tabs_show(struct view *view)
 {
 	struct tab_group *g = view->group;
 	if (g && g->shown != view)
-		switch_to(g, view, g->shown, false, false);
+		switch_to(g, view, g->shown, false, false, false);
 }
 
 void tabs_bring(struct view *view)
@@ -277,6 +279,16 @@ void tabs_bring(struct view *view)
 	/* Restoring may have brought it already, for a dialog of its own. */
 	if (view->group == g)
 		tabs_show(view);
+}
+
+void tabs_bring_instead(struct view *view)
+{
+	struct tab_group *g = view->group;
+	if (!g || g->shown == view || g->shown->minimized)
+		return;
+	if (g->shown->fullscreen)
+		view_set_fullscreen_asked(g->shown, false, false);
+	switch_to(g, view, g->shown, false, false, true);
 }
 
 bool tabs_fit_together(struct view *view, struct view *target)
@@ -323,7 +335,7 @@ bool tabs_join(struct view *view, struct view *target)
 	view->sticky = target->sticky;
 	view->desktop = target->desktop;
 	wl_list_insert(g->members.prev, &view->tab_link);
-	switch_to(g, view, g->shown, false, false);
+	switch_to(g, view, g->shown, false, false, false);
 	return true;
 }
 
@@ -366,7 +378,7 @@ static void detach(struct view *view, bool own)
 	if (view->fullscreen)
 		view_set_fullscreen(view, false);
 	if (g->shown == view)
-		switch_to(g, neighbour(view), view, false, own);
+		switch_to(g, neighbour(view), view, false, own, false);
 	remove_member(view);
 	tell_suspended(view, false);
 	view_show(view, true);
@@ -411,7 +423,7 @@ void tabs_view_gone(struct view *view)
 	if (!g)
 		return;
 	if (g->shown == view)
-		switch_to(g, neighbour(view), view, true, false);
+		switch_to(g, neighbour(view), view, true, false, false);
 	remove_member(view);
 }
 

@@ -1226,8 +1226,12 @@ for h in launcher wayland box; do
 	touch "$SMOKE_DIR/xd.$h"
 	mapped xdd
 	keeps "a new X11 dialog" $h
-	check "it is raised, in sight" "[ \"\$(stack_pos xdd)\" = 0 ]"
-	check "it doesn't have the focus" "[ \"\$(get xdd active)\" = 0 ]"
+	# Under the launcher its window has the focus, and it has it next.
+	if [ $h = launcher ]; then
+		check "it has the focus below the launcher" "[ \"\$(get xdd active)\" = 1 ]"
+	else
+		check "it doesn't have the focus" "[ \"\$(get xdd active)\" = 0 ]"
+	fi
 	unhold $h
 	stop xd
 	# An icon goes, its dialog comes out.
@@ -1268,12 +1272,13 @@ done
 # A program that sends the focus on to its modal dialog whenever its window gets it, as
 # Java does, while a launcher has the keyboard. Set back once, it passes it on again;
 # mwc follows instead of setting it back forever.
-x11 xjava pos=800,100 size=300x200 modal=1 dialog=xjavadlg \
-	dialog_after="$SMOKE_DIR/xjava1" focus_dialog_after="$SMOKE_DIR/xjava2"
-check "it has the focus" "[ \"\$(get xjava active)\" = 1 ]"
+x11 xjava pos=800,100 size=300x200 modal=1 dialog=xjavadlg focus_dialog_after="$SMOKE_DIR/xjava2"
+check "its dialog has the focus" "[ \"\$(get xjavadlg active)\" = 1 ]"
+refresh
+do_input move $(($(get xjava x) + 20)) $(($(get xjava y) + $(get xjava h) - 10))
+do_input click left
+check "a click gives the window the focus" "[ \"\$(get xjava active)\" = 1 ]"
 hold launcher
-touch "$SMOKE_DIR/xjava1"
-mapped xjavadlg
 touch "$SMOKE_DIR/xjava2"
 had xjavadlg
 check "mwc follows to the dialog" "[ \"\$(get xjavadlg active)\" = 1 ]"
@@ -1285,6 +1290,23 @@ keeps "a program passing the focus back" launcher
 unhold launcher
 check "the launcher gone, the dialog has the keyboard" "[ \"\$(get xjavadlg kbfocus)\" = 1 ]"
 stop xjava
+# A program that moved the X focus to its own window that takes no input: mwc only
+# raised it, and taking the focus from its active window left the X focus there. Its
+# next move doesn't take the keyboard from a Wayland window.
+x11 xni pos=800,100 size=300x200 input=0 dialog=xnid dialog_input=1 \
+	focus_main_after="$SMOKE_DIR/xni1" focus_dialog_after="$SMOKE_DIR/xni2"
+check "its dialog has the focus" "[ \"\$(get xnid active)\" = 1 ]"
+touch "$SMOKE_DIR/xni1"
+had xni
+check "the dialog is still the active window" "[ \"\$(get xnid active)\" = 1 ]"
+wayland wni pos=100,350 size=300x200
+check "a new Wayland window has the keyboard" "[ \"\$(get wni kbfocus)\" = 1 ]"
+touch "$SMOKE_DIR/xni2"
+had xnid
+check "the Wayland window keeps it" \
+	"[ \"\$(get wni kbfocus)\" = 1 ] && [ \"\$(get xnid active)\" = 0 ]"
+stop wni
+stop xni
 # The same with the dialog an icon: out of sight, mwc doesn't follow, nor restore it.
 x11 xjic pos=800,100 size=300x200 modal=1 dialog=xjicdlg iconify_ms=500 \
 	iconify_dialog=1 focus_dialog_after="$SMOKE_DIR/xjic"

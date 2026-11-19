@@ -12,6 +12,7 @@
  *     type=dialog|utility|splash|dock|desktop|notification|toolbar
  *     motif=FUNCS,DECOR   _MOTIF_WM_HINTS
  *     input=0             WM_HINTS without input focus
+ *     dialog_input=0|1    the same for the dialog alone, default as input=
  *     state=S[,S...]      initial _NET_WM_STATE, S: above|below|fullscreen|maximized|sticky
  *     ask_before=fullscreen|maximized  ask with a _NET_WM_STATE message, while unmapped
  *     ask_later=fullscreen|maximized   ask with one 2 s after mapping
@@ -152,6 +153,7 @@ struct options {
 	int aspect_n, aspect_d, aspect_max_n, aspect_max_d;
 	long motif_funcs, motif_decor;
 	bool has_motif;
+	int dialog_input;
 	bool no_input, workarea, clipboard, move_press, pulldown, modal;
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
 	const char *dialog_after, *withdraw_after, *withdraw_later, *urgent_after, *spoof_after;
@@ -682,6 +684,8 @@ int main(int argc, char *argv[])
 			o.iconify_dialog = atoi(v);
 		else if (!strcmp(k, "move_press"))
 			o.move_press = atoi(v);
+		else if (!strcmp(k, "dialog_input"))
+			o.dialog_input = atoi(v) ? 1 : 2;
 		else if (!strcmp(k, "modal"))
 			o.modal = atoi(v);
 		else if (!strcmp(k, "pulldown"))
@@ -882,6 +886,8 @@ int main(int argc, char *argv[])
 		struct options d = o;
 		d.has_pos = d.has_min = d.has_max = d.has_motif = false;
 		d.type = o.dialog_type;
+		if (o.dialog_input)
+			d.no_input = o.dialog_input == 2;
 		d.w = 120;
 		d.h = 80;
 		d.x = d.y = 0;
@@ -985,6 +991,7 @@ int main(int argc, char *argv[])
 		fflush(stdout);
 	}
 	bool prefer_dialog = false;
+	unsigned long modal_from = 0;
 	if (o.id_file) {
 		char tmp[512];
 		snprintf(tmp, sizeof(tmp), "%s.tmp", o.id_file);
@@ -1016,6 +1023,7 @@ int main(int argc, char *argv[])
 		XSetInputFocus(dpy, dialog_win, RevertToParent, CurrentTime);
 		XSync(dpy, False);
 		prefer_dialog = true;
+		modal_from = NextRequest(dpy); /* what came before is no answer */
 		mark_request(dialog_win);
 		printf("focused dialog\n");
 		fflush(stdout);
@@ -1196,7 +1204,8 @@ int main(int argc, char *argv[])
 			if (o.modal && prefer_dialog && dialog_mapped &&
 					e.xfocus.window == main_win &&
 					e.xfocus.mode == NotifyNormal &&
-					e.xfocus.detail != NotifyPointer)
+					e.xfocus.detail != NotifyPointer &&
+					e.xfocus.serial >= modal_from)
 				pass_to_dialog(main_win, dialog_win, &passes);
 			break;
 		case SelectionRequest:
