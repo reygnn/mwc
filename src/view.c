@@ -6,6 +6,7 @@
 #include <limits.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_seat.h>
@@ -153,7 +154,7 @@ static void xwayland_configure(struct view *view)
 	 * been committed yet, and this configure must not take it back. */
 	wlr_xwayland_surface_configure(view->xsurface,
 		view->x + frame_left(view), view->y + frame_top(view),
-		view->xsurface->width, view->xsurface->height);
+		view->requested_w, view->requested_h);
 }
 
 void view_set_position(struct view *view, int x, int y)
@@ -173,12 +174,20 @@ void view_send_size(struct view *view, int w, int h)
 		view->requested_w = w;
 		view->requested_h = h;
 	} else {
-		wlr_xwayland_surface_configure(view->xsurface,
-			view->x + frame_left(view), view->y + frame_top(view),
-			w, h);
-		/* Only a new size brings a commit: at the old one X changes nothing. */
-		view->configure_pending |= w != view->width || h != view->height;
+		view_send_geometry(view, view->x, view->y, w, h);
 	}
+}
+
+void view_send_geometry(struct view *view, int x, int y, int w, int h)
+{
+	wlr_xwayland_surface_configure(view->xsurface, x + frame_left(view),
+		y + frame_top(view), w, h);
+	/* Not xsurface->width: every ConfigureNotify sets that, an old one or one
+	 * another client sends. */
+	view->requested_w = w;
+	view->requested_h = h;
+	/* Only a new size brings a commit: at the old one X changes nothing. */
+	view->configure_pending |= w != view->width || h != view->height;
 }
 
 void view_set_geometry(struct view *view, int x, int y, int w, int h)
@@ -633,14 +642,8 @@ static void view_save_free(struct view *view)
 		view->saved = (struct wlr_box){ a.x + 32, a.y + 32, 0, 0 };
 		return;
 	}
-	view->saved = (struct wlr_box){ view->x, view->y, view->width, view->height };
-	if (view->type == VIEW_XWAYLAND) {
-		view->saved.width = view->xsurface->width;
-		view->saved.height = view->xsurface->height;
-	} else {
-		view->saved.width = view->requested_w;
-		view->saved.height = view->requested_h;
-	}
+	view->saved = (struct wlr_box){ view->x, view->y, view->requested_w,
+		view->requested_h };
 }
 
 void view_snap(struct view *view, enum snap s, double px, double py)
@@ -829,16 +832,14 @@ void view_apply_tile(struct view *view)
 	int w = r.width - frame_extra_w(view), h = r.height - frame_extra_h(view);
 	if (view->shaded) {
 		/* It keeps its client height for when it unrolls. */
-		h = view->type == VIEW_XDG ? view->requested_h : view->xsurface->height;
+		h = view->requested_h;
 	}
 	view_apply_size_hints(view, &w, &h, true);
 	/* The main window keeps to the right edge, the stack to the left. */
 	int x = view->tile_main ? r.x + r.width - (w + frame_extra_w(view)) : r.x;
 	/* Every layout round comes here for every tiled window: one already where it
 	 * belongs, at the size last asked of it, needs no configure and no new frame. */
-	bool asked = view->type == VIEW_XDG ?
-		view->requested_w == w && view->requested_h == h :
-		view->xsurface->width == w && view->xsurface->height == h;
+	bool asked = view->requested_w == w && view->requested_h == h;
 	bool in_place = asked && view->x == x && view->y == r.y;
 	if (!in_place)
 		view_set_geometry(view, x, r.y, w, h);
@@ -1156,12 +1157,39 @@ void views_output_gone(struct output *output)
 	}
 }
 
+/* Whether any output was added, removed, moved or resized since the last call. wlroots
+ * reports a change for every configuration applied, a reload's unchanged one too. */
+static bool layout_moved(struct server *server)
+{
+	struct wlr_box boxes[8];
+	int n = 0;
+	bool more = false;
+	struct output *o;
+	wl_list_for_each(o, &server->outputs, link) {
+		if (!output_in_layout(o))
+			continue;
+		if (n == 8) {
+			more = true;
+			break;
+		}
+		wlr_output_layout_get_box(server->output_layout, o->wlr_output, &boxes[n++]);
+	}
+	bool moved = more || n != server->layout_count;
+	for (int i = 0; !moved && i < n; i++)
+		moved = !wlr_box_equal(&boxes[i], &server->layout_boxes[i]);
+	memcpy(server->layout_boxes, boxes, sizeof(boxes));
+	server->layout_count = more ? -1 : n;
+	return moved;
+}
+
 void views_layout_changed(struct server *server)
 {
-	/* What they point at may have gone with an output. */
-	if (server->menu.open)
+	/* What they point at may have gone with an output. A grab keeps going if
+	 * nothing moved: it would lose the size it is waiting to send. */
+	bool moved = layout_moved(server);
+	if (server->menu.open && moved)
 		menu_close(server);
-	if (server->grabbed_view)
+	if (server->grabbed_view && moved)
 		grab_give_way(server->grabbed_view);
 	if (wl_list_empty(&server->outputs))
 		return;
@@ -1362,8 +1390,7 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	server->grab_px = server->cursor->x;
 	server->grab_py = server->cursor->y;
 	/* The size last asked for: the client may not have got there yet. */
-	int w = view->type == VIEW_XDG ? view->requested_w : view->xsurface->width;
-	int h = view->type == VIEW_XDG ? view->requested_h : view->xsurface->height;
+	int w = view->requested_w, h = view->requested_h;
 	server->grab_orig = (struct wlr_box){ view->x, view->y, w, h };
 	server->grab_orig_maximized = view->maximized;
 	server->grab_orig_snap = view->snap;
@@ -1384,12 +1411,12 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 		server->grab_x = server->cursor->x - bx;
 		server->grab_y = server->cursor->y - by;
 		server->resize_edges = edges;
+		view->anchor_edges = edges;
+		view->anchor_right = view->x + server->grab_geobox.width;
+		view->anchor_bottom = view->y + server->grab_geobox.height;
 		if (view->type == VIEW_XDG) {
 			if (!server->grab_outline)
 				wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, true);
-			view->anchor_edges = edges;
-			view->anchor_right = view->x + server->grab_geobox.width;
-			view->anchor_bottom = view->y + server->grab_geobox.height;
 			view->anchor_serial = view->xdg_toplevel->base->
 				scheduled_serial;
 		}

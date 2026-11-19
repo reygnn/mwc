@@ -31,19 +31,21 @@ static void um_destroy(struct wl_listener *listener, void *data);
 /* Its new size, kept where a resize from the left or top anchors it. */
 static void xw_size_committed(struct view *view, struct wlr_surface *s)
 {
-	/* Reuse the resize anchoring of the xdg path. */
-	struct server *server = view->server;
-	if (server->cursor_mode == CURSOR_RESIZE &&
-			server->grabbed_view == view) {
-		struct wlr_box *g = &server->grab_geobox;
-		if (server->resize_edges & WLR_EDGE_LEFT)
-			view->x = g->x + g->width -
-				(s->current.width + frame_extra_w(view));
-		if (server->resize_edges & WLR_EDGE_TOP)
-			view->y = g->y + g->height -
+	/* As the xdg path does: the opposite edge stays, also for the last size of a
+	 * grab that has just ended. */
+	if (view->anchor_edges) {
+		if (view->anchor_edges & WLR_EDGE_LEFT)
+			view->x = view->anchor_right - (s->current.width + frame_extra_w(view));
+		if (view->anchor_edges & WLR_EDGE_TOP)
+			view->y = view->anchor_bottom -
 				(s->current.height + frame_extra_h(view));
-		wlr_scene_node_set_position(&view->tree->node,
-			view->x, view->y);
+		wlr_scene_node_set_position(&view->tree->node, view->x, view->y);
+		/* Another size than asked for: X is told where it went. */
+		if (s->current.width != view->requested_w ||
+				s->current.height != view->requested_h)
+			wlr_xwayland_surface_configure(view->xsurface,
+				view->x + frame_left(view), view->y + frame_top(view),
+				view->requested_w, view->requested_h);
 	}
 	view->width = s->current.width;
 	view->height = s->current.height;
@@ -68,6 +70,11 @@ static void xw_commit(struct wl_listener *listener, void *data)
 		view->configure_pending = false;
 		grab_resize_caught_up(view);
 	}
+	/* The grab is over and the window has the last size it was given. */
+	struct server *server = view->server;
+	bool grabbed = server->cursor_mode == CURSOR_RESIZE && server->grabbed_view == view;
+	if (view->anchor_edges && !grabbed && !view->configure_pending)
+		view->anchor_edges = 0;
 }
 
 /* wlroots parses only the decoration part of _MOTIF_WM_HINTS. Reading it here
@@ -175,6 +182,10 @@ static void xw_map(struct wl_listener *listener, void *data)
 		xs->surface->current.width : xs->width;
 	view->height = xs->surface->current.height ?
 		xs->surface->current.height : xs->height;
+	if (!view->requested_w || !view->requested_h) {
+		view->requested_w = view->width;
+		view->requested_h = view->height;
+	}
 	view->ssd = true;
 	xwayland_read_motif_hints(view);
 	view_update_properties(view);
@@ -310,19 +321,21 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 		/* xw_map decides what the position means. */
 		wlr_xwayland_surface_configure(view->xsurface, ev->x, ev->y,
 			ev->width, ev->height);
+		view->requested_w = ev->width;
+		view->requested_h = ev->height;
 		return;
 	}
 	/* Fullscreen, maximized, snapped and tiled windows keep their place. */
 	if (view->maximized || view->fullscreen || view->snap != SNAP_NONE ||
 			view->tiled || view->tab_hidden) {
-		view_send_size(view, view->xsurface->width, view->xsurface->height);
+		view_send_size(view, view->requested_w, view->requested_h);
 		return;
 	}
 	/* Where the client thinks it is now, then what it asks for, translated through
 	 * its gravity at the new size. */
 	view_update_properties(view);
-	int w = (ev->mask & XCB_CONFIG_WINDOW_WIDTH) ? ev->width : view->xsurface->width;
-	int h = (ev->mask & XCB_CONFIG_WINDOW_HEIGHT) ? ev->height : view->xsurface->height;
+	int w = (ev->mask & XCB_CONFIG_WINDOW_WIDTH) ? ev->width : view->requested_w;
+	int h = (ev->mask & XCB_CONFIG_WINDOW_HEIGHT) ? ev->height : view->requested_h;
 	view_apply_size_hints(view, &w, &h, false);
 	/* Docked windows keep their place; the commit of a new size rearranges. */
 	if (view_docked(view)) {
@@ -331,8 +344,8 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 	}
 	int fx0, fy0;
 	struct frame_size f = frame_size(view);
-	view_gravity_to_frame(view, f, 0, 0, view->xsurface->width,
-		view->xsurface->height, &fx0, &fy0);
+	view_gravity_to_frame(view, f, 0, 0, view->requested_w,
+		view->requested_h, &fx0, &fy0);
 	int vx = (ev->mask & XCB_CONFIG_WINDOW_X) ? ev->x : view->x - fx0;
 	int vy = (ev->mask & XCB_CONFIG_WINDOW_Y) ? ev->y : view->y - fy0;
 	int fx, fy;
@@ -342,7 +355,7 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 	struct server *server = view->server;
 	if (server->grabbed_view == view && (server->cursor_mode == CURSOR_MOVE ||
 			server->cursor_mode == CURSOR_RESIZE)) {
-		view_send_size(view, view->xsurface->width, view->xsurface->height);
+		view_send_size(view, view->requested_w, view->requested_h);
 		return;
 	}
 	/* Only a new size: the edge from its mwmrc entry goes before its own gravity.
@@ -351,7 +364,7 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
 		view->gravity_edges = 0;
 	} else if (view->gravity_edges) {
 		int gx, gy;
-		view_gravity_place(view, view->xsurface->width, view->xsurface->height,
+		view_gravity_place(view, view->requested_w, view->requested_h,
 			w, h, &gx, &gy);
 		if (view->gravity_edges & WLR_EDGE_RIGHT)
 			fx = gx;
@@ -649,6 +662,9 @@ static struct view *new_managed(struct server *server, struct wlr_xwayland_surfa
 	view->xsurface = xs;
 	xs->data = view; /* for view_parent() */
 	view->ssd = true;
+	/* The size it was created with, until mwc sends one. */
+	view->requested_w = xs->width;
+	view->requested_h = xs->height;
 	view_init_common(view);
 
 #define LISTEN(sig, field, fn) \

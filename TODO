@@ -1,26 +1,5 @@
 TODO
 
-* X11-Geometrie (Review des Branches fix/review-2026-11-18-teil3), ein eigener
-  Branch:
-  - Beim Resize an der linken oder oberen Kante setzt view_set_geometry() x/y
-    und den Scene-Knoten sofort, die Breite kommt erst mit dem Commit: bis
-    dahin springt die Gegenkante (auch Review 2026-11-17). Während des Griffs
-    nur das X-Fenster konfigurieren und den Knoten beim Commit setzen, wie bei
-    xdg (xw_commit() verankert schon über grab_geobox); ein Pixeltest der
-    Gegenkante in tests/move.sh mit langsamem Client.
-  - Ein Reload beendet jeden Griff (views_layout_changed() -> grab_give_way()),
-    auch wenn sich am Layout nichts geändert hat, wlroots meldet die Änderung
-    immer. Dabei geht eine wartende Größe verloren, bei xdg und X11. Griffe
-    nur bei echter Änderung der Output-Boxen beenden; Test: Reload während
-    eines Resize, das Fenster folgt danach dem Zeiger.
-  - xwayland_configure(), xw_request_configure() und view_begin_interactive()
-    (grab_orig, grab_geobox) nehmen xsurface->width als zuletzt angeforderte
-    Größe. Das setzt jedes ConfigureNotify, auch ein
-    veraltetes oder eines, das ein anderer Client schickt (xclient
-    spoof_after): das nächste Verschieben macht das Fenster dann 1x1, Alt+F8
-    lässt es zusammenfallen. mwcs eigene zuletzt gesendete Größe führen und
-    überall dort nehmen; Test: Spoof, dann Alt+F8 und ein Pfeil.
-
 * Matrixtest über Invarianten, eigener Branch (test/invariant-matrix). Die
   Tests prüfen Floating, Tabs, Tiling, Shading und Desktops je für sich; die
   Fehler der drei Reviews des Branches fix/review-2026-11-18-low lagen in den

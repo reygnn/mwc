@@ -210,9 +210,14 @@ void grab_give_way(struct view *view)
 
 static void resize_to(struct view *view, const struct wlr_box *b)
 {
-	/* An xdg client answers later, and its anchor keeps the opposite edge
-	 * in place then. X windows get position and size in one configure. */
-	if (view->type == VIEW_XWAYLAND)
+	/* The client answers later, and its anchor keeps the opposite edge in place
+	 * then: an X window gets the new place with the size, its frame follows the
+	 * commit. Once the grab is over, both go at once. */
+	struct server *server = view->server;
+	bool grabbed = server->grabbed_view == view && server->cursor_mode == CURSOR_RESIZE;
+	if (view->type == VIEW_XWAYLAND && grabbed)
+		view_send_geometry(view, b->x, b->y, b->width, b->height);
+	else if (view->type == VIEW_XWAYLAND)
 		view_set_geometry(view, b->x, b->y, b->width, b->height);
 	else
 		view_send_size(view, b->width, b->height);

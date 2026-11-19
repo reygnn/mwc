@@ -424,6 +424,85 @@ geometry_is "moveOpaque, X11: after that it resizes with the pointer" xsame 100 
 do_input up left
 stop xsame
 
+# From the left edge the right one stays, also before the window has the new size: with
+# Xwayland stopped, none comes. The frame moves with the commit, not before it.
+x11 xleft pos=200,100 size=300x200
+settle
+refresh
+R0=$(($(get xleft x) + $(get xleft w)))
+LX=$(($(get xleft x) + 1)) LY=$(($(get xleft y) + OH / 2))
+do_input move "$LX" "$LY"
+do_input down left
+do_input move $((LX - 10)) "$LY"
+check "moveOpaque, X11: it grows to the left" \
+	"[ \"\$(get xleft w)\" = 310 ] && [ \$((\$(get xleft x) + \$(get xleft w))) = $R0 ]"
+XW=$(pgrep -f "^Xwayland $X_DISPLAY ") || fail "no Xwayland for $X_DISPLAY"
+kill -STOP $XW
+do_input move $((LX - 50)) "$LY"
+check "the pointer is there" "[ \"\$(global cursor x)\" = $((LX - 50)) ]"
+refresh
+right=$(($(get xleft x) + $(get xleft w)))
+kill -CONT $XW
+[ "$right" = "$R0" ] || fail "before the commit the right edge went from $R0 to $right"
+echo "ok: before the commit the right edge stays"
+check "moveOpaque, X11: then it has the size, the right edge where it was" \
+	"[ \"\$(get xleft w)\" = 350 ] && [ \$((\$(get xleft x) + \$(get xleft w))) = $R0 ]"
+do_input up left
+no_grab_left "nothing is left of the grab"
+stop xleft
+
+# A reload in the middle of a resize: the outputs are as they were, so the grab goes on,
+# with the size it may be waiting to send.
+x11 xreload pos=100,100 size=300x200
+settle
+do_input move "$RX" "$RY"
+do_input down left
+do_input move $((RX + 10)) $((RY + 10))
+geometry_is "moveOpaque, X11: resizing" xreload 100 100 310 210
+reload_mwc
+check "after a reload the grab goes on" "[ \"\$(global cursor mode)\" = $MODE_RESIZE ]"
+do_input move $((RX + 40)) $((RY + 30))
+geometry_is "moveOpaque, X11: it still follows the pointer" xreload 100 100 340 230
+do_input up left
+stop xreload
+wayland wreload size=300x200
+refresh
+WX=$(get wreload x) WY=$(get wreload y)
+do_input move $((WX + 1)) $((WY + 1))
+do_input down left
+do_input move $((WX + 11)) $((WY + 11))
+geometry_is "moveOpaque, Wayland: resizing" wreload $((WX + 10)) $((WY + 10)) 290 190
+reload_mwc
+check "after a reload the grab goes on" "[ \"\$(global cursor mode)\" = $MODE_RESIZE ]"
+do_input move $((WX + 41)) $((WY + 21))
+geometry_is "moveOpaque, Wayland: it still follows the pointer" wreload \
+	$((WX + 40)) $((WY + 20)) 260 180
+do_input up left
+stop wreload
+
+# A ConfigureNotify, stale or sent by another client, says nothing of the size mwc asked
+# for: a move or resize from the keyboard starts from mwc's own.
+for how in F8 F7; do
+	x11 xspoof$how pos=100,100 size=300x200 spoof_after="$SMOKE_DIR/spoof$how"
+	settle
+	touch "$SMOKE_DIR/spoof$how"
+	wait_for "a ConfigureNotify saying 1x1 is sent" \
+		grep -q '^spoofed' "$SMOKE_DIR/xspoof$how.events"
+	do_input key alt+$how
+	if [ $how = F8 ]; then
+		check "Alt+F8 starts a resize" "[ \"\$(global cursor mode)\" = $MODE_RESIZE ]"
+		do_input key Right
+		do_input key Return
+		geometry_is "resized from the keyboard, from its own size" xspoof$how 100 100 310 200
+	else
+		check "Alt+F7 starts a move" "[ \"\$(global cursor mode)\" = $MODE_MOVE ]"
+		do_input key Right
+		do_input key Return
+		geometry_is "moved from the keyboard, it keeps its size" xspoof$how 110 100 300 200
+	fi
+	stop xspoof$how
+done
+
 wayland wopaque size=300x200
 refresh
 WX=$(get wopaque x) WY=$(get wopaque y)

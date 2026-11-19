@@ -86,8 +86,8 @@ static void dialogs_show(struct view *view, bool show)
 /* The size last asked for: a new one may not have been committed yet. */
 static void asked_size(struct view *view, int *w, int *h)
 {
-	*w = view->type == VIEW_XDG ? view->requested_w : view->xsurface->width;
-	*h = view->type == VIEW_XDG ? view->requested_h : view->xsurface->height;
+	*w = view->requested_w;
+	*h = view->requested_h;
 }
 
 /* The icon stands for the group, so the one taking over goes on being it, in its place. */

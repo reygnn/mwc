@@ -249,7 +249,7 @@ struct view {
 	struct wlr_box saved;  /* before maximize, snap, fullscreen */
 	double fit_px, fit_py; /* on the output its state fills */
 	struct output *fit_output; /* that output, while it exists */
-	/* Edges kept until an xdg client has acked its new size. */
+	/* Edges kept until the client has its new size: an xdg ack, an X11 commit. */
 	uint32_t anchor_edges;
 	int anchor_right, anchor_bottom;
 	uint32_t anchor_serial;
@@ -257,7 +257,7 @@ struct view {
 	 * moved, resized or grouped. */
 	uint32_t gravity_edges;
 	int gravity_extra_w, gravity_extra_h; /* the frame's size then */
-	int requested_w, requested_h; /* xdg */
+	int requested_w, requested_h; /* the size last sent, not what X last said */
 	bool configure_pending; /* X11: a new size configured since its last commit */
 	int icon_x, icon_y;
 	bool icon_placed;
@@ -515,6 +515,9 @@ struct server {
 
 	struct wlr_output_layout *output_layout;
 	struct wl_list outputs;
+	/* Their boxes at the last layout change, to tell a real one (the first eight). */
+	struct wlr_box layout_boxes[8];
+	int layout_count;
 	struct wl_listener new_output;
 	struct wl_listener layout_change;
 
@@ -609,6 +612,8 @@ void view_handle_map(struct view *view, bool focus);
 void view_handle_unmap(struct view *view);
 void view_handle_destroy(struct view *view);
 void view_send_size(struct view *view, int w, int h);
+/* X11: place and size for the window, the frame following with its commit. */
+void view_send_geometry(struct view *view, int x, int y, int w, int h);
 void view_set_activated(struct view *view, bool activated);
 struct view *view_at(struct server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy,
