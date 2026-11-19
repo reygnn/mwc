@@ -267,6 +267,21 @@ urgent_is "going there clears it" ""
 stop bell
 switch_to 1
 
+# Activation asked for by an X11 program while a Wayland window has the focus: refused,
+# but its desktop is marked all the same (Review of fix/review-2026-11-18-teil4).
+x11 asks size=300x200 activate_after="$SMOKE_DIR/asks"
+to_desktop asks 2
+wayland wnow size=300x200
+check "the Wayland window has the focus" "[ \"\$(get wnow kbfocus)\" = 1 ]"
+touch "$SMOKE_DIR/asks"
+# Retitled after the request (xclient's usage): by then mwc has had it.
+check "mwc has had the request" "[ \"\$(get asks tlen)\" = 12 ]"
+urgent_is "its desktop is marked" 2
+check "the Wayland window keeps the focus" "[ \"\$(get wnow kbfocus)\" = 1 ]"
+stop wnow
+stop asks
+urgent_is "it closes: nothing is urgent any more" ""
+
 # A window withdrawn to the tray keeps no desktop for its dialogs: one opening while
 # the user is elsewhere opens there, in sight, not on the desktop the window was left
 # on. Nor does an owner that is never shown hold them on desktop 0.

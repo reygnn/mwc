@@ -92,8 +92,10 @@ title bar and stay without a Motif frame.
 An X11 window that wants the keyboard as it appears (dmenu, rofi under X11, an X11
 program's own menus) gets it only while an X11 window or none has the focus, not from a
 Wayland window, a panel or the icon box. The same holds for an X11 program activating
-or restoring a window. This keeps X11 programs from taking the keyboard from Wayland
-ones, but an X11 launcher started from a Wayland terminal gets no keys.
+or restoring a window, showing one again, opening a dialog for a window that is there,
+going fullscreen or moving the focus between its own windows. This keeps X11 programs
+from taking the keyboard from Wayland ones, but an X11 launcher started from a Wayland
+terminal gets no keys.
 
 
 ## Programs mwc starts
@@ -150,6 +152,10 @@ Only `_NET_WM_STRUT_PARTIAL` reserves space for X11 panels, not the older
 Xwayland starts on the first X11 connection. A program asking for `_NET_FRAME_EXTENTS`,
 `_NET_WORKAREA` or `_MOTIF_WM_INFO` before its first window is mapped may miss them the
 first time.
+
+An icon stays mapped on the X server, so mapping it again, the ICCCM way back from
+`IconicState`, changes nothing. `WM_CHANGE_STATE` with `NormalState` and
+`_NET_ACTIVE_WINDOW` bring it back.
 
 
 ## Files from mwm-x11

@@ -154,6 +154,16 @@ void xwayland_publish_frame_extents(struct view *view)
 	xcb_flush(conn);
 }
 
+/* The window it belongs to is in the tab group whose tab has the keys. */
+static bool in_focused_group(struct view *view)
+{
+	struct server *server = view->server;
+	struct view *focused = view_focused(server);
+	struct tab_group *g = view_transient_root(view)->group;
+	return focused && g && view_transient_root(focused)->group == g &&
+		!server->focused_layer && !iconbox_has_focus();
+}
+
 static void xw_map(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, map);
@@ -186,11 +196,19 @@ static void xw_map(struct wl_listener *listener, void *data)
 			xs->y != view->unmap_y))
 		view_gravity_to_frame(view, frame_size(view), xs->x, xs->y, view->width,
 			view->height, &view->x, &view->y);
+	/* A new window takes the focus as a Wayland one does, unless it starts as an
+	 * icon. Shown again, or a dialog of a window that is there, it is the program's
+	 * doing, not the user's: see xwayland_may_take_focus(). A tab group counts as
+	 * one window, whichever of its tabs has the keys. */
+	bool iconic = xs->hints && (xs->hints->flags & XCB_ICCCM_WM_HINT_STATE) &&
+		xs->hints->initial_state == XCB_ICCCM_WM_STATE_ICONIC;
+	bool focus = !iconic && ((!view->been_mapped && (!view_parent(view) ||
+		in_focused_group(view))) || xwayland_may_take_focus(view->server));
 	view->been_mapped = true;
 
 	view->commit.notify = xw_commit;
 	wl_signal_add(&xs->surface->events.commit, &view->commit);
-	view_handle_map(view);
+	view_handle_map(view, focus);
 
 	/* States it asked for before it was mapped. Shown again, it may have given up
 	 * ones it had: wlroots forgets those with the property, which a withdrawn window
@@ -212,8 +230,7 @@ static void xw_map(struct wl_listener *listener, void *data)
 	/* Not an icon any longer, whatever the properties still say... */
 	wlr_xwayland_surface_set_minimized(xs, view->hidden_with_parent);
 	/* ... unless it asks for that: xterm -iconic and friends. */
-	if (xs->hints && (xs->hints->flags & XCB_ICCCM_WM_HINT_STATE) &&
-			xs->hints->initial_state == XCB_ICCCM_WM_STATE_ICONIC)
+	if (iconic)
 		view_minimize(view);
 }
 
@@ -348,7 +365,7 @@ static void xw_request_configure(struct wl_listener *listener, void *data)
  * (_NET_ACTIVE_WINDOW, WM_CHANGE_STATE), and wlroots doesn't say who asked. Among X
  * windows that is how X works, taskbars and emacsclient rely on it; but the keyboard
  * isn't taken from a Wayland window, a panel or the icon box that way. */
-static bool x11_may_take_focus(struct server *server)
+bool xwayland_may_take_focus(struct server *server)
 {
 	if (server->focused_layer || iconbox_has_focus())
 		return false;
@@ -359,7 +376,12 @@ static bool x11_may_take_focus(struct server *server)
 static void xw_request_activate(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_activate);
-	if (!x11_may_take_focus(view->server)) {
+	/* Whoever asks: its desktop is marked, as view_focus() does. */
+	if (view->off_desktop) {
+		desktop_attention(view);
+		return;
+	}
+	if (!xwayland_may_take_focus(view->server)) {
 		wlr_log(WLR_DEBUG, "X11 activation of %s refused: the focus isn't on X11",
 			view_app_id(view));
 		return;
@@ -407,8 +429,8 @@ static void xw_request_minimize(struct wl_listener *listener, void *data)
 	if (ev->minimize)
 		view_minimize(view);
 	/* Back from an icon, nothing more: it isn't asking to be un-maximized as well.
-	 * Coming back takes the focus, see x11_may_take_focus(). */
-	else if (view_hidden_by_state(view) && x11_may_take_focus(view->server))
+	 * Coming back takes the focus, see xwayland_may_take_focus(). */
+	else if (view_hidden_by_state(view) && xwayland_may_take_focus(view->server))
 		view_restore(view);
 	/* wlroots wrote _NET_WM_STATE_HIDDEN as asked before telling mwc; what mwc
 	 * refused, a docked window as an icon, an icon shown under a Wayland window,
@@ -485,20 +507,28 @@ static void xw_focus_in(struct wl_listener *listener, void *data)
 		return;
 	/* wlroots lets a program move the X focus between its own windows. One on
 	 * another desktop must not get it: back to where it is, and that one is marked.
-	 * Nor while a panel has the keys, see x11_may_take_focus(). (With the icon box
-	 * focused wlroots lets none through: iconbox_focus() takes its X focus away.) */
+	 * Nor while a panel, the icon box or a Wayland window has the keys, see
+	 * xwayland_may_take_focus(). */
 	struct server *server = view->server;
-	if (view->off_desktop || server->focused_layer) {
-		struct view *focused = view_focused(server);
-		if (focused && focused->type == VIEW_XWAYLAND)
-			wlr_xwayland_surface_activate(focused->xsurface, true);
-		else
-			wlr_xwayland_surface_activate(view->xsurface, false);
-		if (view->off_desktop)
-			desktop_attention(view);
+	if (!view->off_desktop && xwayland_may_take_focus(server)) {
+		view_focus(view);
 		return;
 	}
-	view_focus(view);
+	struct view *focused = view_focused(server);
+	if (!focused || focused->type != VIEW_XWAYLAND) {
+		wlr_xwayland_surface_activate(view->xsurface, false);
+	} else if (server->x11_refocused == focused && !view->off_desktop) {
+		/* It was given the focus back and passed it on again, as a program does
+		 * that answers WM_TAKE_FOCUS with its other window. Another offer gets the
+		 * same answer: mwc follows, and the panel keeps the keys. */
+		view_focus_instead(view);
+		return;
+	} else {
+		wlr_xwayland_surface_activate(focused->xsurface, true);
+		server->x11_refocused = focused;
+	}
+	if (view->off_desktop)
+		desktop_attention(view);
 }
 
 static void xw_set_title(struct wl_listener *listener, void *data)
@@ -659,9 +689,9 @@ static void um_map(struct wl_listener *listener, void *data)
 	um->set_geometry.notify = um_set_geometry;
 	wl_signal_add(&xs->events.set_geometry, &um->set_geometry);
 	/* An exclusive layer surface keeps the keyboard, a password prompt for one; and
-	 * an X menu takes it from an X window only, see x11_may_take_focus(). */
+	 * an X menu takes it from an X window only, see xwayland_may_take_focus(). */
 	if (wlr_xwayland_surface_override_redirect_wants_focus(xs) &&
-			!um->server->exclusive_layer && x11_may_take_focus(um->server))
+			!um->server->exclusive_layer && xwayland_may_take_focus(um->server))
 		input_keyboard_enter(um->server, xs->surface);
 	/* A menu opening under a pointer that doesn't move: it is what the pointer is
 	 * over now, for the wheel and the client's own highlight and cursor. */

@@ -15,6 +15,7 @@
  *     state=S[,S...]      initial _NET_WM_STATE, S: above|below|fullscreen|maximized|sticky
  *     ask_before=fullscreen|maximized  ask with a _NET_WM_STATE message, while unmapped
  *     ask_later=fullscreen|maximized   ask with one 2 s after mapping
+ *     ask_later_after=FILE  that once FILE exists instead; retitled after it as below
  *     ask_after=fullscreen|maximized   ask with one right after XMapWindow, unsynced,
  *                         as xterm -fullscreen does
  *     strut=L,R,T,B       _NET_WM_STRUT_PARTIAL along the whole edge
@@ -70,6 +71,8 @@
  *                         (rolled up), i for hidden (an icon); says "sent N" each time
  *     focus_main=1        once mapped, give the focus from the dialog to the main window
  *     focus_main_after=FILE  the same once FILE exists
+ *     focus_dialog_after=FILE  once FILE exists, give the focus to the dialog; the dialog
+ *                         is retitled after it as below
  *     instance_later=NAME  the same for the instance alone, the class kept
  *     class_later=NAME    once the file class_after=FILE exists, WM_CLASS becomes NAME;
  *                         says "class set"
@@ -90,12 +93,16 @@
  *     dialog_ms=MS        wait that long before opening the dialog
  *     dialog_after=FILE   open it once FILE exists
  *     withdraw_after=FILE once FILE exists, withdraw the main window; says "withdrawn"
+ *     withdraw_later=FILE the same, but after the dialog and iconify_ms
  *     nomap=1             never map the main window, an owner kept out of sight
  *     urgent_after=FILE   once FILE exists, set XUrgencyHint in WM_HINTS; says "urgent"
  *     spoof_after=FILE    once FILE exists, send the root a synthetic ConfigureNotify
  *                         that says the main window is 1x1, as any client can; says
  *                         "spoofed"
  *     dialog_type=TYPE    the dialog's explicit window type, as for type=, also normal
+ *     take_focus=1        WM_TAKE_FOCUS in WM_PROTOCOLS; offered the focus, it gives it
+ *                         to the dialog while that is mapped, else takes it, as Java
+ *                         does with a modal dialog open; says "take-focus main|dialog"
  *     pulldown=1          a press posts an override-redirect menu and grabs the pointer,
  *                         as Motif does for press-drag-release; logs what follows
  */
@@ -110,7 +117,7 @@
 #include <unistd.h>
 
 static Display *dpy;
-static Atom wm_delete, wm_protocols;
+static Atom wm_delete, wm_protocols, wm_take_focus;
 
 /* A _NET_WM_STATE message to add a state. */
 static void ask_state(Window win, const char *state)
@@ -132,7 +139,7 @@ static void ask_state(Window win, const char *state)
 
 struct options {
 	const char *class, *type, *state, *dialog, *dialog_type, *gravity;
-	const char *ask_before, *ask_after, *ask_later;
+	const char *ask_before, *ask_after, *ask_later, *ask_later_after;
 	int w, h, x, y;
 	bool has_pos;
 	int min_w, min_h, max_w, max_h, inc_w, inc_h, base_w, base_h;
@@ -140,10 +147,10 @@ struct options {
 	int aspect_n, aspect_d, aspect_max_n, aspect_max_d;
 	long motif_funcs, motif_decor;
 	bool has_motif;
-	bool no_input, workarea, clipboard, move_press, pulldown;
+	bool no_input, workarea, clipboard, move_press, pulldown, take_focus;
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
-	const char *dialog_after, *withdraw_after, *urgent_after, *spoof_after;
-	const char *normalize_after, *activate_after, *focus_main_after;
+	const char *dialog_after, *withdraw_after, *withdraw_later, *urgent_after, *spoof_after;
+	const char *normalize_after, *activate_after, *focus_main_after, *focus_dialog_after;
 	const char *class_later, *class_after, *moveresize_after, *override_after;
 	const char *rehide_before, *rehide_after, *rehide_title, *rehide_class;
 	const char *instance_later;
@@ -224,7 +231,8 @@ static Window create_window(const struct options *o, const char *class,
 	XClassHint ch = { (char *)class, (char *)class };
 	XSetClassHint(dpy, win, &ch);
 	XStoreName(dpy, win, class);
-	XSetWMProtocols(dpy, win, &wm_delete, 1);
+	Atom protocols[] = { wm_delete, wm_take_focus };
+	XSetWMProtocols(dpy, win, protocols, o->take_focus ? 2 : 1);
 
 	XSizeHints sh = { 0 };
 	if (o->has_pos) {
@@ -575,6 +583,8 @@ int main(int argc, char *argv[])
 			o.dialog_after = v;
 		else if (!strcmp(k, "withdraw_after"))
 			o.withdraw_after = v;
+		else if (!strcmp(k, "withdraw_later"))
+			o.withdraw_later = v;
 		else if (!strcmp(k, "nomap"))
 			o.nomap = atoi(v);
 		else if (!strcmp(k, "urgent_after"))
@@ -598,6 +608,10 @@ int main(int argc, char *argv[])
 			o.ask_before = v;
 		else if (!strcmp(k, "ask_later"))
 			o.ask_later = v;
+		else if (!strcmp(k, "ask_later_after"))
+			o.ask_later_after = v;
+		else if (!strcmp(k, "focus_dialog_after"))
+			o.focus_dialog_after = v;
 		else if (!strcmp(k, "ask_after"))
 			o.ask_after = v;
 		else if (!strcmp(k, "state"))
@@ -644,6 +658,8 @@ int main(int argc, char *argv[])
 			o.iconify_dialog = atoi(v);
 		else if (!strcmp(k, "move_press"))
 			o.move_press = atoi(v);
+		else if (!strcmp(k, "take_focus"))
+			o.take_focus = atoi(v);
 		else if (!strcmp(k, "pulldown"))
 			o.pulldown = atoi(v);
 		else if (!strcmp(k, "override"))
@@ -664,6 +680,7 @@ int main(int argc, char *argv[])
 	}
 	wm_protocols = XInternAtom(dpy, "WM_PROTOCOLS", False);
 	wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
+	wm_take_focus = XInternAtom(dpy, "WM_TAKE_FOCUS", False);
 	if (o.workarea) {
 		XSelectInput(dpy, DefaultRootWindow(dpy), PropertyChangeMask);
 		print_workarea();
@@ -871,6 +888,14 @@ int main(int argc, char *argv[])
 		XSync(dpy, False);
 		printf("iconified\n");
 	}
+	if (o.withdraw_later) {
+		XSync(dpy, False);
+		wait_for_file(o.withdraw_later);
+		XWithdrawWindow(dpy, main_win, DefaultScreen(dpy));
+		XSync(dpy, False);
+		printf("withdrawn\n");
+		fflush(stdout);
+	}
 	if (o.clipboard) {
 		XSync(dpy, False);
 		usleep(500000);
@@ -881,9 +906,14 @@ int main(int argc, char *argv[])
 	}
 	if (o.ask_later) {
 		XSync(dpy, False);
-		usleep(2000000);
+		if (o.ask_later_after)
+			wait_for_file(o.ask_later_after);
+		else
+			usleep(2000000);
 		ask_state(main_win, o.ask_later);
 		XSync(dpy, False);
+		if (o.ask_later_after)
+			mark_request(main_win);
 		printf("asked\n");
 	}
 	if (o.title_later) {
@@ -928,6 +958,15 @@ int main(int argc, char *argv[])
 		XSync(dpy, False);
 		mark_request(main_win);
 		printf("focused main\n");
+		fflush(stdout);
+	}
+	if (o.focus_dialog_after && dialog_win) {
+		XSync(dpy, False);
+		wait_for_file(o.focus_dialog_after);
+		XSetInputFocus(dpy, dialog_win, RevertToParent, CurrentTime);
+		XSync(dpy, False);
+		mark_request(dialog_win);
+		printf("focused dialog\n");
 		fflush(stdout);
 	}
 	if (o.has_motif_later) {
@@ -1040,6 +1079,7 @@ int main(int argc, char *argv[])
 
 	int open = dialog_win ? 2 : 1;
 	Window menu_win = None;
+	bool dialog_mapped = false;
 	while (open > 0) {
 		XEvent e;
 		XNextEvent(dpy, &e);
@@ -1080,6 +1120,10 @@ int main(int argc, char *argv[])
 			printf("motion %s %d,%d\n", e.xmotion.window == main_win ? "main" :
 				"menu", e.xmotion.x_root, e.xmotion.y_root);
 			break;
+		case UnmapNotify:
+			if (dialog_win && e.xunmap.window == dialog_win)
+				dialog_mapped = false;
+			break;
 		case MapNotify:
 			/* Mapped: the window manager is there for sure. Xwayland starts on the
 			 * first connection, so it may not have been before. */
@@ -1087,6 +1131,8 @@ int main(int argc, char *argv[])
 				print_motif_wm();
 				print_supported();
 			}
+			if (dialog_win && e.xmap.window == dialog_win)
+				dialog_mapped = true;
 			break;
 		case ConfigureNotify:
 			if (o.sizes && e.xconfigure.window == main_win)
@@ -1111,6 +1157,14 @@ int main(int argc, char *argv[])
 				print_workarea();
 			break;
 		case ClientMessage:
+			if (e.xclient.message_type == wm_protocols &&
+					(Atom)e.xclient.data.l[0] == wm_take_focus) {
+				bool dialog = dialog_mapped;
+				XSetInputFocus(dpy, dialog ? dialog_win : main_win, RevertToParent,
+					CurrentTime);
+				XFlush(dpy);
+				printf("take-focus %s\n", dialog ? "dialog" : "main");
+			}
 			if (e.xclient.message_type == wm_protocols &&
 					(Atom)e.xclient.data.l[0] == wm_delete) {
 				printf("close %s\n", e.xclient.window == main_win ?

@@ -507,6 +507,7 @@ struct server {
 
 	uint32_t last_click_msec;
 	struct view *last_click_view;
+	struct view *x11_refocused; /* given the X focus back by xw_focus_in() */
 	enum frame_part last_click_part;
 
 	struct menu menu;
@@ -600,7 +601,8 @@ struct wlr_surface *view_surface(struct view *view);
 void view_cycle(struct server *server, bool backwards);
 /* After the xdg or X11 part has set the client. */
 void view_init_common(struct view *view);
-void view_handle_map(struct view *view);
+/* focus: false leaves the keyboard and the stacking as they are. */
+void view_handle_map(struct view *view, bool focus);
 void view_handle_unmap(struct view *view);
 void view_handle_destroy(struct view *view);
 void view_send_size(struct view *view, int w, int h);
@@ -692,6 +694,8 @@ void xwayland_init(struct server *server);
 /* Sticky and shaded into _NET_WM_STATE. */
 void xwayland_publish_state(struct view *view);
 void xwayland_publish_frame_extents(struct view *view);
+/* An X11 program may move the keyboard: an X11 window or none has it. */
+bool xwayland_may_take_focus(struct server *server);
 /* Blocks on the X server. wlroots tells only of decoration changes. */
 void xwayland_read_motif_hints(struct view *view);
 

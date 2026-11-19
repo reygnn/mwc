@@ -1127,6 +1127,159 @@ wait_for "shaded is taken back, sticky kept" more_is roll 'sticky=1 shaded=0 hid
 check "and it isn't rolled up" "[ \"\$(get roll shaded)\" = 0 ]"
 stop roll
 
+# ---- X11 programs don't take the keyboard by other ways -------------------------------
+
+# Whoever has it, an on-demand launcher, a Wayland window or the icon box, keeps it:
+# from a window that starts as an icon, one going fullscreen, one shown again, a new
+# dialog, the dialogs of an icon that goes, and a program passing the X focus on after
+# its window went (Review of fix/review-2026-11-18-teil4).
+hold() {
+	case $1 in
+	launcher)
+		WAYLAND_DISPLAY=wayland-0 build/layerc layer=top anchor=bottom size=200x100 \
+			keyboard=on-demand color=00ff00 >"$SMOKE_DIR/holder.events" 2>&1 &
+		PID_holder=$!
+		wait_for "the launcher has the keyboard" \
+			grep -q keyboard-enter "$SMOKE_DIR/holder.events" ;;
+	wayland)
+		refresh
+		do_input move $(($(get holder x) + 100)) $(($(get holder y) + 100))
+		do_input click left
+		check "the Wayland window has the keyboard" "[ \"\$(get holder kbfocus)\" = 1 ]" ;;
+	box)
+		refresh
+		do_input move $(($(global iconbox x) + 20)) $(($(global iconbox y) + THIN + T / 2))
+		do_input click left
+		check "the icon box has the keyboard" "[ \"\$(global iconbox focused)\" = 1 ]" ;;
+	esac
+}
+holds() {
+	case $1 in
+	launcher) [ "$(grep keyboard- "$SMOKE_DIR/holder.events" | tail -1)" = keyboard-enter ] &&
+		[ "$(global focus layer)" = 1 ] ;;
+	wayland) [ "$(get holder kbfocus)" = 1 ] ;;
+	box) [ "$(global iconbox focused)" = 1 ] ;;
+	esac
+}
+unhold() {
+	if [ "$1" = launcher ]; then
+		kill "$PID_holder"
+		wait "$PID_holder" 2>/dev/null
+	fi
+}
+# With the box, no window is active either.
+keeps() {
+	check "$1: the $2 keeps the keyboard" \
+		"holds $2 && { [ $2 != box ] || [ \"\$(global focus any)\" = 0 ]; }"
+}
+for h in launcher wayland box; do
+	if [ $h = box ]; then
+		printf 'Mwm*useIconBox: true\n' >"$RC"
+		reload_mwc
+		# An empty box shows its logo, which takes no keyboard.
+		x11 filler size=300x200 iconic=1
+		check "an icon in the box" "[ \"\$(get filler min)\" = 1 ] && [ \"\$(global iconbox shown)\" = 1 ]"
+	fi
+	if [ $h = wayland ]; then
+		wayland holder pos=100,350 size=300x200
+		mapped holder
+	fi
+	# Starting as an icon.
+	hold $h
+	x11 xi pos=800,100 size=300x200 iconic=1
+	check "it starts as an icon" "[ \"\$(get xi min)\" = 1 ]"
+	keeps "an X11 window starting as an icon" $h
+	stop xi
+	unhold $h
+	# Going fullscreen.
+	x11 xf pos=800,100 size=300x200 ask_later=fullscreen ask_later_after="$SMOKE_DIR/xf.$h"
+	check "a new X11 window takes the focus" "[ \"\$(get xf active)\" = 1 ]"
+	hold $h
+	touch "$SMOKE_DIR/xf.$h"
+	had xf
+	check "it is fullscreen" "[ \"\$(get xf full)\" = 1 ]"
+	keeps "an X11 window going fullscreen" $h
+	# Under the launcher it is still the active window, as before.
+	[ $h = launcher ] || check "it isn't active" "[ \"\$(get xf active)\" = 0 ]"
+	unhold $h
+	stop xf
+	# Shown again.
+	x11 xr pos=800,100 size=300x200 rehide=1 rehide_before="$SMOKE_DIR/xr1.$h" \
+		rehide_after="$SMOKE_DIR/xr2.$h"
+	check "a new X11 window takes the focus" "[ \"\$(get xr active)\" = 1 ]"
+	hold $h
+	touch "$SMOKE_DIR/xr1.$h"
+	check "it is withdrawn" "[ -z \"\$(get xr x)\" ]"
+	touch "$SMOKE_DIR/xr2.$h"
+	mapped xr
+	keeps "an X11 window shown again" $h
+	unhold $h
+	stop xr
+	# A new dialog.
+	x11 xd pos=800,100 size=300x200 dialog=xdd dialog_after="$SMOKE_DIR/xd.$h"
+	check "a new X11 window takes the focus" "[ \"\$(get xd active)\" = 1 ]"
+	hold $h
+	touch "$SMOKE_DIR/xd.$h"
+	mapped xdd
+	keeps "a new X11 dialog" $h
+	check "it doesn't have the focus" "[ \"\$(get xdd active)\" = 0 ]"
+	unhold $h
+	stop xd
+	# An icon goes, its dialog comes out.
+	x11 xu pos=800,100 size=300x200 dialog=xud iconify_ms=500 withdraw_later="$SMOKE_DIR/xu.$h"
+	check "an X11 window is an icon, its dialog hidden" \
+		"[ \"\$(get xu min)\" = 1 ] && [ \"\$(get xud visible)\" = 0 ]"
+	hold $h
+	touch "$SMOKE_DIR/xu.$h"
+	check "the icon is withdrawn, its dialog shown" \
+		"[ -z \"\$(get xu x)\" ] && [ \"\$(get xud visible)\" = 1 ]"
+	keeps "the dialog of an X11 icon that went" $h
+	unhold $h
+	stop xu
+	# The window with the focus goes, the program passes the X focus to its dialog, an icon.
+	x11 xw pos=800,100 size=300x200 dialog=xwd iconify_ms=500 iconify_dialog=1 \
+		withdraw_later="$SMOKE_DIR/xw1.$h" focus_dialog_after="$SMOKE_DIR/xw2.$h"
+	check "its dialog is an icon" "[ \"\$(get xwd min)\" = 1 ]"
+	if [ $h = wayland ]; then
+		touch "$SMOKE_DIR/xw1.$h"
+		check "the Wayland window has the keyboard after the X11 one went" \
+			"[ -z \"\$(get xw x)\" ] && [ \"\$(get holder kbfocus)\" = 1 ]"
+	else
+		check "the X11 window has the focus" "[ \"\$(get xw active)\" = 1 ]"
+		hold $h
+		touch "$SMOKE_DIR/xw1.$h"
+		check "it is withdrawn" "[ -z \"\$(get xw x)\" ]"
+	fi
+	touch "$SMOKE_DIR/xw2.$h"
+	had xwd
+	keeps "an X11 program passing the focus on" $h
+	check "its dialog stays an icon" "[ \"\$(get xwd min)\" = 1 ]"
+	unhold $h
+	stop xw
+	[ $h = wayland ] && stop holder
+	[ $h = box ] && stop filler
+done
+
+# A program that answers WM_TAKE_FOCUS with its other window, as Java does with a modal
+# dialog open, while a launcher has the keyboard: given the focus back once, it passes
+# it on again, and mwc follows instead of offering it forever.
+x11 xjava pos=800,100 size=300x200 input=0 take_focus=1 dialog=xjavadlg \
+	dialog_after="$SMOKE_DIR/xjava1" focus_dialog_after="$SMOKE_DIR/xjava2"
+check "it has the focus" "[ \"\$(get xjava active)\" = 1 ]"
+hold launcher
+touch "$SMOKE_DIR/xjava1"
+mapped xjavadlg
+touch "$SMOKE_DIR/xjava2"
+had xjavadlg
+check "mwc follows to the dialog" "[ \"\$(get xjavadlg active)\" = 1 ]"
+offers=$(grep -c '^take-focus' "$SMOKE_DIR/xjava.events")
+[ "$offers" -le 2 ] || fail "the focus went back and forth: $offers offers"
+echo "ok: the focus offered $offers times"
+keeps "a program passing the focus back" launcher
+unhold launcher
+check "the launcher gone, the dialog has the keyboard" "[ \"\$(get xjavadlg kbfocus)\" = 1 ]"
+stop xjava
+
 stop_vinput
 stop_mwc
 echo "PASS: window"

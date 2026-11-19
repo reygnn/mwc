@@ -402,6 +402,7 @@ void view_focus(struct view *view)
 	}
 	struct server *server = view->server;
 	struct wlr_seat *seat = server->seat;
+	server->x11_refocused = NULL;
 
 	/* Asked for by name, a hidden tab comes to the front. */
 	if (view->tab_hidden)
@@ -902,7 +903,10 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 			/* At its new place: the backdrop is placed relative to it, and an X11
 			 * commit of the new size doesn't do it again. */
 			view_update_content_pos(view);
-			view_focus(view);
+			/* Asked for by an X11 program: see xwayland_may_take_focus(). */
+			if (view->type != VIEW_XWAYLAND ||
+					xwayland_may_take_focus(view->server))
+				view_focus(view);
 		} else {
 			view->fullscreen = false;
 			views_update_layers(view->server);
@@ -1582,7 +1586,7 @@ static void view_place_mapped(struct view *view)
 		pos.from_bottom ? a.y + a.height - h - pos.y : a.y + pos.y);
 }
 
-void view_handle_map(struct view *view)
+void view_handle_map(struct view *view, bool focus)
 {
 	view->mapped = true;
 	/* view_place_mapped() sets it from the entry; until then a frame that changes
@@ -1632,6 +1636,8 @@ void view_handle_map(struct view *view)
 		desktop_attention(view);
 		return;
 	}
+	if (!focus)
+		return;
 	if (view->wtype != WT_SPLASH && !view_docked(view))
 		view_focus(view);
 	else
@@ -1647,6 +1653,8 @@ void view_handle_unmap(struct view *view)
 		menu_close(server);
 	if (server->last_click_view == view)
 		server->last_click_view = NULL;
+	if (server->x11_refocused == view)
+		server->x11_refocused = NULL;
 	/* The map draws the title there is then: whatever comes after it is news. */
 	free(view->known_title);
 	view->known_title = NULL;
@@ -1660,9 +1668,15 @@ void view_handle_unmap(struct view *view)
 			shown = v;
 		}
 	}
-	if (shown && !view_focused(server))
+	/* Nor from a panel or the icon box that has the keys. */
+	if (shown && !view_focused(server) && !server->focused_layer &&
+			!iconbox_has_focus())
 		view_focus(shown);
 	bool was_active = view->activated, was_icon = view->minimized;
+	/* wlroots would keep the X focus on it, and let the program pass it on to its
+	 * other windows, under whatever has the keys next. */
+	if (was_active && view->type == VIEW_XWAYLAND)
+		wlr_xwayland_surface_activate(view->xsurface, false);
 	view->mapped = false;
 	view->activated = false;
 	view->minimized = false;
@@ -1859,7 +1873,7 @@ static void xdg_map(struct wl_listener *listener, void *data)
 	struct wlr_box *g = &view->xdg_toplevel->base->geometry;
 	view->width = view->requested_w = size_cap(g->width);
 	view->height = view->requested_h = size_cap(g->height);
-	view_handle_map(view);
+	view_handle_map(view, true);
 }
 
 static void xdg_unmap(struct wl_listener *listener, void *data)
