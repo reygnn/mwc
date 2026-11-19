@@ -407,6 +407,12 @@ static void xw_request_minimize(struct wl_listener *listener, void *data)
 	 * Coming back takes the focus, see x11_may_take_focus(). */
 	else if (view_hidden_by_state(view) && x11_may_take_focus(view->server))
 		view_restore(view);
+	/* wlroots wrote _NET_WM_STATE_HIDDEN as asked before telling mwc; what mwc
+	 * refused, a docked window as an icon, an icon shown under a Wayland window,
+	 * goes back, as view_show() has it. */
+	bool hidden = view_hidden_by_state(view);
+	if (view->xsurface->minimized != hidden)
+		wlr_xwayland_surface_set_minimized(view->xsurface, hidden);
 }
 
 void xwayland_publish_state(struct view *view)

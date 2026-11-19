@@ -24,6 +24,7 @@
  *     dialog=NAME         also open a transient dialog with this WM_CLASS
  *     workarea=1          print the root's _NET_WORKAREA whenever it changes
  *     netstate=1          print "net-state vert=V horz=H" whenever _NET_WM_STATE changes:
+ *                         and "net-more sticky=S shaded=R hidden=I" after it,
  *                         whether it says maximized vertically and horizontally
  *     moveresize=1        don't map; ask for _NET_WM_MOVERESIZE, destroy the window
  *     override=late       create it normal, set override-redirect, then map
@@ -56,7 +57,7 @@
  *     rehide_drop=1       delete _NET_WM_STATE while withdrawn, as a client may
  *     script=+v,-h,...    once mapped, _NET_WM_STATE messages one at a time about the
  *                         vertical or horizontal axis, or s for sticky, r for shaded
- *                         (rolled up); says "sent N" each time
+ *                         (rolled up), i for hidden (an icon); says "sent N" each time
  *     focus_main=1        once mapped, give the focus from the dialog to the main window
  *     focus_main_after=FILE  the same once FILE exists
  *     class_later=NAME    once the file class_after=FILE exists, WM_CLASS becomes NAME;
@@ -391,8 +392,9 @@ static void print_net_state(Window win)
 	Atom type, vert = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False),
 		horz = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False),
 		sticky = XInternAtom(dpy, "_NET_WM_STATE_STICKY", False),
-		shaded = XInternAtom(dpy, "_NET_WM_STATE_SHADED", False);
-	int format, v = 0, h = 0, st = 0, sh = 0;
+		shaded = XInternAtom(dpy, "_NET_WM_STATE_SHADED", False),
+		hidden = XInternAtom(dpy, "_NET_WM_STATE_HIDDEN", False);
+	int format, v = 0, h = 0, st = 0, sh = 0, hi = 0;
 	unsigned long n = 0, after;
 	unsigned char *data = NULL;
 	if (XGetWindowProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STATE", False), 0, 32,
@@ -402,12 +404,13 @@ static void print_net_state(Window win)
 			h |= ((Atom *)data)[i] == horz;
 			st |= ((Atom *)data)[i] == sticky;
 			sh |= ((Atom *)data)[i] == shaded;
+			hi |= ((Atom *)data)[i] == hidden;
 		}
 	}
 	if (data)
 		XFree(data);
 	printf("net-state vert=%d horz=%d\n", v, h);
-	printf("net-more sticky=%d shaded=%d\n", st, sh);
+	printf("net-more sticky=%d shaded=%d hidden=%d\n", st, sh, hi);
 }
 
 /* What a toolkit asks before it believes _NET_FRAME_EXTENTS. */
@@ -861,6 +864,7 @@ int main(int argc, char *argv[])
 				s[1] == 'v' ? "_NET_WM_STATE_MAXIMIZED_VERT" :
 				s[1] == 's' ? "_NET_WM_STATE_STICKY" :
 				s[1] == 'r' ? "_NET_WM_STATE_SHADED" :
+				s[1] == 'i' ? "_NET_WM_STATE_HIDDEN" :
 				"_NET_WM_STATE_MAXIMIZED_HORZ", False);
 			XSendEvent(dpy, DefaultRootWindow(dpy), False,
 				SubstructureRedirectMask | SubstructureNotifyMask, &e);

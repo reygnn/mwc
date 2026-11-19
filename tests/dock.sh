@@ -117,12 +117,22 @@ do_input key super+Up
 # A tool widens the dock under the left half: it refits above the dock, and goes
 # back down when the dock shrinks. Only the dock's box changes, not the areas.
 echo 'Mwm*wide*dock: true' >>"$RC"
+echo 'Mwm*xhide*dock: true' >>"$RC"
 reload_mwc
 wayland wide size=600x40
 check "the dock reaches under the left half" "[ \$(dock x) -lt 636 ]"
 check "the left half refits above it" "[ \$(bottom plain) = \$((\$(dock y) - G)) ]"
 stop wide
 check "and back down when the dock shrinks" "[ \$(bottom plain) = $((720 - G)) ]"
+# A docked X11 window asking to be an icon isn't one, and _NET_WM_STATE, which
+# wlroots wrote as asked, says so again (Review 2026-11-18 #39).
+x11 xhide size=80x40 netstate=1 script=+i
+wait_for "it asks to be hidden" grep -q '^sent 1' "$SMOKE_DIR/xhide.log"
+check "it stays in the dock" "[ \"\$(get xhide min)\" = 0 ]"
+wait_for "and _NET_WM_STATE says it isn't hidden" \
+	eval "grep '^net-more' \"\$SMOKE_DIR/xhide.log\" | tail -1 | grep -q 'hidden=0'"
+stop xhide
+check "the dock as before" "[ \$(bottom plain) = $((720 - G)) ]"
 do_input key super+Right
 do_input key super+Right
 check "snapped right, over the dock: above it" \

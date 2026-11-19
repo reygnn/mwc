@@ -1015,6 +1015,23 @@ touch "$SMOKE_DIR/popup"
 saw "its popup slides back onto the output" fixedpop '^popup at 240 100$'
 stop fixedpop
 
+# ---- what mwc refuses is written back -----------------------------------------------------
+
+# wlroots writes _NET_WM_STATE_HIDDEN as asked before mwc decides: when mwc refuses,
+# the property must say what is (Review 2026-11-18 #39). An icon asking to be shown
+# while a Wayland window has the focus stays an icon, and says so.
+wayland wfront3 size=300x200
+mapped wfront3
+x11 xhidden size=300x200 iconic=1 netstate=1 script=-i
+check "an X11 window starts as an icon" "[ \"\$(get xhidden min)\" = 1 ]"
+check "a Wayland window has the focus" "[ \"\$(get wfront3 kbfocus)\" = 1 ]"
+saw "the icon asks to be shown" xhidden '^sent 1'
+check "it stays an icon" "[ \"\$(get xhidden min)\" = 1 ]"
+wait_for "and _NET_WM_STATE says hidden again" \
+	eval "grep '^net-more' \"\$SMOKE_DIR/xhidden.events\" | tail -1 | grep -q 'hidden=1'"
+stop xhidden
+stop wfront3
+
 # ---- the window menu a client asks for -------------------------------------------------
 
 # show_window_menu says where in surface coordinates, which include a shadow drawn
@@ -1048,14 +1065,14 @@ more_is() { [ "$(grep '^net-more' "$SMOKE_DIR/$1.events" | tail -1)" = "net-more
 x11 stick size=300x200 netstate=1 script=+s
 mapped stick
 saw "it asks to be sticky" stick '^sent 1'
-check "it is on all desktops" "[ \"\$(get stick everywhere)\" = 1 ] && more_is stick 'sticky=1 shaded=0'"
+check "it is on all desktops" "[ \"\$(get stick everywhere)\" = 1 ] && more_is stick 'sticky=1 shaded=0 hidden=0'"
 stop stick
 # Rolled up is the tiling layout's to decide: the request is written back at once, so
 # the client sees no change. Sticky afterwards shows what the state says by then.
 x11 roll size=300x200 netstate=1 script=+r,+s
 mapped roll
 saw "it asks to be shaded, then sticky" roll '^sent 2'
-wait_for "shaded is taken back, sticky kept" more_is roll 'sticky=1 shaded=0'
+wait_for "shaded is taken back, sticky kept" more_is roll 'sticky=1 shaded=0 hidden=0'
 check "and it isn't rolled up" "[ \"\$(get roll shaded)\" = 0 ]"
 stop roll
 
