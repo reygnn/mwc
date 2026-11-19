@@ -233,6 +233,21 @@ check "a mapped X window that turns override-redirect stops being managed" \
 stop mappedor
 check "and is gone again" "[ \"\$(global unmanaged count)\" = 0 ]"
 
+# Mapped override-redirect, then managed: mwc takes it apart as an unmanaged window and
+# builds a managed one around the same surface, mapped at once (Review 2026-11-18 #35).
+x11 ormgd override=unset_mapped override_after="$SMOKE_DIR/ormgd" pos=100,100 size=120x80
+check "a mapped override-redirect window isn't managed" \
+	"[ \"\$(global unmanaged count)\" = 1 ] && [ -z \"\$(get ormgd x)\" ]"
+touch "$SMOKE_DIR/ormgd"
+wait_for "it stops being override-redirect" grep -q '^override cleared' "$SMOKE_DIR/ormgd.events"
+check "and is managed, with a frame" \
+	"[ -n \"\$(get ormgd x)\" ] && [ \"\$(get ormgd frame)\" = 1 ] && \
+	 [ \"\$(global unmanaged count)\" = 0 ]"
+do_input key alt+Tab
+alive "a mapped override-redirect window that became managed"
+stop ormgd
+check "and is gone again" "[ -z \"\$(get ormgd x)\" ] && [ \"\$(global unmanaged count)\" = 0 ]"
+
 # ---- a paste that goes wrong ----------------------------------------------------------------
 
 # SIGPIPE stays ignored in mwc, but programs it starts must not inherit that, or

@@ -30,6 +30,8 @@
  *     override=late       create it normal, set override-redirect, then map
  *     override=clear      create it override-redirect, clear that, then map
  *     override=mapped     map it normal, set override-redirect afterwards
+ *     override=unset_mapped  map it override-redirect, clear that once the file
+ *                         override_after=FILE exists; says "override cleared"
  *     clipboard=1         own CLIPBOARD and answer with 200 KB of text
  *     moveresize=2        map it, then ask for _NET_WM_MOVERESIZE with no button down
  *     moveresize=3        the same 2 s after mapping, time to hold a button elsewhere
@@ -134,7 +136,7 @@ struct options {
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
 	const char *dialog_after, *withdraw_after, *urgent_after, *spoof_after;
 	const char *normalize_after, *activate_after, *focus_main_after;
-	const char *class_later, *class_after, *moveresize_after;
+	const char *class_later, *class_after, *moveresize_after, *override_after;
 	bool nomap;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	int decor_later, decor_ms;
@@ -623,6 +625,8 @@ int main(int argc, char *argv[])
 			o.pulldown = atoi(v);
 		else if (!strcmp(k, "override"))
 			o.override = v;
+		else if (!strcmp(k, "override_after"))
+			o.override_after = v;
 	}
 	if (!o.class) {
 		fprintf(stderr, "xclient: class= is required\n");
@@ -654,7 +658,7 @@ int main(int argc, char *argv[])
 		for (;;)
 			pause();
 	}
-	if (o.override && !strcmp(o.override, "late"))
+	if (o.override && (!strcmp(o.override, "late") || !strcmp(o.override, "unset_mapped")))
 		set_override_redirect(main_win, true);
 	if (o.override && !strcmp(o.override, "clear")) {
 		set_override_redirect(main_win, true);
@@ -748,6 +752,16 @@ int main(int argc, char *argv[])
 		if (o.moveresize_after)
 			mark_request(main_win);
 		printf("asked\n");
+	}
+	if (o.override && !strcmp(o.override, "unset_mapped") && o.override_after) {
+		XSync(dpy, False);
+		wait_for_file(o.override_after);
+		set_override_redirect(main_win, false);
+		/* wlroots hears of it with the next configure. */
+		XMoveWindow(dpy, main_win, o.x + 1, o.y);
+		XSync(dpy, False);
+		printf("override cleared\n");
+		fflush(stdout);
 	}
 	if (o.override && !strcmp(o.override, "mapped")) {
 		XSync(dpy, False);
