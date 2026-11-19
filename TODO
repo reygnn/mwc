@@ -100,13 +100,31 @@ TODO
   0.20.2 kein wp_fifo_v1 (geprüft am Quellbaum von 0.20.2 und master).
   0.20 meldet einer Oberfläche mit abgeschaltetem Scene-Knoten, dass sie ihren
   Output verlassen hat (ef19f52, Review 2026-11-18 #8): dann bekommt ein
-  verstecktes FIFO-Fenster (minimiert, anderer Desktop, Tab im Hintergrund,
-  Dialog mit seinem Fenster versteckt) über den Timer von src/fifo.c etwa ein
-  Update pro Sekunde. In tests/fifo.sh den Fall "fifoc minimized 5" ergänzen
-  (2.5 bis 6 s). Auf 0.19 kommt fifoc darin nicht weiter, es wartet vergeblich
-  auf wl_surface.leave; ohne dieses Warten gemessen waren es 0.14 s. CAVEATS
-  "Games out of sight" streichen.
+  verstecktes FIFO-Fenster (minimiert, anderer Desktop, aufgerollt, Tab im
+  Hintergrund, Dialog mit seinem Fenster versteckt) über den Timer von
+  src/fifo.c etwa ein Update pro Sekunde. In tests/fifo.sh den Fall
+  "fifoc minimized 5" ergänzen (2.5 bis 6 s). Auf 0.19 kommt fifoc darin nicht
+  weiter, es wartet vergeblich auf wl_surface.leave; ohne dieses Warten
+  gemessen waren es 0.14 s. CAVEATS "Games out of sight" streichen.
   Ein eigener Branch, mit allen API-Änderungen von 0.19 auf 0.20.
+
+* X11-Geometrie (Review des Branches fix/review-2026-11-18-teil3), ein eigener
+  Branch:
+  - Beim Resize an der linken oder oberen Kante setzt view_set_geometry() x/y
+    und den Scene-Knoten sofort, die Breite kommt erst mit dem Commit: bis
+    dahin springt die Gegenkante. Während des Griffs nur das X-Fenster
+    konfigurieren und den Knoten beim Commit setzen, wie bei xdg; ein
+    Pixeltest der Gegenkante.
+  - Ein Reload beendet jeden Griff (views_layout_changed() -> grab_give_way()),
+    auch wenn sich am Layout nichts geändert hat, wlroots meldet die Änderung
+    immer. Dabei geht eine wartende Größe verloren, bei xdg und X11. Griffe
+    nur bei echter Änderung der Output-Boxen beenden; Test: Reload während
+    eines Resize, das Fenster folgt danach dem Zeiger.
+  - xwayland_configure() und xw_request_configure() nehmen xsurface->width
+    als zuletzt angeforderte Größe. Das setzt jedes ConfigureNotify, auch ein
+    veraltetes oder eines, das ein anderer Client schickt (xclient
+    spoof_after): das nächste Verschieben macht das Fenster dann 1x1. mwcs
+    eigene zuletzt gesendete Größe führen und dort nehmen.
 
 * Wallpaper beim Reload nur neu laden, wenn es sich geändert hat (Review
   2026-11-17). Jetzt dekodiert ein Reload das PNG einmal zur Prüfung und

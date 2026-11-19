@@ -61,9 +61,9 @@ unchecked. wlroots 0.19.3 fixes it (commit 878aebf).
 A window using wp_fifo_v1 (SDL 3, Mesa's Vulkan FIFO mode) that is hidden gets an
 update every refresh, or every second one when nothing else on that monitor redraws,
 not about one a second as on a monitor that is off. Hidden means minimized, on another
-desktop, a tab in the background or a dialog hidden with its window. wlroots 0.19
-doesn't tell a surface whose scene node is switched off that it left its output, so
-mwc can't tell it apart from one in sight. wlroots 0.20 does (commit ef19f52).
+desktop, rolled up, a tab in the background or a dialog hidden with its window. wlroots
+0.19 doesn't tell a surface whose scene node is switched off that it left its output,
+so mwc can't tell it apart from one in sight. wlroots 0.20 does (commit ef19f52).
 
 
 ## Output management

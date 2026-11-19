@@ -21,9 +21,10 @@
  *   barrier again.
  * - The protocol lets a compositor clear the barrier early for the client to make
  *   progress. mwc does after two refresh periods if no presentation comes (the
- *   window is covered, or the update changed nothing on screen), after a second
- *   if the surface is on no output (on a monitor that is off; hidden ones too from
- *   wlroots 0.20 on, see CAVEATS), and at once if it isn't mapped.
+ *   update changed nothing on screen, or the window is partly covered), after a
+ *   second if the surface is on no output (on a monitor that is off, or all of it
+ *   under opaque windows; hidden ones too from wlroots 0.20 on, see CAVEATS), and
+ *   at once if it isn't mapped.
  */
 #include <stdint.h>
 #include <stdlib.h>

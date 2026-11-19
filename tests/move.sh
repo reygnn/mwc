@@ -172,25 +172,36 @@ geometry_is "Escape: the window stays where it was" mover 159 139 300 200
 
 # Its own repeat follows mwmrc as the clients' does; with rate 0 a held arrow is one
 # step. (A reload ends the move, so it can't change the rate in the middle of one.)
-# Measured at fixed times, not polled: the defaults would get anywhere in the end.
+# Timed, not polled: the defaults would get anywhere in the end. Each reading counts
+# from when its state was written, which a loaded machine may delay, so the times are
+# measured around them rather than taken from the sleeps.
 printf 'Mwm*keyboardRepeatDelay: 100\nMwm*keyboardRepeatRate: 50\n' >"$RC"
 reload_mwc
 do_input key alt+F7
+ms() { echo $(($(date +%s%N) / 1000000)); }
+t0=$(ms)
 do_input press Right
-sleep 0.45
+sleep 0.3
+t1a=$(ms)
 refresh
+t1=$(ms)
 early=$(global outline x)
-sleep 0.55
+sleep 0.5
+t2a=$(ms)
 refresh
+t2=$(ms)
 late=$(global outline x)
 do_input lift Right
-# The defaults, 600 ms then 25 a second, are still at the first step (169) at 0.45 s,
-# and at 1 s no further than 389 even with the short delay; 50 a second makes 600 or so.
-# 450 leaves room for a timer that runs late under load.
-[ "$early" -gt 169 ] || fail "no repeat after 0.45 s: the delay isn't mwmrc's 100 ms"
-echo "ok: a shorter delay ($early at 0.45 s)"
-[ "$late" -ge 450 ] || fail "at 1 s the outline is at $late: the rate isn't mwmrc's 50"
-echo "ok: a faster repeat ($late at 1 s)"
+# The default delay, 600 ms, has no repeat yet: a second step shows mwmrc's 100 ms, if the
+# reading was taken in time to tell.
+[ $((t1 - t0)) -lt 600 ] || fail "too slow to tell the delay: read $((t1 - t0)) ms after the press"
+[ "$early" -gt 169 ] || fail "no repeat $((t1 - t0)) ms after the press: the delay isn't mwmrc's 100 ms"
+echo "ok: a shorter delay ($early within $((t1 - t0)) ms)"
+# Steps between the readings over the longest time they can have been apart: 50 a
+# second gives about 50, the default 25 about 25.
+rate=$(((late - early) / 10 * 1000 / (t2 - t1a)))
+[ "$rate" -ge 37 ] || fail "$rate steps a second between the readings: the rate isn't mwmrc's 50"
+echo "ok: a faster repeat (at least $rate a second)"
 do_input key Escape
 printf 'Mwm*keyboardRepeatDelay: 100\nMwm*keyboardRepeatRate: 0\n' >"$RC"
 reload_mwc
@@ -397,6 +408,19 @@ do_input move $((RX + 40)) $((RY + 30))
 geometry_is "moveOpaque, X11: it still follows the pointer" xspoof 100 100 340 230
 do_input up left
 stop xspoof
+
+# A configure that keeps the size gets no commit: X changes nothing. Here the answer to
+# a resize to the size it has, which the window asks for itself; the next resize must
+# follow the pointer all the same.
+x11 xsame pos=100,100 size=300x200 grow=300x200
+wait_for "the X11 window asked for the size it has" grep -q '^grown' "$SMOKE_DIR/xsame.events"
+settle
+do_input move "$RX" "$RY"
+do_input down left
+do_input move $((RX + 40)) $((RY + 30))
+geometry_is "moveOpaque, X11: after that it resizes with the pointer" xsame 100 100 340 230
+do_input up left
+stop xsame
 
 wayland wopaque size=300x200
 refresh

@@ -163,7 +163,8 @@ void view_send_size(struct view *view, int w, int h)
 		wlr_xwayland_surface_configure(view->xsurface,
 			view->x + frame_left(view), view->y + frame_top(view),
 			w, h);
-		view->configure_pending = true;
+		/* Only a new size brings a commit: at the old one X changes nothing. */
+		view->configure_pending |= w != view->width || h != view->height;
 	}
 }
 

@@ -63,7 +63,7 @@ static void xw_commit(struct wl_listener *listener, void *data)
 	/* Any commit answers the last configure, whatever its size: one drawn before it,
 	 * through a viewport, or as asked. Not xsurface->width, which every
 	 * ConfigureNotify sets, stale or sent by another client. A resize sends no more
-	 * sizes than the window draws. */
+	 * sizes than the window commits, Xwayland's own commits at the new size included. */
 	if (view->configure_pending) {
 		view->configure_pending = false;
 		grab_resize_caught_up(view);
@@ -224,6 +224,8 @@ static void xw_unmap(struct wl_listener *listener, void *data)
 	view->unmap_x = view->xsurface->x;
 	view->unmap_y = view->xsurface->y;
 	view_handle_unmap(view);
+	/* What it was configured to, the window shown again answers anew. */
+	view->configure_pending = false;
 	wl_list_remove(&view->commit.link);
 	wlr_scene_node_destroy(&view->content_tree->node);
 	view->content_tree = NULL;
