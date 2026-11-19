@@ -278,6 +278,66 @@ static bool parse_position(const char *s, struct config_position *out)
 	return !*s;
 }
 
+/* What mwc reads, for the warning about the rest; per client also what a monitor
+ * takes by its name. */
+static const char *const global_resources[] = {
+	"activeBackground", "activeForeground", "background", "foreground", "fontList",
+	"rootBackground", "wallpaper", "terminal", "runDialog", "screenSaver",
+	"clipboardRectangleScreenshot", "clipboardScreenshot", "rectangleScreenshot",
+	"screenshot", "rootMenuItem", "moveOpaque", "keyboardLayout", "keyboardVariant",
+	"keyboardOptions", "keyboardModel", "keyboardRepeatRate", "keyboardRepeatDelay",
+	"outputManagement", "tiling", "tileMainWidth", "DoNotTile", "TileOnly",
+	"iconPlacement", "dockPlacement", "useIconBox", "iconBoxSize",
+};
+static const char *const client_resources[] = {
+	"activeBackground", "activeForeground", "background", "foreground", "geometry",
+	"allDesktops", "dock", "outputMode", "outputScale", "outputTransform",
+	"outputPosition",
+};
+
+static bool listed(const char *const *list, size_t n, const char *resource)
+{
+	for (size_t i = 0; i < n; i++) {
+		if (!strcasecmp(list[i], resource))
+			return true;
+	}
+	return false;
+}
+
+/* A typo would otherwise do nothing, unseen. Once per load. */
+static void check_resources(void)
+{
+	for (int i = 0; i < n_rules; i++) {
+		const struct rule *r = &rules[i];
+		if (r->client ? !listed(client_resources, sizeof(client_resources) /
+				sizeof(*client_resources), r->resource) :
+				!listed(global_resources, sizeof(global_resources) /
+				sizeof(*global_resources), r->resource))
+			wlr_log(WLR_ERROR, "%s:%d: unknown resource %s", path, r->line,
+				r->resource);
+	}
+}
+
+static bool is_color_resource(const char *resource)
+{
+	return !strcasecmp(resource, "activeBackground") ||
+		!strcasecmp(resource, "activeForeground") ||
+		!strcasecmp(resource, "background") || !strcasecmp(resource, "foreground");
+}
+
+/* A program's colours are looked up on each map and reload: they are reported here,
+ * once per load, and skipped quietly there. The global ones theme_init() reports. */
+static void check_colors(void)
+{
+	struct mwc_color c;
+	for (int i = 0; i < n_rules; i++) {
+		const struct rule *r = &rules[i];
+		if (r->client && is_color_resource(r->resource) && !config_color(r->value, &c))
+			wlr_log(WLR_ERROR, "%s:%d: unknown colour \"%s\"", path, r->line,
+				r->value);
+	}
+}
+
 /* Reported once per load, not each time a window asks. */
 static void check_positions(void)
 {
@@ -394,13 +454,16 @@ void config_load(void)
 
 	const char *cfg = getenv("XDG_CONFIG_HOME");
 	const char *home = getenv("HOME");
+	FILE *f = NULL;
 	if (cfg && *cfg)
 		snprintf(path, sizeof(path), "%s/mwc/mwmrc", cfg);
 	else if (home)
 		snprintf(path, sizeof(path), "%s/.config/mwc/mwmrc", home);
 	else
-		return;
-	FILE *f = fopen(path, "r");
+		path[0] = '\0';
+	/* Without a file, or a place for one, the defaults all the same. */
+	if (path[0])
+		f = fopen(path, "r");
 	if (!f) {
 		load_tile_filter();
 		load_root_items();
@@ -431,6 +494,8 @@ void config_load(void)
 	load_root_items();
 	load_placements();
 	check_positions();
+	check_resources();
+	check_colors();
 }
 
 /* Global value of a resource, NULL when unset. */
@@ -527,15 +592,10 @@ static const struct rule *client_rule(const char *name, const char *class,
 	return r;
 }
 
+/* A bad one was reported when mwmrc was read, see check_colors(). */
 static bool rule_color(const struct rule *r, struct mwc_color *out)
 {
-	if (!r)
-		return false;
-	if (config_color(r->value, out))
-		return true;
-	wlr_log(WLR_ERROR, "%s:%d: unknown colour \"%s\"", path, r->line,
-		r->value);
-	return false;
+	return r && config_color(r->value, out);
 }
 
 int config_client_dock(const char *name, const char *class)

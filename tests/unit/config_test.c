@@ -20,6 +20,30 @@ static bool is(const char *got, const char *want)
 
 /* ---- lines ------------------------------------------------------------------ */
 
+/* Review 2026-11-18 #15: without HOME and XDG_CONFIG_HOME no file is read, and the
+ * placements are the defaults, as without the file. */
+TEST(no_path)
+{
+	load("Mwm*iconPlacement: top right\nMwm*dockPlacement: left top\n");
+	char *cfg = strdup(getenv("XDG_CONFIG_HOME"));
+	const char *home = getenv("HOME");
+	char *home_copy = home ? strdup(home) : NULL;
+	unsetenv("XDG_CONFIG_HOME");
+	unsetenv("HOME");
+	config_load();
+	const struct config_placement *ip = config_icon_placement();
+	const struct config_placement *dp = config_dock_placement();
+	CHECK(ip->horizontal && ip->from_bottom && !ip->from_right);
+	CHECK(dp->horizontal && dp->from_bottom && dp->from_right);
+	CHECK(config_get("iconPlacement") == NULL);
+	CHECK_INT(config_root_items(), 0);
+	setenv("XDG_CONFIG_HOME", cfg, 1);
+	if (home_copy)
+		setenv("HOME", home_copy, 1);
+	free(cfg);
+	free(home_copy);
+}
+
 TEST(no_file)
 {
 	unlink(rc);
@@ -72,6 +96,25 @@ TEST(lines_malformed)
 	CHECK_INT(log_lines("missing ':'"), 1);
 	CHECK_INT(log_lines("expected Mwm*resource or Mwm*client*resource"), 6);
 	CHECK(strstr(logged, "mwmrc:1: missing") != NULL); /* with the line */
+}
+
+/* Review 2026-11-18 #11: a typo in a resource is said, once per load, with its line. */
+TEST(unknown_resources)
+{
+	load("Mwm*terminl: mwt\n"
+		"Mwm*foot*activeBackgrond: red\n"
+		"Mwm*TERMINAL: foot\n"
+		"Mwm*DP-1*outputMode: 1920x1080\n"
+		"Mwm*foot*geometry: +0+0\n"
+		"Mwm*foot*fontList: Sans 9\n"
+		"Mwm*keyboardVariant: nodeadkeys\n"
+		"Mwm*clipboardRectangleScreenshot: shot -c -r\n");
+	CHECK_INT(log_lines("unknown resource"), 3);
+	CHECK_INT(log_lines("mwmrc:1: unknown resource terminl"), 1);
+	CHECK_INT(log_lines("mwmrc:2: unknown resource activeBackgrond"), 1);
+	/* fontList is global only: for one program it means nothing. */
+	CHECK_INT(log_lines("mwmrc:6: unknown resource fontList"), 1);
+	CHECK(is(config_get("terminal"), "foot")); /* still read as before */
 }
 
 /* ---- values ------------------------------------------------------------------ */
@@ -367,11 +410,14 @@ TEST(shades_of_a_client)
 	CHECK(same(a.bg, theme.active.bg));
 	CHECK(same(in.bg, black));
 	CHECK(same(in.fg, color_contrast(black)));
-	/* A bad colour is said, with its line, and left out. */
+	/* A bad colour is said, with its line, and left out: once when mwmrc is read,
+	 * not each time a window maps (Review 2026-11-18 #12). */
 	load("! x\nMwm*XTerm*activeBackground: reddish\n");
-	config_client_shades("xterm", "XTerm", &a, &in);
-	CHECK(same(a.bg, theme.active.bg));
 	CHECK_INT(log_lines("mwmrc:2: unknown colour \"reddish\""), 1);
+	for (int i = 0; i < 3; i++)
+		config_client_shades("xterm", "XTerm", &a, &in);
+	CHECK(same(a.bg, theme.active.bg));
+	CHECK_INT(log_lines("unknown colour"), 1);
 }
 
 int main(void)
@@ -379,6 +425,8 @@ int main(void)
 	mwmrc_init();
 
 	RUN(no_file);
+	RUN(no_path);
+	RUN(unknown_resources);
 	RUN(lines_and_lookups);
 	RUN(lines_malformed);
 	RUN(booleans);

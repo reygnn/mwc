@@ -150,6 +150,18 @@ TEST(theme_environment_first)
 	no_env();
 }
 
+/* Review 2026-11-18 #13: a title text colour that isn't one is said, as the others are. */
+TEST(theme_bad_foreground)
+{
+	no_env();
+	theme_from("Mwm*foreground: nonsense\nMwm*activeForeground: #12\n");
+	CHECK(!theme.has_inactive_fg && !theme.has_active_fg);
+	CHECK_INT(log_lines("ignoring Mwm*foreground: nonsense"), 1);
+	CHECK_INT(log_lines("ignoring Mwm*activeForeground: #12"), 1);
+	theme_from("Mwm*foreground: white\n");
+	CHECK_INT(log_lines(""), 0);
+}
+
 /* "none" leaves the desktop to a wallpaper tool; the colour stays for the icon. */
 TEST(theme_root_none)
 {
@@ -329,6 +341,7 @@ int main(void)
 	RUN(theme_from_mwmrc);
 	RUN(theme_environment_first);
 	RUN(theme_root_none);
+	RUN(theme_bad_foreground);
 	RUN(theme_fonts);
 	RUN(theme_bar_heights);
 	RUN(text);

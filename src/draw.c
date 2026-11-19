@@ -58,6 +58,18 @@ static struct mwc_color setting_color(const char *env, const char *resource,
 	return hex(fallback);
 }
 
+/* Title text colour from mwmrc, if it sets one that is a colour. */
+static bool text_color(const char *resource, struct mwc_color *out)
+{
+	const char *s = config_get(resource);
+	if (!s || !*s)
+		return false;
+	if (config_color(s, out))
+		return true;
+	wlr_log(WLR_ERROR, "ignoring Mwm*%s: %s, not a colour", resource, s);
+	return false;
+}
+
 /* Move each channel of a the fraction f of the way towards b. */
 struct mwc_color color_mix(struct mwc_color a, struct mwc_color b, float f)
 {
@@ -166,10 +178,8 @@ void theme_init(void)
 	theme.root = setting_color("MWC_ROOT", "rootBackground", 0x5b7792,
 		&theme.root_none);
 
-	theme.has_inactive_fg = config_color(config_get("foreground"),
-		&theme.inactive_fg);
-	theme.has_active_fg = config_color(config_get("activeForeground"),
-		&theme.active_fg);
+	theme.has_inactive_fg = text_color("foreground", &theme.inactive_fg);
+	theme.has_active_fg = text_color("activeForeground", &theme.active_fg);
 	theme.inactive = shade_from(inactive, theme.has_inactive_fg ?
 		theme.inactive_fg : color_contrast(inactive));
 	theme.active = shade_from(active, theme.has_active_fg ?
