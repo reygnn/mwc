@@ -319,7 +319,7 @@ stop everywhere
 switch_to 1
 # The name that says so comes only after mapping (a late app_id): it counts all the same,
 # as for colours, dock and tiling.
-printf 'Mwm*outputManagement: true\nMwm*lateall*allDesktops: true\n' >"$RC"
+printf 'Mwm*outputManagement: true\nMwm*lateall*allDesktops: true\nMwm*lateinst*allDesktops: true\n' >"$RC"
 reload_mwc
 wayland latewin size=200x100 late_app=lateall late_after="$SMOKE_DIR/latewin"
 touch "$SMOKE_DIR/latewin"
@@ -379,6 +379,22 @@ check "everywhere again" "[ \"\$(get lateall everywhere)\" = 1 ]"
 kill "$PID_xre"
 wait "$PID_xre" 2>/dev/null
 check "it is gone" "[ -z \"\$(get lateall x)\" ]"
+# The rules name the instance too: a late one alone counts. A reload without the rule
+# says, through _NET_WM_STATE, it is no longer sticky.
+x11 xinst size=200x100 instance_later=lateinst class_after="$SMOKE_DIR/inst" netstate=1
+touch "$SMOKE_DIR/inst"
+wait_for "it takes its instance" said xinst "class set"
+check "everywhere by its instance" "[ \"\$(get xinst everywhere)\" = 1 ]"
+wait_for "sticky, it says" eval "grep '^net-more' \"\$SMOKE_DIR/xinst.log\" | tail -1 | \
+	grep -q 'sticky=1'"
+printf 'Mwm*outputManagement: true\n' >"$RC"
+reload_mwc
+check "without the rule, on this desktop only" "[ \"\$(get xinst everywhere)\" = 0 ]"
+wait_for "not sticky, it says" eval "grep '^net-more' \"\$SMOKE_DIR/xinst.log\" | tail -1 | \
+	grep -q 'sticky=0'"
+kill "$PID_xinst"
+wait "$PID_xinst" 2>/dev/null
+check "it is gone" "[ -z \"\$(get xinst x)\" ]"
 echo 'Mwm*outputManagement: true' >"$RC"
 reload_mwc
 

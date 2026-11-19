@@ -122,7 +122,8 @@ TEST(unknown_resources)
 }
 
 /* docs/mwmrc, its examples too, is read without a word: every line well-formed, every
- * resource known, every value good (run from the top of the tree). */
+ * resource known, the values the load checks good: per-program colours and places,
+ * placements, root menu items (run from the top of the tree). */
 TEST(documented_mwmrc)
 {
 	FILE *f = fopen("docs/mwmrc", "r");

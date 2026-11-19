@@ -195,6 +195,7 @@ static void recheck_all(struct server *server, bool always)
 	struct view *v;
 	bool lost = false, changed = false;
 	wl_list_for_each(v, &server->views, link) {
+		xwayland_publish_state(v); /* sticky as the rules say now */
 		bool now = off(v);
 		if (now != v->off_desktop) {
 			changed = true;

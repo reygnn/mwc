@@ -130,11 +130,18 @@ static void view_update_content_pos(struct view *view)
 	}
 	wlr_scene_node_set_position(&view->content_tree->node, x, y);
 	if (view->type == VIEW_XDG) {
+		/* Only a surface larger than its geometry draws a shadow: subsurfaces past
+		 * it, as GTK's tooltips, are drawn whole. */
+		struct wlr_xdg_surface *base = view->xdg_toplevel->base;
+		const struct wlr_box *g = &base->geometry;
+		const struct wlr_surface_state *s = &base->surface->current;
+		bool shadow = g->x > 0 || g->y > 0 ||
+			s->width > (long long)g->x + g->width ||
+			s->height > (long long)g->y + g->height;
 		/* The surface's own tree comes first; the popups after it stay whole. */
 		struct wlr_scene_node *surface = wl_container_of(
 			view->content_tree->children.next, surface, link);
-		wlr_scene_subsurface_tree_set_clip(surface,
-			view->ssd ? &view->xdg_toplevel->base->geometry : NULL);
+		wlr_scene_subsurface_tree_set_clip(surface, view->ssd && shadow ? g : NULL);
 	}
 }
 
@@ -1039,11 +1046,20 @@ void view_restore(struct view *view)
 
 bool view_app_id_changed(struct view *view)
 {
-	const char *id = view_app_id(view);
-	if (view->known_app_id && id && strcmp(view->known_app_id, id) == 0)
+	/* An X11 program's rules may name its instance as well as its class. */
+	const char *id = view_app_id(view), *instance = view->type == VIEW_XWAYLAND &&
+		view->xsurface->instance ? view->xsurface->instance : "";
+	size_t n = strlen(instance) + strlen(id) + 2;
+	char *key = malloc(n);
+	if (!key)
+		return true;
+	snprintf(key, n, "%s\n%s", instance, id);
+	if (view->known_app_id && strcmp(view->known_app_id, key) == 0) {
+		free(key);
 		return false;
+	}
 	free(view->known_app_id);
-	view->known_app_id = id ? strdup(id) : NULL;
+	view->known_app_id = key;
 	return true;
 }
 

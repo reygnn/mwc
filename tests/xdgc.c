@@ -46,6 +46,8 @@
  *                  onto the output if it must be; says "popup at X Y", where it went
  *     fixed_after=FILE  once FILE exists, its size becomes its smallest and largest;
  *                  says "fixed"
+ *     sub=X,Y,W,H  once mapped, a WxH subsurface at X,Y, 2040a0, as GTK3 shows its
+ *                  tooltips; says "sub added"
  */
 #define _GNU_SOURCE
 #include <stdbool.h>
@@ -90,6 +92,8 @@ static bool geometry_at;
 static int32_t geom_x, geom_y;
 static int popup_x, popup_y, popup_w, popup_h;
 static const char *popup_after, *fixed_after;
+static int sub_x, sub_y, sub_w, sub_h;
+static struct wl_subcompositor *subcompositor;
 
 struct window {
 	struct wl_surface *surface;
@@ -394,6 +398,8 @@ static void registry_global(void *data, struct wl_registry *registry,
 			&wl_compositor_interface, 4);
 	else if (strcmp(interface, wl_shm_interface.name) == 0)
 		shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
+	else if (strcmp(interface, wl_subcompositor_interface.name) == 0)
+		subcompositor = wl_registry_bind(registry, name, &wl_subcompositor_interface, 1);
 	else if (strcmp(interface, wl_seat_interface.name) == 0 &&
 			(cursor_scale > 0 || menu_asked)) {
 		/* The tests always have a pointer, so its capability is not awaited. */
@@ -531,6 +537,34 @@ static void open_popup(struct window *parent)
 	wl_surface_commit(win->surface);
 }
 
+static void add_subsurface(struct window *parent)
+{
+	struct wl_surface *s = wl_compositor_create_surface(compositor);
+	struct wl_subsurface *sub = wl_subcompositor_get_subsurface(subcompositor, s,
+		parent->surface);
+	wl_subsurface_set_position(sub, sub_x, sub_y);
+	wl_subsurface_set_desync(sub);
+	size_t size = (size_t)sub_w * sub_h * 4;
+	int fd = memfd_create("xdgc-sub", MFD_CLOEXEC);
+	if (fd < 0 || ftruncate(fd, size) != 0) {
+		perror("xdgc: subsurface buffer");
+		exit(1);
+	}
+	uint32_t *px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	for (size_t i = 0; i < size / 4; i++)
+		px[i] = 0xff2040a0;
+	munmap(px, size);
+	struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
+	struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0, sub_w, sub_h,
+		sub_w * 4, WL_SHM_FORMAT_ARGB8888);
+	wl_shm_pool_destroy(pool);
+	close(fd);
+	wl_surface_attach(s, buffer, 0, 0);
+	wl_surface_damage_buffer(s, 0, 0, sub_w, sub_h);
+	wl_surface_commit(s);
+	wl_surface_commit(parent->surface);
+}
+
 int main(int argc, char *argv[])
 {
 	const char *app = NULL, *dialog = NULL;
@@ -601,6 +635,8 @@ int main(int argc, char *argv[])
 			popup_after = v;
 		else if (!strcmp(argv[i], "fixed_after"))
 			fixed_after = v;
+		else if (!strcmp(argv[i], "sub"))
+			sscanf(v, "%d,%d,%d,%d", &sub_x, &sub_y, &sub_w, &sub_h);
 	}
 	if (!app) {
 		fprintf(stderr, "xdgc: app= is required\n");
@@ -697,6 +733,14 @@ int main(int argc, char *argv[])
 			wait_dispatching(display, 50);
 		open_popup(main_win);
 		wl_display_flush(display);
+	}
+	if (sub_w > 0 && sub_h > 0 && subcompositor) {
+		wl_display_roundtrip(display);
+		wl_display_roundtrip(display);
+		add_subsurface(main_win);
+		wl_display_flush(display);
+		printf("sub added\n");
+		fflush(stdout);
 	}
 	if (fixed_after) {
 		while (access(fixed_after, F_OK) != 0)

@@ -442,6 +442,25 @@ check "and it stays in the dock" "[ \"\$(get joiner x)\" = \$((\$(dock x) + B)) 
 kill "$PID_drifter"
 wait "$PID_drifter" 2>/dev/null
 
+# A hidden tab whose late app_id docks it leaves its group as by the program's doing:
+# the window that has the focus keeps it.
+echo 'Mwm*dockme*dock: true' >"$RC"
+reload_mwc
+wayland grpb size=200x100 late_app=dockme late_after="$SMOKE_DIR/dockme"
+wayland grpa size=200x100
+check "grpa has the focus" "[ \"\$(get grpa kbfocus)\" = 1 ]"
+do_input key super+g
+check "a group, grpb hidden" "[ \"\$(get grpa tab)\" != -1 ] && [ \"\$(get grpb tab_hidden)\" = 1 ]"
+wayland other size=200x100
+check "another window has the focus" "[ \"\$(get other kbfocus)\" = 1 ]"
+touch "$SMOKE_DIR/dockme"
+wait_for "the hidden tab takes the dock's app_id" grep -q '^late app' "$SMOKE_DIR/grpb.log"
+check "it is docked" "[ \"\$(get dockme tab)\" = -1 ] && [ \"\$(get dockme everywhere)\" = 1 ]"
+check "and the other window keeps the focus" "[ \"\$(get other kbfocus)\" = 1 ]"
+stop grpa
+stop grpb
+stop other
+
 stop_vinput
 stop_mwc
 echo "PASS"

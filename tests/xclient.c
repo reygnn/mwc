@@ -70,6 +70,7 @@
  *                         (rolled up), i for hidden (an icon); says "sent N" each time
  *     focus_main=1        once mapped, give the focus from the dialog to the main window
  *     focus_main_after=FILE  the same once FILE exists
+ *     instance_later=NAME  the same for the instance alone, the class kept
  *     class_later=NAME    once the file class_after=FILE exists, WM_CLASS becomes NAME;
  *                         says "class set"
  *     motif_later=FUNCS   once mapped, _MOTIF_WM_HINTS with only the functions set
@@ -145,6 +146,7 @@ struct options {
 	const char *normalize_after, *activate_after, *focus_main_after;
 	const char *class_later, *class_after, *moveresize_after, *override_after;
 	const char *rehide_before, *rehide_after, *rehide_title, *rehide_class;
+	const char *instance_later;
 	const char *retitle_after;
 	bool nomap;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
@@ -525,6 +527,8 @@ int main(int argc, char *argv[])
 			o.rehide_ms = atoi(v);
 		else if (!strcmp(k, "rehide_drop"))
 			o.rehide_drop = atoi(v);
+		else if (!strcmp(k, "instance_later"))
+			o.instance_later = v;
 		else if (!strcmp(k, "rehide_before"))
 			o.rehide_before = v;
 		else if (!strcmp(k, "rehide_class"))
@@ -843,10 +847,11 @@ int main(int argc, char *argv[])
 		dialog_win = create_window(&d, o.dialog, main_win);
 		XMapWindow(dpy, dialog_win);
 	}
-	if (o.class_later && o.class_after) {
+	if ((o.class_later || o.instance_later) && o.class_after) {
 		XSync(dpy, False);
 		wait_for_file(o.class_after);
-		XClassHint ch = { (char *)o.class_later, (char *)o.class_later };
+		const char *c = o.class_later ? o.class_later : o.class;
+		XClassHint ch = { (char *)(o.instance_later ? o.instance_later : c), (char *)c };
 		XSetClassHint(dpy, main_win, &ch);
 		XSync(dpy, False);
 		printf("class set\n");

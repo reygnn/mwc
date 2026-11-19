@@ -357,10 +357,32 @@ wait_for "the shown tab turns fixed-size" grep -q '^fixed' "$SMOKE_DIR/tab7.even
 check "it leaves the group with the keyboard, in front" \
 	"[ \"\$(get tab7 tab)\" = -1 ] && [ \"\$(get tab7 kbfocus)\" = 1 ] && \
 	 [ \"\$(get tab6 tab_hidden)\" = 0 ] && [ \"\$(get tab7 rseq)\" -gt \"\$(get tab6 rseq)\" ]"
-kill "$PID_tab5" "$PID_tab6" "$PID_tab7"
-wait "$PID_tab5" "$PID_tab6" "$PID_tab7" 2>/dev/null
-check "the three are gone" \
-	"[ -z \"\$(get tab5 x)\" ] && [ -z \"\$(get tab6 x)\" ] && [ -z \"\$(get tab7 x)\" ]"
+# A dialog of the shown tab that has the focus keeps it.
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=tab8 dialog=tab8d fixed_after="$SMOKE_DIR/fixed8" \
+	>"$SMOKE_DIR/tab8.events" 2>&1 &
+PID_tab8=$!
+check "a fourth window, its dialog focused" "[ \"\$(get tab8d kbfocus)\" = 1 ]"
+refresh
+do_input move $(($(get tab8 x) + 60)) $(($(get tab8 y) + $(get tab8 bw) + 5))
+do_input click left
+check "the window focused" "[ \"\$(get tab8 kbfocus)\" = 1 ]"
+do_input key super+g
+check "a group with the second, the fourth shown" \
+	"[ \"\$(get tab8 tab)\" != -1 ] && [ \"\$(get tab6 tab_hidden)\" = 1 ]"
+refresh
+do_input move $(($(get tab8d x) + 60)) $(($(get tab8d y) + $(get tab8d bw) + 5))
+do_input click left
+check "its dialog focused" "[ \"\$(get tab8d kbfocus)\" = 1 ]"
+touch "$SMOKE_DIR/fixed8"
+wait_for "the shown tab turns fixed-size" grep -q '^fixed' "$SMOKE_DIR/tab8.events"
+check "it leaves the group, its dialog keeps the keyboard" \
+	"[ \"\$(get tab8 tab)\" = -1 ] && [ \"\$(get tab8d active)\" = 1 ] && \
+	 [ \"\$(get tab8d kbfocus)\" = 1 ]"
+kill "$PID_tab5" "$PID_tab6" "$PID_tab7" "$PID_tab8"
+wait "$PID_tab5" "$PID_tab6" "$PID_tab7" "$PID_tab8" 2>/dev/null
+check "the four are gone" \
+	"[ -z \"\$(get tab5 x)\" ] && [ -z \"\$(get tab6 x)\" ] && [ -z \"\$(get tab7 x)\" ] && \
+	 [ -z \"\$(get tab8 x)\" ]"
 
 # Two that insist: when the newer one goes, the keyboard goes to the other, not a window.
 layerc_start lock1 layer=overlay anchor=left size=50x50 keyboard=exclusive color=555555

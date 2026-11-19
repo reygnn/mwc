@@ -238,6 +238,9 @@ void dock_view_changed(struct view *view)
 		return;
 	bool joins = order >= 0 && !view_docked(view);
 	view->dock_order = order;
+	/* A late name of the program's: out of its group as it would leave by itself. */
+	if (joins && view->group)
+		tabs_leave(view);
 	if (joins)
 		dock_admit(view);
 	view_update_decorations(view); /* docked windows lose functions */

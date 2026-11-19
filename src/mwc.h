@@ -201,7 +201,7 @@ struct view {
 	struct throttle title_redraw;
 	int title_draws;       /* for the tests, */
 	size_t title_drawn_len; /* and the length of the title the strip shows */
-	char *known_app_id;    /* the one mwmrc's rules were last applied for */
+	char *known_app_id;    /* the names mwmrc's rules were last applied for */
 	struct wlr_scene_buffer *icon_node;
 
 	/* x, y: the frame's top left in the layout; width, height: the client's. */
@@ -738,6 +738,8 @@ struct view *tabs_nth(struct view *view, int n); /* or NULL */
 /* view takes target's place, shown, in its group. */
 bool tabs_join(struct view *view, struct view *target);
 void tabs_detach(struct view *view);
+/* As the program's doing: it takes no keys it hadn't. */
+void tabs_leave(struct view *view);
 void tabs_show(struct view *view);
 /* Also out of an icon or fullscreen. */
 void tabs_bring(struct view *view);

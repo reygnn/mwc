@@ -356,12 +356,18 @@ static void detach(struct view *view, bool own)
 	struct tab_group *g = view->group;
 	if (!g)
 		return;
+	struct server *server = view->server;
+	/* Before switch_to() hides its dialogs, which takes the focus from them. */
+	struct view *had = view->activated ? view : NULL, *d;
+	wl_list_for_each(d, &server->views, link) {
+		if (!had && d->activated && view_is_transient_of(d, view))
+			had = d;
+	}
 	if (view->fullscreen)
 		view_set_fullscreen(view, false);
 	if (g->shown == view)
 		switch_to(g, neighbour(view), view, false, own);
 	remove_member(view);
-	struct server *server = view->server;
 	tell_suspended(view, false);
 	view_show(view, true);
 	view_show_content(view);
@@ -378,18 +384,13 @@ static void detach(struct view *view, bool own)
 	view->width = width;
 	view->height = height;
 	frame_render(view);
-	bool had = view->activated;
-	struct view *d;
-	wl_list_for_each(d, &server->views, link) {
-		if (d->activated && view_is_transient_of(d, view))
-			had = true;
-	}
-	if (!own)
+	if (!own) {
 		view_focus(view);
-	else if (had)
-		view_focus_instead(view);
-	else
+	} else {
 		view_raise(view);
+		if (had)
+			view_focus_instead(had);
+	}
 	tile_arrange(server);
 	input_pointer_changed(server);
 }
@@ -397,6 +398,11 @@ static void detach(struct view *view, bool own)
 void tabs_detach(struct view *view)
 {
 	detach(view, false);
+}
+
+void tabs_leave(struct view *view)
+{
+	detach(view, true);
 }
 
 void tabs_view_gone(struct view *view)

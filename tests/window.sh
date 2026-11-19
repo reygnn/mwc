@@ -1091,6 +1091,16 @@ check "the menu opens at that point of its surface" \
 do_input key Escape
 stop shadowed
 
+# A subsurface past the window geometry of a window without a shadow, as GTK3's
+# tooltips: drawn whole, past the frame too.
+wayland subbed size=300x200 geometry_at=0,0 sub=280,180,60,60
+mapped subbed
+saw "it adds a subsurface" subbed '^sub added'
+refresh
+SBX=$(($(get subbed x) + $(border subbed))) SBY=$(($(get subbed y) + $(border subbed) + $(title subbed)))
+pixel_is "the subsurface is drawn past the frame" $((SBX + 330)) $((SBY + 230)) 2040a0
+stop subbed
+
 # ---- what a window is offered ----------------------------------------------------------------
 
 # wm_capabilities as mwc means them: a dialog gets no maximize or minimize to show.
