@@ -649,6 +649,8 @@ void view_update_properties(struct view *view);
 void xdg_publish_caps(struct view *view);
 void view_update_decorations(struct view *view);
 struct view *view_parent(struct view *view);
+/* The managed window a surface, a subsurface or a popup belongs to, or NULL. */
+struct view *view_from_surface(struct wlr_surface *surface);
 /* Nothing else follows from it. */
 void view_show(struct view *view, bool show);
 void view_show_content(struct view *view);

@@ -21,10 +21,11 @@
  *   barrier again.
  * - The protocol lets a compositor clear the barrier early for the client to make
  *   progress. mwc does after two refresh periods if no presentation comes (the
- *   update changed nothing on screen, or the window is partly covered), after a
- *   second if the surface is on no output (on a monitor that is off, or all of it
- *   under opaque windows; hidden ones too from wlroots 0.20 on, see CAVEATS), and
- *   at once if it isn't mapped.
+ *   update changed nothing on screen, as where it is covered), after a second if
+ *   nobody sees the window: on no output (a monitor that is off, or all of it under
+ *   opaque windows) or hidden by mwc (minimized, another desktop, rolled up, a tab
+ *   in the background, a dialog hidden with its window), and at once if it isn't
+ *   mapped.
  */
 #include <stdint.h>
 #include <stdlib.h>
@@ -145,8 +146,12 @@ static void watch_output(void *data)
 
 	struct wlr_output *output = NULL;
 	struct wlr_surface_output *so;
+	/* A window mwc hides keeps its outputs: wlroots 0.19 doesn't update them for a
+	 * switched-off scene node, 0.20 keeps them on purpose (9c3bfbe). It is on none. */
+	struct view *view = view_from_surface(fifo->surface);
+	bool hidden = view && (view_hidden(view) || view->shaded);
 	wl_list_for_each(so, &fifo->surface->current_outputs, link) {
-		if (so->output->enabled) {
+		if (so->output->enabled && !hidden) {
 			output = so->output;
 			break;
 		}

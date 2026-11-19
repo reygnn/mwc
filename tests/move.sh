@@ -199,6 +199,8 @@ do_input lift Right
 echo "ok: a shorter delay ($early within $((t1 - t0)) ms)"
 # Steps between the readings over the longest time they can have been apart: 50 a
 # second gives about 50, the default 25 about 25.
+# Late enough, the outline stops at the edge of the output and the steps run out.
+[ $((t2 - t0)) -lt 1800 ] || fail "too slow to tell the rate: read $((t2 - t0)) ms after the press"
 rate=$(((late - early) / 10 * 1000 / (t2 - t1a)))
 [ "$rate" -ge 37 ] || fail "$rate steps a second between the readings: the rate isn't mwmrc's 50"
 echo "ok: a faster repeat (at least $rate a second)"

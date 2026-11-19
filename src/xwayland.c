@@ -224,8 +224,6 @@ static void xw_unmap(struct wl_listener *listener, void *data)
 	view->unmap_x = view->xsurface->x;
 	view->unmap_y = view->xsurface->y;
 	view_handle_unmap(view);
-	/* What it was configured to, the window shown again answers anew. */
-	view->configure_pending = false;
 	wl_list_remove(&view->commit.link);
 	wlr_scene_node_destroy(&view->content_tree->node);
 	view->content_tree = NULL;

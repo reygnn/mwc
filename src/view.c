@@ -2027,6 +2027,29 @@ static void tree_link_destroy(struct wl_listener *listener, void *data)
 	free(link);
 }
 
+struct view *view_from_surface(struct wlr_surface *surface)
+{
+	/* Popups up to their toplevel; a client sets how deep, hence the bound. */
+	for (int i = 0; surface && i < 16; i++) {
+		surface = wlr_surface_get_root_surface(surface);
+		struct wlr_xdg_surface *xdg = wlr_xdg_surface_try_from_wlr_surface(surface);
+		if (xdg && xdg->role == WLR_XDG_SURFACE_ROLE_POPUP && xdg->popup) {
+			surface = xdg->popup->parent;
+			continue;
+		}
+		if (xdg) {
+			/* Its tree hangs in its view's, see view_parent(). */
+			struct wlr_scene_tree *tree = xdg->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL ?
+				xdg->data : NULL;
+			return tree && tree->node.parent ? tree->node.parent->node.data : NULL;
+		}
+		struct wlr_xwayland_surface *xs =
+			wlr_xwayland_surface_try_from_wlr_surface(surface);
+		return xs ? xs->data : NULL;
+	}
+	return NULL;
+}
+
 void xdg_surface_set_tree(struct wlr_xdg_surface *base, struct wlr_scene_tree *tree)
 {
 	/* The scene destroys the tree when the surface goes, so the surface is always

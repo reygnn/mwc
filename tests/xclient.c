@@ -535,6 +535,7 @@ int main(int argc, char *argv[])
 			o.urgent_after = v;
 		else if (!strcmp(k, "spoof_after"))
 			o.spoof_after = v;
+
 		else if (!strcmp(k, "ask_before"))
 			o.ask_before = v;
 		else if (!strcmp(k, "ask_later"))
@@ -964,6 +965,7 @@ int main(int argc, char *argv[])
 		case ConfigureNotify:
 			if (o.sizes && e.xconfigure.window == main_win)
 				printf("size %dx%d\n", e.xconfigure.width, e.xconfigure.height);
+			fflush(stdout);
 			break;
 		case FocusIn:
 			printf("focus-in %s\n", e.xfocus.window == main_win ? "main" : "dialog");

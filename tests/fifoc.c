@@ -6,9 +6,10 @@
  *   fifoc release N   N updates with the barrier, then the wp_fifo_v1 goes
  *   fifoc quit N      N updates with the barrier, then exit while they are held
  *   fifoc hold N      fullscreen, N updates with the barrier, print "held" and stay
- *   fifoc minimized N minimized, N updates with the barrier; waits for wl_surface.leave
- *                     first, which wlroots 0.19 never sends (see CAVEATS)
+ *   fifoc minimized N minimized, N updates with the barrier
  *   fifoc unseen N    the same on the monitor as it is, for one switched off
+ *   fifoc cued N      the same once the file $FIFOC_GO exists, after printing
+ *                     "mapped": the test hides the window meanwhile
  *   fifoc twice       a second wp_fifo_v1 for the same surface
  *   fifoc gone        set_barrier after the surface was destroyed
  *
@@ -16,7 +17,7 @@
  * print: refreshes=R, how many refresh periods of the output passed from the first
  * update until the last callback came. Held back by the barrier that is about N-1;
  * without it, the updates replace each other and it is one or two.
- * Off screen there are no frame callbacks: minimized and unseen go by the release of
+ * Off screen there are no frame callbacks: minimized, unseen and cued go by the release of
  * each update's own buffer, which comes once the update is applied, or the next one,
  * and print seconds=S, from the first update until the buffer of the one before last
  * came back. Held back by the barrier, about a second each, that is N-2 to N-1.
@@ -48,7 +49,6 @@ static int32_t refresh_mhz;
 static bool configured;
 static int callbacks_done;
 static double last_done;
-static int outputs_entered;
 static double released[64]; /* when each update's buffer came back, 0 before */
 
 static double now_ms(void)
@@ -149,21 +149,6 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time)
 
 static const struct wl_callback_listener frame_listener = { frame_done };
 
-static void surface_enter(void *data, struct wl_surface *s, struct wl_output *o)
-{
-	outputs_entered++;
-}
-
-static void surface_leave(void *data, struct wl_surface *s, struct wl_output *o)
-{
-	outputs_entered--;
-}
-
-static const struct wl_surface_listener wl_surface_listener = {
-	.enter = surface_enter,
-	.leave = surface_leave,
-};
-
 static void buffer_release(void *data, struct wl_buffer *buffer)
 {
 	double *when = data;
@@ -198,11 +183,9 @@ static int off_screen_updates(struct wl_display *display, struct wl_surface *sur
 	struct xdg_toplevel *toplevel, bool minimize, int n)
 {
 	if (minimize) {
+		/* Done by the time the compositor answers: it has nothing to tell the client. */
 		xdg_toplevel_set_minimized(toplevel);
-		wl_surface_commit(surface);
-		while (outputs_entered > 0)
-			if (wl_display_dispatch(display) < 0)
-				return 1;
+		wl_display_roundtrip(display);
 	}
 	struct wl_buffer *buffers[64];
 	for (int i = 0; i < n; i++) {
@@ -231,7 +214,7 @@ static int off_screen_updates(struct wl_display *display, struct wl_surface *sur
 static int usage(void)
 {
 	fprintf(stderr, "usage: fifoc fifo|plain|release|quit|hold|minimized|unseen N | "
-		"twice | gone\n");
+		"FIFOC_GO=FILE fifoc cued N | twice | gone\n");
 	return 2;
 }
 
@@ -255,7 +238,11 @@ int main(int argc, char *argv[])
 		return usage();
 	const char *mode = argv[1];
 	int n = argc > 2 ? atoi(argv[2]) : 0;
-	bool off_screen = !strcmp(mode, "minimized") || !strcmp(mode, "unseen");
+	bool off_screen = !strcmp(mode, "minimized") || !strcmp(mode, "unseen") ||
+		!strcmp(mode, "cued");
+	const char *go = getenv("FIFOC_GO");
+	if (!strcmp(mode, "cued") && !go)
+		return usage();
 	bool updates = !strcmp(mode, "fifo") || !strcmp(mode, "plain") ||
 		!strcmp(mode, "release") || !strcmp(mode, "quit") || !strcmp(mode, "hold") ||
 		off_screen;
@@ -283,7 +270,6 @@ int main(int argc, char *argv[])
 	}
 
 	struct wl_surface *surface = wl_compositor_create_surface(compositor);
-	wl_surface_add_listener(surface, &wl_surface_listener, NULL);
 
 	if (!strcmp(mode, "twice")) {
 		wp_fifo_manager_v1_get_fifo(fifo_manager, surface);
@@ -327,6 +313,12 @@ int main(int argc, char *argv[])
 			return 1;
 	callbacks_done = 0;
 	usleep(200 * 1000);
+	if (!strcmp(mode, "cued")) {
+		printf("mapped\n");
+		fflush(stdout);
+		while (access(go, F_OK) != 0)
+			usleep(50 * 1000);
+	}
 	if (off_screen)
 		return off_screen_updates(display, surface, toplevel, !strcmp(mode, "minimized"),
 			n);

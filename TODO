@@ -98,14 +98,14 @@ TODO
   (head_send_state, 40640950 nur auf master):
   Mwm*outputManagement bleibt nötig. src/fifo.c bleibt: wlroots hat auch in
   0.20.2 kein wp_fifo_v1 (geprüft am Quellbaum von 0.20.2 und master).
-  0.20 meldet einer Oberfläche mit abgeschaltetem Scene-Knoten, dass sie ihren
-  Output verlassen hat (ef19f52, Review 2026-11-18 #8): dann bekommt ein
-  verstecktes FIFO-Fenster (minimiert, anderer Desktop, aufgerollt, Tab im
-  Hintergrund, Dialog mit seinem Fenster versteckt) über den Timer von
-  src/fifo.c etwa ein Update pro Sekunde. In tests/fifo.sh den Fall
-  "fifoc minimized 5" ergänzen (2.5 bis 6 s). Auf 0.19 kommt fifoc darin nicht
-  weiter, es wartet vergeblich auf wl_surface.leave; ohne dieses Warten
-  gemessen waren es 0.14 s. CAVEATS "Games out of sight" streichen.
+  Verdeckte FIFO-Fenster: 0.19 schickt einer Oberfläche, die ganz unter
+  undurchsichtigen Fenstern liegt, wl_surface.leave, und src/fifo.c gibt ihr
+  dann ein Update pro Sekunde. 0.20 schickt bei null Outputs kein leave mehr
+  (9c3bfbe, Absicht), sie bliebe beim Takt des Monitors. Vorher einen Fall in
+  tests/fifo.sh (fifoc cued unter einem undurchsichtigen Fenster, 2.5 bis 6 s),
+  dann das outputs_update-Ereignis des Scene-Buffers (size 0) in fifo.c nehmen.
+  Versteckte Fenster regelt fifo.c schon selbst über view_from_surface(); ihr
+  Fall in fifo.sh muss mit 0.20 weiter bestehen.
   Ein eigener Branch, mit allen API-Änderungen von 0.19 auf 0.20.
 
 * X11-Geometrie (Review des Branches fix/review-2026-11-18-teil3), ein eigener
@@ -120,11 +120,19 @@ TODO
     immer. Dabei geht eine wartende Größe verloren, bei xdg und X11. Griffe
     nur bei echter Änderung der Output-Boxen beenden; Test: Reload während
     eines Resize, das Fenster folgt danach dem Zeiger.
-  - xwayland_configure() und xw_request_configure() nehmen xsurface->width
-    als zuletzt angeforderte Größe. Das setzt jedes ConfigureNotify, auch ein
+  - xwayland_configure(), xw_request_configure() und view_begin_interactive()
+    (grab_orig, grab_geobox) nehmen xsurface->width als zuletzt angeforderte
+    Größe. Das setzt jedes ConfigureNotify, auch ein
     veraltetes oder eines, das ein anderer Client schickt (xclient
-    spoof_after): das nächste Verschieben macht das Fenster dann 1x1. mwcs
-    eigene zuletzt gesendete Größe führen und dort nehmen.
+    spoof_after): das nächste Verschieben macht das Fenster dann 1x1, Alt+F8
+    lässt es zusammenfallen. mwcs eigene zuletzt gesendete Größe führen und
+    überall dort nehmen; Test: Spoof, dann Alt+F8 und ein Pfeil.
+
+* FIFO über zwei Monitore (Review des Branches teil3): watch_output() nimmt den
+  ersten Output in current_outputs, also den zuletzt betretenen. Ein Spiel,
+  das mit einem Streifen auf einen 60-Hz-Monitor ragt, läuft dann mit 60 statt
+  144 Hz. Den Output mit der höchsten Rate oder den primary_output des
+  Scene-Buffers nehmen; Test mit zwei Outputs verschiedener Rate.
 
 * Wallpaper beim Reload nur neu laden, wenn es sich geändert hat (Review
   2026-11-17). Jetzt dekodiert ein Reload das PNG einmal zur Prüfung und
