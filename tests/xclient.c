@@ -39,9 +39,12 @@
  *     moveto=X,Y          once mapped, XMoveWindow there
  *     grow=WxH            1 s after mapping, XResizeWindow to that size; says "grown"
  *     iconic=1            WM_HINTS with the initial state iconic
- *     normalize=1         once mapped, WM_CHANGE_STATE to NormalState
- *     normalize_after=FILE  the same once FILE exists; says "normalized"
+ *     normalize=1         once mapped, WM_CHANGE_STATE to NormalState; says "normalized"
+ *     normalize_after=FILE  the same once FILE exists
  *     activate_after=FILE once FILE exists, _NET_ACTIVE_WINDOW as below
+ *                         After these requests and focus_main the main window is titled
+ *                         "request sent": by then the window manager has had the request,
+ *                         X delivers its events in order. A test can poll for the title.
  *     activate_ms=MS      that long after mapping, _NET_ACTIVE_WINDOW for itself, as a
  *                         program does that wants to be in front; says "activate asked"
  *     iconify_ms=MS       that long after mapping (and the dialog), WM_CHANGE_STATE to
@@ -55,6 +58,7 @@
  *                         vertical or horizontal axis, or s for sticky, r for shaded
  *                         (rolled up); says "sent N" each time
  *     focus_main=1        once mapped, give the focus from the dialog to the main window
+ *     focus_main_after=FILE  the same once FILE exists
  *     motif_later=FUNCS   once mapped, _MOTIF_WM_HINTS with only the functions set
  *     popup=X,Y           once mapped, an override-redirect window of 120x100 at X,Y,
  *                         as a menu opened from the keyboard; says "popup shown",
@@ -125,7 +129,7 @@ struct options {
 	bool no_input, workarea, clipboard, move_press, pulldown;
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
 	const char *dialog_after, *withdraw_after, *urgent_after, *spoof_after;
-	const char *normalize_after, *activate_after;
+	const char *normalize_after, *activate_after, *focus_main_after;
 	bool nomap;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	int decor_later, decor_ms;
@@ -303,6 +307,13 @@ static void set_override_redirect(Window win, bool on)
 }
 
 /* What a client in a toolkit does for a window-manager-driven move. */
+/* After a request: a title the window manager reads after it, see the usage. */
+static void mark_request(Window win)
+{
+	XStoreName(dpy, win, "request sent");
+	XSync(dpy, False);
+}
+
 /* The test says when, by creating it. */
 static void wait_for_file(const char *path)
 {
@@ -542,6 +553,8 @@ int main(int argc, char *argv[])
 			o.normalize_after = v;
 		else if (!strcmp(k, "activate_after"))
 			o.activate_after = v;
+		else if (!strcmp(k, "focus_main_after"))
+			o.focus_main_after = v;
 
 		else if (!strcmp(k, "ask_before"))
 			o.ask_before = v;
@@ -688,6 +701,7 @@ int main(int argc, char *argv[])
 		XSendEvent(dpy, DefaultRootWindow(dpy), False,
 			SubstructureRedirectMask | SubstructureNotifyMask, &e);
 		XSync(dpy, False);
+		mark_request(main_win);
 		printf("normalized\n");
 		fflush(stdout);
 	}
@@ -707,6 +721,7 @@ int main(int argc, char *argv[])
 		XSendEvent(dpy, DefaultRootWindow(dpy), False,
 			SubstructureRedirectMask | SubstructureNotifyMask, &e);
 		XSync(dpy, False);
+		mark_request(main_win);
 		printf("activate asked\n");
 		fflush(stdout);
 	}
@@ -837,12 +852,17 @@ int main(int argc, char *argv[])
 			printf("sent %d\n", ++sent);
 		}
 	}
-	if (o.focus_main) {
+	if (o.focus_main || o.focus_main_after) {
 		XSync(dpy, False);
-		usleep(800000);
+		if (o.focus_main_after)
+			wait_for_file(o.focus_main_after);
+		else
+			usleep(800000);
 		XSetInputFocus(dpy, main_win, RevertToParent, CurrentTime);
 		XSync(dpy, False);
+		mark_request(main_win);
 		printf("focused main\n");
+		fflush(stdout);
 	}
 	if (o.has_motif_later) {
 		XSync(dpy, False);

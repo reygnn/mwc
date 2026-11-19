@@ -139,13 +139,16 @@ pixel_isnt() {
 
 # reload_mwc: SIGHUP, and wait until mwc has read mwmrc again and applied it: the log
 # line says it began, and a state request (with MWC_TEST_STATE) that mwc's event loop
-# takes after it is answered only once the reload is done.
+# takes after it is answered only once the reload is done, with TIMEOUT to do it.
 reload_mwc() {
 	local n
 	n=$(grep -c 'reloading the configuration' "$LOG")
 	kill -HUP "$pid"
 	wait_for "the reload" eval "[ \$(grep -c 'reloading the configuration' \"$LOG\") -gt $n ]"
-	[ -z "$MWC_TEST_STATE" ] || refresh
+	[ -n "${MWC_TEST_STATE-}" ] || return 0
+	rm -f "$MWC_TEST_STATE"
+	kill -USR1 "$pid" 2>/dev/null || fail "mwc died"
+	wait_for "the reload to end" test -e "$MWC_TEST_STATE"
 }
 
 # ---- simulated input and window state (needs MWC_TEST_STATE) -----------------

@@ -139,7 +139,7 @@ for scale in nan 1e-9 1e-300 inf; do
 	begin
 	output_is "outputScale $scale at startup changes nothing" HEADLESS-1 0 0 1280 720
 	log_has "and is reported" "ignoring outputScale \"$scale\""
-	kill -HUP "$pid"
+	reload_mwc
 	output_is "nor on a reload" HEADLESS-1 0 0 1280 720
 	finish
 done

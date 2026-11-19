@@ -522,8 +522,7 @@ Mwm*gwfleft*geometry:   +20+30
 Mwm*gwfont*geometry:    -0-0
 Mwm*gxfont*geometry:    -0-0
 EOF
-kill -HUP "$pid"
-settle
+reload_mwc
 
 right() { echo $(($(get "$1" x) + $(outer_w "$1"))); }
 bottom() { echo $(($(get "$1" y) + $(outer_h "$1"))); }
@@ -535,8 +534,7 @@ check "-0-0 puts a Wayland window into the corner" \
 drag $(($(get gcorner x) + 100)) $(($(get gcorner y) + 12)) 500 300
 check "it can be moved away" "[ \"\$(right gcorner)\" != 1280 ]"
 moved_x=$(get gcorner x)
-kill -HUP "$pid"
-settle
+reload_mwc
 check "a reload leaves it there" "[ \"\$(get gcorner x)\" = $moved_x ]"
 stop gcorner
 
@@ -901,7 +899,8 @@ wayland wfront size=300x200
 mapped wfront
 check "the Wayland window has the focus" "[ \"\$(get wfront kbfocus)\" = 1 ]"
 saw "the X11 program asks to be activated" asker '^activate asked'
-sleep 0.3
+# Retitled after the request: by then mwc has handled it (xclient's usage).
+check "mwc has had the request" "[ \"\$(get asker tlen)\" = 12 ]"
 check "the Wayland window keeps it" \
 	"[ \"\$(get wfront kbfocus)\" = 1 ] && [ \"\$(get asker active)\" = 0 ]"
 stop asker
@@ -926,52 +925,65 @@ saw "the X11 popup opens" orwin '^popup shown'
 check "the keyboard stays with the Wayland window" "[ \"\$(get wfront kbfocus)\" = 1 ]"
 stop orwin
 stop wfront
-# Back from an icon by WM_CHANGE_STATE (an X taskbar does it): from another X11 window,
-# as for activation, not from a Wayland one.
-x11 xhas size=300x200
-mapped xhas
-x11 xicon size=300x200 iconic=1 normalize_after="$SMOKE_DIR/norm1"
-check "an X11 window starts as an icon" "[ \"\$(get xicon min)\" = 1 ]"
-check "the other X11 window has the focus" "[ \"\$(get xhas active)\" = 1 ]"
-touch "$SMOKE_DIR/norm1"
-saw "the icon asks to be shown" xicon '^normalized'
-check "it comes back, with the focus" \
-	"[ \"\$(get xicon min)\" = 0 ] && [ \"\$(get xicon active)\" = 1 ]"
-stop xicon
-stop xhas
-wayland wfront2 size=300x200
-mapped wfront2
-x11 xicon2 size=300x200 iconic=1 normalize_after="$SMOKE_DIR/norm2"
-check "another X11 window starts as an icon" "[ \"\$(get xicon2 min)\" = 1 ]"
-check "a Wayland window has the focus" "[ \"\$(get wfront2 kbfocus)\" = 1 ]"
-touch "$SMOKE_DIR/norm2"
-saw "the icon asks to be shown" xicon2 '^normalized'
-sleep 0.3
-check "it stays an icon, the Wayland window keeps the focus" \
-	"[ \"\$(get xicon2 min)\" = 1 ] && [ \"\$(get wfront2 kbfocus)\" = 1 ]"
-stop xicon2
-stop wfront2
-# Nor from a panel or launcher that has the keyboard, with an X11 window focused below.
-x11 xbelow size=300x200
+# Back from an icon: X taskbars ask with _NET_ACTIVE_WINDOW, and wlroots also takes
+# WM_CHANGE_STATE NormalState, which ICCCM leaves to mapping. Either one from another X11
+# window, as for activation, not from a Wayland one. After each request the window is
+# retitled (xclient's usage): once mwc has the title, it has had the request.
+had() { check "mwc has had the request of $1" "[ \"\$(get $1 tlen)\" = 12 ]"; }
+for how in normalize activate; do
+	x11 xhas size=300x200
+	mapped xhas
+	x11 xicon size=300x200 iconic=1 ${how}_after="$SMOKE_DIR/$how.1"
+	check "an X11 window starts as an icon" "[ \"\$(get xicon min)\" = 1 ]"
+	check "the other X11 window has the focus" "[ \"\$(get xhas active)\" = 1 ]"
+	touch "$SMOKE_DIR/$how.1"
+	check "$how: it comes back, with the focus" \
+		"[ \"\$(get xicon min)\" = 0 ] && [ \"\$(get xicon active)\" = 1 ]"
+	stop xicon
+	stop xhas
+	wayland wfront2 size=300x200
+	mapped wfront2
+	x11 xicon2 size=300x200 iconic=1 ${how}_after="$SMOKE_DIR/$how.2"
+	check "another X11 window starts as an icon" "[ \"\$(get xicon2 min)\" = 1 ]"
+	check "a Wayland window has the focus" "[ \"\$(get wfront2 kbfocus)\" = 1 ]"
+	touch "$SMOKE_DIR/$how.2"
+	had xicon2
+	check "$how: it stays an icon, the Wayland window keeps the focus" \
+		"[ \"\$(get xicon2 min)\" = 1 ] && [ \"\$(get wfront2 kbfocus)\" = 1 ]"
+	stop xicon2
+	stop wfront2
+done
+# Nor while a panel or launcher has the keyboard, with an X11 window focused below: not
+# by activation, a restore from an icon, or the program moving the X focus between its
+# own windows (XSetInputFocus, which wlroots allows within one program).
+x11 xbelow pos=100,100 size=300x200 dialog=xbelowdlg focus_main_after="$SMOKE_DIR/fm"
 mapped xbelow
-x11 xasks size=300x200 activate_after="$SMOKE_DIR/act"
+check "its dialog is mapped" "[ -n \"\$(get xbelowdlg x)\" ]"
+x11 xasks pos=800,100 size=300x200 activate_after="$SMOKE_DIR/act"
 mapped xasks
-do_input move $(($(get xbelow x) + 100)) $(($(get xbelow y) + 100))
+x11 xicon3 pos=800,400 size=300x200 iconic=1 normalize_after="$SMOKE_DIR/norm3"
+check "an X11 window starts as an icon" "[ \"\$(get xicon3 min)\" = 1 ]"
+refresh
+do_input move $(($(get xbelowdlg x) + 40)) $(($(get xbelowdlg y) + 40))
 do_input click left
-check "the X11 window below has the focus" "[ \"\$(get xbelow active)\" = 1 ]"
+check "the X11 dialog below has the focus" "[ \"\$(get xbelowdlg active)\" = 1 ]"
 WAYLAND_DISPLAY=wayland-0 build/layerc layer=top size=200x100 keyboard=on-demand \
 	color=00ff00 >"$SMOKE_DIR/launcher.events" 2>&1 &
 PID_launcher=$!
 wait_for "a launcher has the keyboard" grep -q keyboard-enter "$SMOKE_DIR/launcher.events"
-touch "$SMOKE_DIR/act"
-saw "the X11 program asks to be activated" xasks '^activate asked'
-sleep 0.3
-check "it isn't, the launcher keeps the keyboard" \
-	"[ \"\$(get xasks active)\" = 0 ] && [ \"\$(global seat keyboard)\" != xasks ]"
+touch "$SMOKE_DIR/act" "$SMOKE_DIR/norm3" "$SMOKE_DIR/fm"
+had xasks
+had xicon3
+had xbelow
+check "none of them gets the keyboard" \
+	"[ \"\$(get xasks active)\" = 0 ] && [ \"\$(get xicon3 min)\" = 1 ] && \
+	 [ \"\$(get xbelow kbfocus)\" = 0 ] && [ \"\$(get xbelowdlg kbfocus)\" = 0 ]"
 grep -q keyboard-leave "$SMOKE_DIR/launcher.events" &&
-	fail "the launcher lost the keyboard to the X11 program"
+	fail "the launcher lost the keyboard to an X11 program"
+echo "ok: the launcher keeps the keyboard"
 kill "$PID_launcher"
 wait "$PID_launcher" 2>/dev/null
+stop xicon3
 stop xasks
 stop xbelow
 
