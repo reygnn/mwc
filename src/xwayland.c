@@ -524,15 +524,19 @@ static void xw_focus_in(struct wl_listener *listener, void *data)
 		/* It was given the focus back and passed it on again soon after, as Java
 		 * does to a modal dialog. Setting it back again gets the same answer: mwc
 		 * follows to a window in sight, and the panel keeps the keys. One out of
-		 * sight loses the X focus under a panel; else it keeps it, with the keys
-		 * going to its own program, as the loop is worse. */
+		 * sight loses the X focus; without a panel nobody has the keys then, as
+		 * they would go to it unseen, and the user picks a window. */
 		if (!view->off_desktop && view_focusable(view) && !view->minimized &&
 				!view->tab_hidden && !view->hidden_with_parent) {
 			view_focus_instead(view);
 			return;
 		}
-		if (server->focused_layer)
-			wlr_xwayland_surface_activate(view->xsurface, false);
+		wlr_xwayland_surface_activate(view->xsurface, false);
+		if (!server->focused_layer) {
+			view_set_activated(focused, false);
+			input_end_client_grab(server);
+			wlr_seat_keyboard_notify_clear_focus(server->seat);
+		}
 	} else {
 		wlr_xwayland_surface_activate(focused->xsurface, true);
 		server->x11_refocused = focused;

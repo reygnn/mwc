@@ -1660,7 +1660,9 @@ void view_handle_map(struct view *view, bool focus)
 	/* In sight, the keyboard where it is: the user decides. A dialog of the window
 	 * with the focus has it next, when the panel above lets go. */
 	if (!focus) {
-		if (root != view && root->activated)
+		struct view *focused = view_focused(view->server);
+		if (root != view && focused && view_transient_root(focused) == root &&
+				view->wtype != WT_SPLASH && !view_docked(view))
 			view_focus_instead(view);
 		else
 			view_raise(view);

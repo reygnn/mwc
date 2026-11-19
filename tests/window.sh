@@ -1269,6 +1269,19 @@ for h in launcher wayland box; do
 	[ $h = box ] && stop filler
 done
 
+# A splash screen of the window with the focus, mapped under a launcher: raised only,
+# as without the launcher, the window keeps the focus.
+x11 xsp pos=800,100 size=300x200 dialog=xspl dialog_type=splash dialog_after="$SMOKE_DIR/xsp"
+check "it has the focus" "[ \"\$(get xsp active)\" = 1 ]"
+hold launcher
+touch "$SMOKE_DIR/xsp"
+mapped xspl
+check "the window keeps the focus below the launcher" \
+	"[ \"\$(get xsp active)\" = 1 ] && [ \"\$(get xspl active)\" = 0 ]"
+keeps "a splash screen of the window with the focus" launcher
+unhold launcher
+stop xsp
+
 # A program that sends the focus on to its modal dialog whenever its window gets it, as
 # Java does, while a launcher has the keyboard. Set back once, it passes it on again;
 # mwc follows instead of setting it back forever.

@@ -13,6 +13,7 @@
  *     motif=FUNCS,DECOR   _MOTIF_WM_HINTS
  *     input=0             WM_HINTS without input focus
  *     dialog_input=0|1    the same for the dialog alone, default as input=
+ *     dialog_free=1       the dialog without WM_TRANSIENT_FOR: a second window of its own
  *     state=S[,S...]      initial _NET_WM_STATE, S: above|below|fullscreen|maximized|sticky
  *     ask_before=fullscreen|maximized  ask with a _NET_WM_STATE message, while unmapped
  *     ask_later=fullscreen|maximized   ask with one 2 s after mapping
@@ -154,6 +155,7 @@ struct options {
 	long motif_funcs, motif_decor;
 	bool has_motif;
 	int dialog_input;
+	bool dialog_free;
 	bool no_input, workarea, clipboard, move_press, pulldown, modal;
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
 	const char *dialog_after, *withdraw_after, *withdraw_later, *urgent_after, *spoof_after;
@@ -684,6 +686,8 @@ int main(int argc, char *argv[])
 			o.iconify_dialog = atoi(v);
 		else if (!strcmp(k, "move_press"))
 			o.move_press = atoi(v);
+		else if (!strcmp(k, "dialog_free"))
+			o.dialog_free = atoi(v);
 		else if (!strcmp(k, "dialog_input"))
 			o.dialog_input = atoi(v) ? 1 : 2;
 		else if (!strcmp(k, "modal"))
@@ -891,7 +895,7 @@ int main(int argc, char *argv[])
 		d.w = 120;
 		d.h = 80;
 		d.x = d.y = 0;
-		dialog_win = create_window(&d, o.dialog, main_win);
+		dialog_win = create_window(&d, o.dialog, o.dialog_free ? None : main_win);
 		XMapWindow(dpy, dialog_win);
 	}
 	if ((o.class_later || o.instance_later) && o.class_after) {
@@ -1020,10 +1024,11 @@ int main(int argc, char *argv[])
 	if (o.focus_dialog_after && dialog_win) {
 		XSync(dpy, False);
 		wait_for_file(o.focus_dialog_after);
+		/* What the server sent before it read this request is no answer. */
+		modal_from = NextRequest(dpy);
 		XSetInputFocus(dpy, dialog_win, RevertToParent, CurrentTime);
 		XSync(dpy, False);
 		prefer_dialog = true;
-		modal_from = NextRequest(dpy); /* what came before is no answer */
 		mark_request(dialog_win);
 		printf("focused dialog\n");
 		fflush(stdout);

@@ -305,6 +305,20 @@ stop near
 stop other
 stop far
 
+# A program that keeps passing the X focus to its own window on another desktop, as Java
+# does to a modal dialog: after the second time nobody has the keys, rather than the
+# hidden window getting them unseen, and that desktop is marked.
+x11 two size=300x200 dialog=twofree dialog_free=1 modal=1 focus_dialog_after="$SMOKE_DIR/two"
+check "its second window has the focus" "[ \"\$(get twofree active)\" = 1 ]"
+to_desktop twofree 2
+check "the first one has it then" "[ \"\$(get two active)\" = 1 ]"
+touch "$SMOKE_DIR/two"
+check "mwc has had it" "[ \"\$(get twofree tlen)\" = 12 ]"
+check "nobody has the keys" "[ \"\$(global focus any)\" = 0 ]"
+urgent_is "desktop 2 is marked" 2
+stop two
+urgent_is "it closes: nothing is urgent any more" ""
+
 # A window withdrawn to the tray keeps no desktop for its dialogs: one opening while
 # the user is elsewhere opens there, in sight, not on the desktop the window was left
 # on. Nor does an owner that is never shown hold them on desktop 0.
