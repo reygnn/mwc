@@ -1049,10 +1049,11 @@ stop titled
 
 # A title set while the window was withdrawn is the one drawn when it comes back; the
 # one before it, set again then, is drawn too, not taken for a repeat.
-x11 retitle size=300x200 title_later=before rehide=1 rehide_title=elsewhere \
-	rehide_after="$SMOKE_DIR/back" retitle_after="$SMOKE_DIR/retitle"
+x11 retitle size=300x200 title_later=before rehide=1 rehide_before="$SMOKE_DIR/away" \
+	rehide_title=elsewhere rehide_after="$SMOKE_DIR/back" retitle_after="$SMOKE_DIR/retitle"
 mapped retitle
 check "it sets a title while mapped" "[ \"\$(get retitle tdrawn)\" = 6 ]"
+touch "$SMOKE_DIR/away"
 check "it is withdrawn" "[ -z \"\$(get retitle x)\" ]"
 touch "$SMOKE_DIR/back"
 saw "it is shown again" retitle '^reshown 1'
@@ -1071,12 +1072,13 @@ wayland shadowed size=300x200 shadow=20 menu_at=50,40
 mapped shadowed
 refresh
 SX=$(get shadowed x) SY=$(get shadowed y)
-# The window geometry fills the frame, the shadow lies around it (wlroots' scene tree
-# offsets the surface; mwc did it once more).
+# The window geometry fills the frame (wlroots' scene tree offsets the surface; mwc did
+# it once more), and the shadow around it is cut off, not drawn over the frame.
 IX=$((SX + $(border shadowed))) IY=$((SY + $(border shadowed) + $(title shadowed)))
 pixel_is "the window geometry starts in the frame's corner" $IX $IY 808080
 pixel_is "and ends in the opposite one" $((IX + 299)) $((IY + 199)) 808080
-pixel_is "the shadow lies right of it" $((IX + 305)) $((IY + 100)) 402020
+pixel_isnt "the frame right of it is no shadow" $((IX + 303)) $((IY + 100)) 402020
+pixel_isnt "nor is the title bar above it" $((IX + 150)) $((IY - 5)) 402020
 do_input move $((SX + 150)) $((SY + $(border shadowed) + $(title shadowed) + 100))
 do_input click left
 saw "it asks for its window menu" shadowed '^menu asked'

@@ -222,6 +222,10 @@ static void xw_unmap(struct wl_listener *listener, void *data)
 	struct view *view = wl_container_of(listener, view, unmap);
 	view->unmap_x = view->xsurface->x;
 	view->unmap_y = view->xsurface->y;
+	/* Sticky that mwmrc or the window type gave it is mwc's, not the program's: the
+	 * next map would take it for a request. */
+	if (view->xsurface->sticky && !view->sticky)
+		wlr_xwayland_surface_set_sticky(view->xsurface, false);
 	view_handle_unmap(view);
 	wl_list_remove(&view->commit.link);
 	wlr_scene_node_destroy(&view->content_tree->node);

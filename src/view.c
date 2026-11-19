@@ -105,7 +105,9 @@ static struct wlr_box area_for(struct server *server, struct wlr_box b)
 }
 
 /* Position of the client content inside the window tree: for xdg its window geometry,
- * as wlroots' scene tree puts the surface, a shadow drawn around it, at -geometry. */
+ * as wlroots' scene tree puts the surface, a shadow drawn around it, at -geometry.
+ * In mwc's frame that shadow is cut off: it would lie over the frame and take its
+ * clicks. */
 static void view_update_content_pos(struct view *view)
 {
 	int x = frame_left(view), y = frame_top(view);
@@ -127,6 +129,13 @@ static void view_update_content_pos(struct view *view)
 		wlr_scene_node_set_enabled(&backdrop->node, false);
 	}
 	wlr_scene_node_set_position(&view->content_tree->node, x, y);
+	if (view->type == VIEW_XDG) {
+		/* The surface's own tree comes first; the popups after it stay whole. */
+		struct wlr_scene_node *surface = wl_container_of(
+			view->content_tree->children.next, surface, link);
+		wlr_scene_subsurface_tree_set_clip(surface,
+			view->ssd ? &view->xdg_toplevel->base->geometry : NULL);
+	}
 }
 
 static void xwayland_configure(struct view *view)
@@ -347,7 +356,7 @@ void view_set_activated(struct view *view, bool activated)
 }
 
 /* Dialogs stay above the window they belong to, in their own order. */
-static void view_raise(struct view *view)
+void view_raise(struct view *view)
 {
 	struct server *server = view->server;
 	view_raise_one(view);
@@ -1571,6 +1580,7 @@ void view_handle_map(struct view *view)
 	view_update_decorations(view);
 	config_view_tiling(view);
 	view->all_desktops = config_view_all_desktops(view);
+	view_app_id_changed(view); /* the one the rules above are for */
 	desktop_view_mapped(view);
 	wlr_scene_node_set_enabled(&view->tree->node, !view->off_desktop);
 	view_update_content_pos(view);
@@ -1621,7 +1631,7 @@ void view_handle_unmap(struct view *view)
 		menu_close(server);
 	if (server->last_click_view == view)
 		server->last_click_view = NULL;
-	/* Titles set meanwhile aren't seen: the map draws what it has, whatever comes. */
+	/* The map draws the title there is then: whatever comes after it is news. */
 	free(view->known_title);
 	view->known_title = NULL;
 	tabs_view_gone(view);
@@ -2098,7 +2108,8 @@ static void popup_unconstrain(struct popup *popup)
 		 * monitors, a menu opened on the right one stays there. */
 		struct wlr_xdg_popup *xp = popup->xdg_popup;
 		struct wlr_box ar = xp->scheduled.rules.anchor_rect;
-		int ax = ar.x + ar.width / 2, ay = ar.y + ar.height / 2;
+		int ax = clamp_int((long long)ar.x + ar.width / 2);
+		int ay = clamp_int((long long)ar.y + ar.height / 2);
 		/* The anchor is in the parent's window geometry. wlroots adds the parent
 		 * popups' positions up to the toplevel's surface: its origin is the window
 		 * geometry's in the scene, with a small fullscreen window's centering, less

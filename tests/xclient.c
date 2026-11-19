@@ -58,10 +58,13 @@
  *                         and what WM_STATE then is
  *     rehide_ms=MS        wait that long before each, default 700
  *     rehide_drop=1       delete _NET_WM_STATE while withdrawn, as a client may
+ *     rehide_before=FILE  withdraw it once FILE exists, not after rehide_ms
  *     rehide_after=FILE   map it again once FILE exists, not after 400 ms
- *     rehide_title=TEXT   set WM_NAME to TEXT before mapping it again; once the file
- *                         retitle_after=FILE exists, back to the one before (title_later
- *                         or the class); says "retitled"
+ *     rehide_title=TEXT   set WM_NAME to TEXT before mapping it again
+ *     rehide_class=NAME   and WM_CLASS to NAME
+ *     retitle_after=FILE  once mapped again and FILE exists, back to the title before
+ *                         (title_later or the class), and to the class before
+ *                         (class_later); says "retitled"
  *     script=+v,-h,...    once mapped, _NET_WM_STATE messages one at a time about the
  *                         vertical or horizontal axis, or s for sticky, r for shaded
  *                         (rolled up), i for hidden (an icon); says "sent N" each time
@@ -141,7 +144,8 @@ struct options {
 	const char *dialog_after, *withdraw_after, *urgent_after, *spoof_after;
 	const char *normalize_after, *activate_after, *focus_main_after;
 	const char *class_later, *class_after, *moveresize_after, *override_after;
-	const char *rehide_after, *rehide_title, *retitle_after;
+	const char *rehide_before, *rehide_after, *rehide_title, *rehide_class;
+	const char *retitle_after;
 	bool nomap;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	int decor_later, decor_ms;
@@ -521,6 +525,10 @@ int main(int argc, char *argv[])
 			o.rehide_ms = atoi(v);
 		else if (!strcmp(k, "rehide_drop"))
 			o.rehide_drop = atoi(v);
+		else if (!strcmp(k, "rehide_before"))
+			o.rehide_before = v;
+		else if (!strcmp(k, "rehide_class"))
+			o.rehide_class = v;
 		else if (!strcmp(k, "rehide_after"))
 			o.rehide_after = v;
 		else if (!strcmp(k, "rehide_title"))
@@ -974,7 +982,10 @@ int main(int argc, char *argv[])
 	}
 	for (int i = 0; i < o.rehide; i++) {
 		XSync(dpy, False);
-		usleep((o.rehide_ms ? o.rehide_ms : 700) * 1000);
+		if (o.rehide_before)
+			wait_for_file(o.rehide_before);
+		else
+			usleep((o.rehide_ms ? o.rehide_ms : 700) * 1000);
 		XWithdrawWindow(dpy, main_win, DefaultScreen(dpy));
 		if (o.rehide_drop)
 			XDeleteProperty(dpy, main_win, XInternAtom(dpy, "_NET_WM_STATE", False));
@@ -985,6 +996,10 @@ int main(int argc, char *argv[])
 			usleep(400000);
 		if (o.rehide_title)
 			XStoreName(dpy, main_win, o.rehide_title);
+		if (o.rehide_class) {
+			XClassHint ch = { (char *)o.rehide_class, (char *)o.rehide_class };
+			XSetClassHint(dpy, main_win, &ch);
+		}
 		XMapWindow(dpy, main_win);
 		XSync(dpy, False);
 		usleep(300000);
@@ -1001,9 +1016,15 @@ int main(int argc, char *argv[])
 			XFree(data);
 		printf("reshown %d\nwm_state %ld\n", i + 1, state);
 		fflush(stdout);
-		if (o.rehide_title && o.retitle_after) {
+		if ((o.rehide_title || o.rehide_class) && o.retitle_after) {
 			wait_for_file(o.retitle_after);
-			XStoreName(dpy, main_win, o.title_later ? o.title_later : o.class);
+			if (o.rehide_title)
+				XStoreName(dpy, main_win, o.title_later ? o.title_later : o.class);
+			if (o.rehide_class) {
+				const char *c = o.class_later ? o.class_later : o.class;
+				XClassHint ch = { (char *)c, (char *)c };
+				XSetClassHint(dpy, main_win, &ch);
+			}
 			XSync(dpy, False);
 			printf("retitled\n");
 			fflush(stdout);

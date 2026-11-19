@@ -321,8 +321,8 @@ switch_to 1
 # as for colours, dock and tiling.
 printf 'Mwm*outputManagement: true\nMwm*lateall*allDesktops: true\n' >"$RC"
 reload_mwc
-# Long enough to be seen under its first name, under valgrind too.
-wayland latewin size=200x100 late_app=lateall late_ms=1500
+wayland latewin size=200x100 late_app=lateall late_after="$SMOKE_DIR/latewin"
+touch "$SMOKE_DIR/latewin"
 wait_for "it takes its name" said latewin "late app"
 check "and is everywhere now" "[ \"\$(get lateall everywhere)\" = 1 ]"
 switch_to 2
@@ -359,6 +359,26 @@ switch_to 1
 kill "$PID_xfam"
 wait "$PID_xfam" 2>/dev/null
 check "it is gone" "[ -z \"\$(get lateall x)\" ] && [ -z \"\$(get xfamdlg x)\" ]"
+# A class it had before it was withdrawn and takes again after: the rules for it once
+# more, not taken for a repeat of the class the map found. Nor is the sticky mwc wrote
+# for the rule taken for the program's own when it comes back.
+x11 xre size=200x100 class_later=lateall class_after="$SMOKE_DIR/reclass" rehide=1 \
+	rehide_before="$SMOKE_DIR/reaway" rehide_class=xre rehide_after="$SMOKE_DIR/reback" \
+	retitle_after="$SMOKE_DIR/reagain"
+touch "$SMOKE_DIR/reclass"
+wait_for "it takes the class" said xre "class set"
+check "everywhere with it" "[ \"\$(get lateall everywhere)\" = 1 ]"
+touch "$SMOKE_DIR/reaway"
+check "withdrawn" "[ -z \"\$(get lateall x)\" ]"
+touch "$SMOKE_DIR/reback"
+wait_for "back with its first class" said xre "reshown 1"
+check "on this desktop only" "[ \"\$(get xre everywhere)\" = 0 ]"
+touch "$SMOKE_DIR/reagain"
+wait_for "it takes the other class again" said xre "retitled"
+check "everywhere again" "[ \"\$(get lateall everywhere)\" = 1 ]"
+kill "$PID_xre"
+wait "$PID_xre" 2>/dev/null
+check "it is gone" "[ -z \"\$(get lateall x)\" ]"
 echo 'Mwm*outputManagement: true' >"$RC"
 reload_mwc
 

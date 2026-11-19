@@ -175,14 +175,13 @@ static bool recheck_one(struct view *v, bool *lost)
 
 void desktop_recheck(struct view *view)
 {
-	/* Its dialogs and tabs depend on whether it is everywhere: the window first,
-	 * which they follow. */
+	/* Its dialogs depend on whether it is everywhere: the window first, which they
+	 * follow. A tab group doesn't share it yet (TODO). */
 	struct view *root = view_transient_root(view);
 	bool lost = false, changed = recheck_one(root, &lost);
 	struct view *v;
 	wl_list_for_each(v, &view->server->views, link) {
-		struct view *r = view_transient_root(v);
-		if (v != root && (r == root || (root->group && r->group == root->group)))
+		if (v != root && view_transient_root(v) == root)
 			changed |= recheck_one(v, &lost);
 	}
 	if (changed)

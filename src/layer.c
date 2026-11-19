@@ -235,15 +235,19 @@ void layer_raise_keyboard(struct server *server)
 }
 
 /* The icon box had the keys when the surfaces took them: it gets them back, as a
- * window. */
+ * window, on the desktop it had them on. */
 static bool box_had_keys;
+static int box_desktop;
 
 static void give_keyboard(struct layer_surface *ls)
 {
 	/* Taken from outside the layers: anew, as a window clicked since may have ended
-	 * what an earlier surface knew. Passed from one surface to the next: kept. */
-	if (!ls->server->focused_layer)
+	 * what an earlier surface knew. Passed from one surface to the next: kept, unless
+	 * the box was chosen meanwhile. */
+	if (!ls->server->focused_layer || iconbox_has_focus()) {
 		box_had_keys = iconbox_has_focus();
+		box_desktop = ls->server->desktop;
+	}
 	ls->server->focused_layer = ls->wlr;
 	/* A window's open menu would keep the keys, a password typed here among them. */
 	input_end_client_grab(ls->server);
@@ -298,8 +302,9 @@ static void take_keyboard_back(struct server *server)
 	}
 	input_end_client_grab(server);
 	wlr_seat_keyboard_notify_clear_focus(server->seat);
-	/* Only with nothing activated: a window clicked meanwhile came after the box. */
-	if (box)
+	/* Only with nothing activated: a window clicked meanwhile came after the box. A
+	 * desktop switch leaves the box without them, as without a surface. */
+	if (box && box_desktop == server->desktop)
 		iconbox_focus(server);
 }
 

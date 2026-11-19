@@ -390,6 +390,7 @@ wayland later size=300x200
 mapped later
 click_at $(title_bar)
 check "the box has the keyboard" "[ \"\$(box focused)\" = 1 ]"
+rm -f "$SMOKE_DIR/panel.events" "$SMOKE_DIR/prompt.events"
 WAYLAND_DISPLAY=wayland-0 build/layerc layer=top size=200x100 keyboard=on-demand \
 	color=00ff00 >"$SMOKE_DIR/panel.events" 2>&1 &
 PID_panel=$!
@@ -419,6 +420,58 @@ for w in $shown; do
 done
 click_at $(title_bar)
 check "a click gives the box the keyboard again" "[ \"\$(box focused)\" = 1 ]"
+# The box chosen while a prompt has the keys gets them when it goes, also with a second
+# prompt in between.
+click_at $(($(get one x) + 60)) $(($(get one y) + B + 5))
+check "a window has the keyboard" "[ \"\$(get one kbfocus)\" = 1 ]"
+rm -f "$SMOKE_DIR/prompt.events" "$SMOKE_DIR/prompt2.events"
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=top size=200x100 keyboard=exclusive \
+	color=00ff00 >"$SMOKE_DIR/prompt.events" 2>&1 &
+PID_prompt=$!
+wait_for "a prompt has the keyboard" grep -q keyboard-enter "$SMOKE_DIR/prompt.events"
+click_at $(title_bar)
+check "the box is chosen under it" "[ \"\$(box focused)\" = 1 ]"
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=top size=200x100 keyboard=exclusive \
+	color=00ff00 >"$SMOKE_DIR/prompt2.events" 2>&1 &
+PID_prompt2=$!
+wait_for "a second prompt has it" grep -q keyboard-enter "$SMOKE_DIR/prompt2.events"
+kill "$PID_prompt2"
+wait "$PID_prompt2" 2>/dev/null
+wait_for "back to the first" eval \
+	"[ \"\$(grep -c keyboard-enter \"\$SMOKE_DIR/prompt.events\")\" -ge 2 ]"
+kill "$PID_prompt"
+wait "$PID_prompt" 2>/dev/null
+check "the prompts are gone" "[ \"\$(global focus layer)\" = 0 ]"
+check "the box has the keyboard" "[ \"\$(box focused)\" = 1 ]"
+# One taken from the box on desktop 1 doesn't give the box of desktop 2 the keys.
+ws activate 2 >/dev/null || fail "activating desktop 2"
+check "desktop 2" "[ \"\$(global desktop current)\" = 2 ]"
+wayland away size=300x200
+mapped away
+minimize away
+check "an icon there" "[ \"\$(get away min)\" = 1 ] && [ \"\$(box n)\" = 1 ]"
+ws activate 1 >/dev/null || fail "activating desktop 1"
+check "desktop 1" "[ \"\$(global desktop current)\" = 1 ]"
+click_at $(title_bar)
+check "the box has the keyboard" "[ \"\$(box focused)\" = 1 ]"
+rm -f "$SMOKE_DIR/panel.events"
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=top size=200x100 keyboard=on-demand \
+	color=00ff00 >"$SMOKE_DIR/panel.events" 2>&1 &
+PID_panel=$!
+wait_for "an on-demand panel has the keyboard" grep -q keyboard-enter "$SMOKE_DIR/panel.events"
+ws activate 2 >/dev/null || fail "activating desktop 2"
+check "desktop 2" "[ \"\$(global desktop current)\" = 2 ]"
+kill "$PID_panel"
+wait "$PID_panel" 2>/dev/null
+check "the panel is gone" "[ \"\$(global focus layer)\" = 0 ]"
+[ "$(box focused)" = 0 ] || fail "the box of desktop 2 has the keyboard of desktop 1's"
+echo "ok: the box there doesn't get it"
+kill "$PID_away"
+wait "$PID_away" 2>/dev/null
+ws activate 1 >/dev/null || fail "activating desktop 1"
+check "desktop 1" "[ \"\$(global desktop current)\" = 1 ]"
+click_at $(title_bar)
+check "the box has the keyboard" "[ \"\$(box focused)\" = 1 ]"
 for app in one two three four; do
 	[ "$(get $app min)" = 1 ] || continue
 	var="PID_$app"

@@ -121,34 +121,41 @@ TEST(unknown_resources)
 	CHECK(is(config_get("terminal"), "foot")); /* still read as before */
 }
 
-/* What docs/mwmrc names, in its examples too, is read: the lists of known resources
- * have them all (run from the top of the tree). */
-TEST(documented_resources)
+/* docs/mwmrc, its examples too, is read without a word: every line well-formed, every
+ * resource known, every value good (run from the top of the tree). */
+TEST(documented_mwmrc)
 {
 	FILE *f = fopen("docs/mwmrc", "r");
 	CHECK(f != NULL);
-	static char text[16384];
+	static char text[65536];
 	size_t n = 0;
-	char line[512];
+	char line[1024];
+	bool fits = true;
 	while (f && fgets(line, sizeof(line), f)) {
+		size_t len = strlen(line);
+		if (len && line[len - 1] != '\n' && !feof(f))
+			fits = false; /* longer than line */
 		const char *l = line;
 		if (*l == '!') {
 			l += strspn(l + 1, " ") + 1;
 			if (strncmp(l, "Mwm", 3))
 				continue;
 		}
-		size_t len = strlen(l);
-		if (n + len < sizeof(text)) {
-			memcpy(text + n, l, len);
-			n += len;
+		len = strlen(l);
+		if (n + len >= sizeof(text)) {
+			fits = false;
+			break;
 		}
+		memcpy(text + n, l, len);
+		n += len;
 	}
 	text[n] = '\0';
 	if (f)
 		fclose(f);
+	CHECK(fits);
 	load(text);
 	CHECK(config_get("rootBackground") != NULL); /* it was read */
-	CHECK_INT(log_lines("unknown resource"), 0);
+	CHECK_INT(log_lines(""), 0);
 }
 
 /* ---- values ------------------------------------------------------------------ */
@@ -461,7 +468,7 @@ int main(void)
 	RUN(no_file);
 	RUN(no_path);
 	RUN(unknown_resources);
-	RUN(documented_resources);
+	RUN(documented_mwmrc);
 	RUN(lines_and_lookups);
 	RUN(lines_malformed);
 	RUN(booleans);

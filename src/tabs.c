@@ -104,7 +104,7 @@ static void pass_icon(struct view *from, struct view *to)
 
 /*
  * A view that is on its way out, gone, can't be told anything any more, but its place
- * still counts. own: the program's doing, as gone is, not the user's.
+ * still counts. own: the program's doing; the focus stays where it is, with from.
  */
 static void switch_to(struct tab_group *g, struct view *to, struct view *from, bool gone,
 	bool own)
@@ -182,9 +182,9 @@ static void switch_to(struct tab_group *g, struct view *to, struct view *from, b
 	g->busy = false;
 
 	/* One that went away by itself takes no keys from where the user types. */
-	if (focus && (gone || own))
+	if (focus && gone)
 		view_focus_instead(to);
-	else if (focus)
+	else if (focus && !own)
 		view_focus(to);
 	else
 		views_update_layers(server);
@@ -349,8 +349,8 @@ struct view *tabs_nth(struct view *view, int n)
 	return NULL;
 }
 
-/* own: the program left by itself, and takes no keys; the user's taking it out gives it
- * them. */
+/* own: the program left by itself, and keeps the keys if it had them, without taking
+ * them from a surface; the user's taking it out gives it them. */
 static void detach(struct view *view, bool own)
 {
 	struct tab_group *g = view->group;
@@ -378,10 +378,18 @@ static void detach(struct view *view, bool own)
 	view->width = width;
 	view->height = height;
 	frame_render(view);
-	if (own)
-		views_update_layers(server);
-	else
+	bool had = view->activated;
+	struct view *d;
+	wl_list_for_each(d, &server->views, link) {
+		if (d->activated && view_is_transient_of(d, view))
+			had = true;
+	}
+	if (!own)
 		view_focus(view);
+	else if (had)
+		view_focus_instead(view);
+	else
+		view_raise(view);
 	tile_arrange(server);
 	input_pointer_changed(server);
 }

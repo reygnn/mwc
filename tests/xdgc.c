@@ -18,6 +18,7 @@
  *     states=1     log the states and the size each configure carries
  *     late_app=NAME set this app_id a moment after mapping
  *     late_ms=MS   that moment, default 500; says "late app" then
+ *     late_after=FILE  or once FILE exists
  *     grow=WxH     after mapping, take that size of its own accord; says "grown"
  *     grow_ms=MS   wait that long before, default 1000
  *     dialog=NAME  also open a child toplevel with this app_id
@@ -70,6 +71,7 @@ static int open_windows;
 static const char *pre_state;
 static const char *late_app;
 static int late_ms = 500;
+static const char *late_after;
 static int grow_w, grow_h, grow_ms = 1000;
 static bool log_states, client_side;
 static const char *late_frame, *pre_late;
@@ -249,10 +251,15 @@ static void keyboard_leave(void *data, struct wl_keyboard *kb, uint32_t serial,
 }
 
 /* A key asks for the menu as a button does: for a window whose surface is out of
- * the pointer's reach. */
+ * the pointer's reach. Not a modifier, which may start one of mwc's bindings. */
 static void keyboard_key(void *data, struct wl_keyboard *kb, uint32_t serial,
 	uint32_t time, uint32_t key, uint32_t state)
 {
+	static const uint32_t modifiers[] = { 29, 42, 54, 56, 97, 100, 125, 126 };
+	for (size_t i = 0; i < sizeof(modifiers) / sizeof(*modifiers); i++) {
+		if (key == modifiers[i])
+			return;
+	}
 	pointer_button(data, NULL, serial, time, 0, state);
 }
 
@@ -267,6 +274,25 @@ static const struct wl_keyboard_listener keyboard_listener = {
 	.leave = keyboard_leave,
 	.key = keyboard_key,
 	.modifiers = keyboard_modifiers,
+};
+
+/* Asked for before the seat has one, a keyboard is a protocol error. */
+static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t caps)
+{
+	static struct wl_keyboard *kb;
+	if (menu_asked && !kb && (caps & WL_SEAT_CAPABILITY_KEYBOARD)) {
+		kb = wl_seat_get_keyboard(seat);
+		wl_keyboard_add_listener(kb, &keyboard_listener, NULL);
+	}
+}
+
+static void seat_name(void *data, struct wl_seat *seat, const char *name)
+{
+}
+
+static const struct wl_seat_listener seat_listener = {
+	.capabilities = seat_capabilities,
+	.name = seat_name,
 };
 
 static void xdg_configure(void *data, struct xdg_surface *xdg, uint32_t serial)
@@ -373,9 +399,7 @@ static void registry_global(void *data, struct wl_registry *registry,
 		/* The tests always have a pointer, so its capability is not awaited. */
 		the_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
 		wl_pointer_add_listener(wl_seat_get_pointer(the_seat), &pointer_listener, NULL);
-		if (menu_asked)
-			wl_keyboard_add_listener(wl_seat_get_keyboard(the_seat),
-				&keyboard_listener, NULL);
+		wl_seat_add_listener(the_seat, &seat_listener, NULL);
 	}
 	else if (strcmp(interface, wl_output_interface.name) == 0 && n_outputs < 4)
 		outputs[n_outputs++] = wl_registry_bind(registry, name, &wl_output_interface, 1);
@@ -495,7 +519,7 @@ static void open_popup(struct window *parent)
 	xdg_surface_add_listener(win->xdg, &popup_surface_listener, win);
 	struct xdg_positioner *pos = xdg_wm_base_create_positioner(wm_base);
 	xdg_positioner_set_size(pos, popup_w, popup_h);
-	xdg_positioner_set_anchor_rect(pos, popup_x, popup_y, 1, 1);
+	xdg_positioner_set_anchor_rect(pos, popup_x, popup_y, 2, 2);
 	xdg_positioner_set_anchor(pos, XDG_POSITIONER_ANCHOR_TOP_LEFT);
 	xdg_positioner_set_gravity(pos, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
 	xdg_positioner_set_constraint_adjustment(pos,
@@ -555,6 +579,8 @@ int main(int argc, char *argv[])
 			late_app = v;
 		else if (!strcmp(argv[i], "late_ms"))
 			late_ms = atoi(v);
+		else if (!strcmp(argv[i], "late_after"))
+			late_after = v;
 		else if (!strcmp(argv[i], "grow"))
 			sscanf(v, "%dx%d", &grow_w, &grow_h);
 		else if (!strcmp(argv[i], "grow_ms"))
@@ -621,7 +647,12 @@ int main(int argc, char *argv[])
 	if (late_app) {
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
-		wait_dispatching(display, late_ms);
+		if (late_after) {
+			while (access(late_after, F_OK) != 0)
+				wait_dispatching(display, 50);
+		} else {
+			wait_dispatching(display, late_ms);
+		}
 		xdg_toplevel_set_app_id(main_win->toplevel, late_app);
 		wl_surface_commit(main_win->surface);
 		wl_display_flush(display);

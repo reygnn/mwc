@@ -371,6 +371,12 @@ check "the menu opens on the screen" "[ \"\$(global menu open)\" = 1 ] && \
 	[ \"\$(global menu x)\" -lt 1280 ] && [ \"\$(global menu y)\" -lt 720 ]"
 do_input key Escape
 alive "a window menu with the window geometry at INT32_MAX"
+# A popup anchored there: its anchor's middle is past INT32_MAX.
+wayland popfar size=300x200 popup=2147483647,2147483647,100,100 popup_after="$SMOKE_DIR/popfar"
+check "a window for a popup far away is mapped" "[ -n \"\$(get popfar x)\" ]"
+touch "$SMOKE_DIR/popfar"
+wait_for "it opens the popup" grep -q 'popup at' "$SMOKE_DIR/popfar.events"
+alive "a popup anchored at INT32_MAX"
 finish
 
 # ---- a keymap that doesn't exist --------------------------------------------------------------

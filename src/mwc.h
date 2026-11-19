@@ -197,11 +197,11 @@ struct view {
 	struct wlr_scene_rect *frame_fill;
 	struct wlr_scene_rect *backdrop; /* black behind a fullscreen window (xdg-shell) */
 	int drawn_w, drawn_h;  /* at the last frame_render() */
-	char *known_title;     /* the last one seen while mapped, to skip repeats */
+	char *known_title;     /* the last one seen, forgotten at unmap, to skip repeats */
 	struct throttle title_redraw;
 	int title_draws;       /* for the tests, */
 	size_t title_drawn_len; /* and the length of the title the strip shows */
-	char *known_app_id;    /* see view_app_id_changed() */
+	char *known_app_id;    /* the one mwmrc's rules were last applied for */
 	struct wlr_scene_buffer *icon_node;
 
 	/* x, y: the frame's top left in the layout; width, height: the client's. */
@@ -616,6 +616,8 @@ void view_focus_top(struct server *server);
 struct view *view_focused(struct server *server);
 /* Without its dialogs. */
 void view_raise_one(struct view *view);
+/* With its dialogs above it. */
+void view_raise(struct view *view);
 void views_update_layers(struct server *server);
 /* The output there, or else the first; NULL when there are none. */
 struct output *output_at(struct server *server, double lx, double ly);

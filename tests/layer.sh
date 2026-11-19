@@ -301,7 +301,7 @@ kill "$PID_tab1"
 wait "$PID_tab1" 2>/dev/null
 check "the tab is gone" "[ -z \"\$(get tab1 x)\" ]"
 # The same for a shown tab the program takes out of its group, by turning fixed-size:
-# neither tab is given the keys.
+# it stays the active one, the keys stay with the surface.
 WAYLAND_DISPLAY=wayland-0 build/xdgc app=tab3 >/dev/null 2>&1 &
 PID_tab3=$!
 check "a first tab" "[ \"\$(get tab3 kbfocus)\" = 1 ]"
@@ -316,18 +316,51 @@ layerc_start od3 layer=top anchor=right size=50x50 keyboard=on-demand color=4444
 wait_for "an on-demand surface takes the keyboard" has_event od3 keyboard-enter
 touch "$SMOKE_DIR/fixed"
 wait_for "the shown tab turns fixed-size" grep -q '^fixed' "$SMOKE_DIR/tab4.events"
-check "it leaves the group, the other tab is shown and active" \
+check "it leaves the group and stays active, the other tab is shown" \
 	"[ \"\$(get tab4 tab)\" = -1 ] && [ \"\$(get tab3 tab_hidden)\" = 0 ] && \
-	 [ \"\$(get tab3 active)\" = 1 ]"
+	 [ \"\$(get tab4 active)\" = 1 ] && [ \"\$(get tab3 active)\" = 0 ]"
 do_input key a
 wait_for "the keys still go to the surface" has_event od3 "key 30"
 has_event od3 keyboard-leave && fail "the surface lost the keyboard to a tab"
 echo "ok: it keeps the keyboard"
 layerc_stop od3
-check "when it goes, the tab shown now has the keyboard" "[ \"\$(get tab3 kbfocus)\" = 1 ]"
+check "when it goes, that window has the keyboard" "[ \"\$(get tab4 kbfocus)\" = 1 ]"
 kill "$PID_tab3" "$PID_tab4"
 wait "$PID_tab3" "$PID_tab4" 2>/dev/null
 check "the two are gone" "[ -z \"\$(get tab3 x)\" ] && [ -z \"\$(get tab4 x)\" ]"
+# Without a surface: a hidden tab that leaves comes to the front, without the keys; the
+# shown tab that leaves keeps the keys it had, in front.
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=tab5 fixed_after="$SMOKE_DIR/fixed5" \
+	>"$SMOKE_DIR/tab5.events" 2>&1 &
+PID_tab5=$!
+check "a first tab" "[ \"\$(get tab5 kbfocus)\" = 1 ]"
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=tab6 >/dev/null 2>&1 &
+PID_tab6=$!
+check "a second one" "[ \"\$(get tab6 kbfocus)\" = 1 ]"
+do_input key super+g
+check "the two are a group, the second shown" \
+	"[ \"\$(get tab6 tab)\" != -1 ] && [ \"\$(get tab5 tab_hidden)\" = 1 ]"
+touch "$SMOKE_DIR/fixed5"
+wait_for "the hidden tab turns fixed-size" grep -q '^fixed' "$SMOKE_DIR/tab5.events"
+check "it leaves the group, raised over the other, which keeps the keyboard" \
+	"[ \"\$(get tab5 tab)\" = -1 ] && [ \"\$(get tab5 tab_hidden)\" = 0 ] && \
+	 [ \"\$(get tab5 rseq)\" -gt \"\$(get tab6 rseq)\" ] && [ \"\$(get tab6 kbfocus)\" = 1 ]"
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=tab7 fixed_after="$SMOKE_DIR/fixed7" \
+	>"$SMOKE_DIR/tab7.events" 2>&1 &
+PID_tab7=$!
+check "a third one" "[ \"\$(get tab7 kbfocus)\" = 1 ]"
+do_input key super+g
+check "a group with the second, the third shown" \
+	"[ \"\$(get tab7 tab)\" != -1 ] && [ \"\$(get tab6 tab_hidden)\" = 1 ]"
+touch "$SMOKE_DIR/fixed7"
+wait_for "the shown tab turns fixed-size" grep -q '^fixed' "$SMOKE_DIR/tab7.events"
+check "it leaves the group with the keyboard, in front" \
+	"[ \"\$(get tab7 tab)\" = -1 ] && [ \"\$(get tab7 kbfocus)\" = 1 ] && \
+	 [ \"\$(get tab6 tab_hidden)\" = 0 ] && [ \"\$(get tab7 rseq)\" -gt \"\$(get tab6 rseq)\" ]"
+kill "$PID_tab5" "$PID_tab6" "$PID_tab7"
+wait "$PID_tab5" "$PID_tab6" "$PID_tab7" 2>/dev/null
+check "the three are gone" \
+	"[ -z \"\$(get tab5 x)\" ] && [ -z \"\$(get tab6 x)\" ] && [ -z \"\$(get tab7 x)\" ]"
 
 # Two that insist: when the newer one goes, the keyboard goes to the other, not a window.
 layerc_start lock1 layer=overlay anchor=left size=50x50 keyboard=exclusive color=555555
