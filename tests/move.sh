@@ -425,29 +425,43 @@ do_input up left
 stop xsame
 
 # From the left edge the right one stays, also before the window has the new size: with
-# Xwayland stopped, none comes. The frame moves with the commit, not before it.
+# Xwayland stopped, none comes. The frame (nx, its scene node) moves with the commit.
+# CONT_ON_EXIT continues it should the test fail meanwhile.
 x11 xleft pos=200,100 size=300x200
 settle
 refresh
-R0=$(($(get xleft x) + $(get xleft w)))
+R0=$(($(get xleft nx) + $(get xleft w)))
 LX=$(($(get xleft x) + 1)) LY=$(($(get xleft y) + OH / 2))
+right() { echo $(($(get xleft nx) + $(get xleft w))); }
 do_input move "$LX" "$LY"
 do_input down left
 do_input move $((LX - 10)) "$LY"
 check "moveOpaque, X11: it grows to the left" \
-	"[ \"\$(get xleft w)\" = 310 ] && [ \$((\$(get xleft x) + \$(get xleft w))) = $R0 ]"
+	"[ \"\$(get xleft w)\" = 310 ] && [ \"\$(right)\" = $R0 ]"
 XW=$(pgrep -f "^Xwayland $X_DISPLAY ") || fail "no Xwayland for $X_DISPLAY"
-kill -STOP $XW
-do_input move $((LX - 50)) "$LY"
-check "the pointer is there" "[ \"\$(global cursor x)\" = $((LX - 50)) ]"
-refresh
-right=$(($(get xleft x) + $(get xleft w)))
-kill -CONT $XW
+# A step taken while Xwayland is stopped; sets $right to the right edge after it.
+stopped() {
+	CONT_ON_EXIT=$XW
+	kill -STOP $XW
+	eval "$1"
+	check "the pointer is there" "[ \"\$(global cursor x)\" = $2 ]"
+	right=$(right)
+	kill -CONT $XW
+	CONT_ON_EXIT=
+}
+stopped 'do_input move $((LX - 50)) "$LY"' $((LX - 50))
 [ "$right" = "$R0" ] || fail "before the commit the right edge went from $R0 to $right"
 echo "ok: before the commit the right edge stays"
 check "moveOpaque, X11: then it has the size, the right edge where it was" \
-	"[ \"\$(get xleft w)\" = 350 ] && [ \$((\$(get xleft x) + \$(get xleft w))) = $R0 ]"
-do_input up left
+	"[ \"\$(get xleft w)\" = 350 ] && [ \"\$(right)\" = $R0 ]"
+# Released with a size still waiting: the one applied at the end is anchored too.
+stopped 'do_input move $((LX - 70)) "$LY"; do_input move $((LX - 90)) "$LY"; do_input up left' \
+	$((LX - 90))
+[ "$right" = "$R0" ] || fail "released, before the commit the right edge went from $R0 to $right"
+echo "ok: released, before the commit the right edge stays"
+check "moveOpaque, X11: released, it has the last size, the right edge where it was" \
+	"[ \"\$(get xleft w)\" = 390 ] && [ \"\$(right)\" = $R0 ] && \
+	 [ \"\$(get xleft nx)\" = \"\$(get xleft x)\" ]"
 no_grab_left "nothing is left of the grab"
 stop xleft
 

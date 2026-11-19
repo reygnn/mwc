@@ -101,7 +101,8 @@ static int dump_state(int signal, void *data)
 			"max=%d min=%d full=%d frame=%d icon_x=%d icon_y=%d hidden=%d "
 			"bw=%d th=%d above=%d below=%d snap=%d tiled=%d tile_main=%d shaded=%d "
 			"fh=%d tab=%d tab_hidden=%d visible=%d tab_first=%d desktop=%d "
-			"icon_shown=%d everywhere=%d rseq=%ld tlen=%zu tdraws=%d tdrawn=%zu\n",
+			"icon_shown=%d everywhere=%d rseq=%ld tlen=%zu tdraws=%d tdrawn=%zu "
+			"nx=%d ny=%d\n",
 			view_app_id(v), v->x, v->y, v->width, v->height,
 			v->activated, kb_focus && kb_focus == view_surface(v),
 			v->maximized, v->minimized, v->fullscreen, view_decorated(v),
@@ -113,7 +114,8 @@ static int dump_state(int signal, void *data)
 			v->tab_hidden, v->tree->node.enabled,
 			v->group ? v->group->first_visible : 0, v->desktop + 1,
 			v->icon_node->node.enabled, view_on_all_desktops(v), v->raise_seq,
-			strlen(view_title(v)), v->title_draws, v->title_drawn_len);
+			strlen(view_title(v)), v->title_draws, v->title_drawn_len,
+			v->tree->node.x, v->tree->node.y);
 	}
 	/* The mnemonics of what can be chosen, without spaces for the parser. */
 	char sensitive[MENU_MAX_ITEMS + 1];

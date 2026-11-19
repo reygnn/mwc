@@ -174,12 +174,30 @@ void view_send_size(struct view *view, int w, int h)
 		view->requested_w = w;
 		view->requested_h = h;
 	} else {
+		/* Not from a resize: what is left of one doesn't hold. */
+		struct server *server = view->server;
+		if (server->grabbed_view != view || server->cursor_mode != CURSOR_RESIZE)
+			view->anchor_edges = 0;
 		view_send_geometry(view, view->x, view->y, w, h);
 	}
 }
 
+/* view->x and y are where the size last sent goes, as X is told. Until the window has
+ * it, an anchored frame stays at the place of the size it has, the opposite edge kept. */
+void view_place_x11_frame(struct view *view)
+{
+	int x = view->x, y = view->y;
+	if (view->anchor_edges & WLR_EDGE_LEFT)
+		x = view->anchor_right - (view->width + frame_extra_w(view));
+	if (view->anchor_edges & WLR_EDGE_TOP)
+		y = view->anchor_bottom - (view->height + frame_extra_h(view));
+	wlr_scene_node_set_position(&view->tree->node, x, y);
+}
+
 void view_send_geometry(struct view *view, int x, int y, int w, int h)
 {
+	view->x = x;
+	view->y = y;
 	wlr_xwayland_surface_configure(view->xsurface, x + frame_left(view),
 		y + frame_top(view), w, h);
 	/* Not xsurface->width: every ConfigureNotify sets that, an old one or one
@@ -188,6 +206,7 @@ void view_send_geometry(struct view *view, int x, int y, int w, int h)
 	view->requested_h = h;
 	/* Only a new size brings a commit: at the old one X changes nothing. */
 	view->configure_pending |= w != view->width || h != view->height;
+	view_place_x11_frame(view);
 }
 
 void view_set_geometry(struct view *view, int x, int y, int w, int h)

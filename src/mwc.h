@@ -612,8 +612,9 @@ void view_handle_map(struct view *view, bool focus);
 void view_handle_unmap(struct view *view);
 void view_handle_destroy(struct view *view);
 void view_send_size(struct view *view, int w, int h);
-/* X11: place and size for the window, the frame following with its commit. */
+/* X11: place and size for the window; an anchored frame follows with its commit. */
 void view_send_geometry(struct view *view, int x, int y, int w, int h);
+void view_place_x11_frame(struct view *view);
 void view_set_activated(struct view *view, bool activated);
 struct view *view_at(struct server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy,

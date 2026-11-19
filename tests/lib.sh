@@ -37,7 +37,11 @@ kill_leftovers() {
 	done
 }
 
+# CONT_ON_EXIT: a process the test has stopped (SIGSTOP), continued whatever happens:
+# a stopped one acts on no SIGTERM and would stay behind.
+CONT_ON_EXIT=
 cleanup() {
+	[ -z "$CONT_ON_EXIT" ] || kill -CONT $CONT_ON_EXIT 2>/dev/null
 	if [ -n "$pid" ]; then
 		kill "$pid" 2>/dev/null
 		wait "$pid" 2>/dev/null

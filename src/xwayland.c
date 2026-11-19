@@ -31,24 +31,12 @@ static void um_destroy(struct wl_listener *listener, void *data);
 /* Its new size, kept where a resize from the left or top anchors it. */
 static void xw_size_committed(struct view *view, struct wlr_surface *s)
 {
-	/* As the xdg path does: the opposite edge stays, also for the last size of a
-	 * grab that has just ended. */
-	if (view->anchor_edges) {
-		if (view->anchor_edges & WLR_EDGE_LEFT)
-			view->x = view->anchor_right - (s->current.width + frame_extra_w(view));
-		if (view->anchor_edges & WLR_EDGE_TOP)
-			view->y = view->anchor_bottom -
-				(s->current.height + frame_extra_h(view));
-		wlr_scene_node_set_position(&view->tree->node, view->x, view->y);
-		/* Another size than asked for: X is told where it went. */
-		if (s->current.width != view->requested_w ||
-				s->current.height != view->requested_h)
-			wlr_xwayland_surface_configure(view->xsurface,
-				view->x + frame_left(view), view->y + frame_top(view),
-				view->requested_w, view->requested_h);
-	}
 	view->width = s->current.width;
 	view->height = s->current.height;
+	/* As the xdg path does: the opposite edge stays, also for the last size of a
+	 * grab that has just ended. */
+	if (view->anchor_edges)
+		view_place_x11_frame(view);
 	frame_render(view);
 	tabs_sync_sizes(view);
 	dock_view_resized(view);
@@ -70,10 +58,13 @@ static void xw_commit(struct wl_listener *listener, void *data)
 		view->configure_pending = false;
 		grab_resize_caught_up(view);
 	}
-	/* The grab is over and the window has the last size it was given. */
+	/* The grab is over and the window has the last size it was given, so its frame
+	 * is where view->x says. Not on configure_pending: a commit at the old size,
+	 * drawn before the configure, clears that too. */
 	struct server *server = view->server;
 	bool grabbed = server->cursor_mode == CURSOR_RESIZE && server->grabbed_view == view;
-	if (view->anchor_edges && !grabbed && !view->configure_pending)
+	if (view->anchor_edges && !grabbed && s->current.width == view->requested_w &&
+			s->current.height == view->requested_h)
 		view->anchor_edges = 0;
 }
 
