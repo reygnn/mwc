@@ -1189,6 +1189,9 @@ for h in launcher wayland box; do
 	x11 xi pos=800,100 size=300x200 iconic=1
 	check "it starts as an icon" "[ \"\$(get xi min)\" = 1 ]"
 	keeps "an X11 window starting as an icon" $h
+	# Under a Wayland window the keys would come back in the same dispatch: the X
+	# focus it never got tells.
+	grep -q '^focus-in' "$SMOKE_DIR/xi.events" && fail "the icon got the X focus"
 	stop xi
 	unhold $h
 	# Going fullscreen.
@@ -1213,6 +1216,7 @@ for h in launcher wayland box; do
 	touch "$SMOKE_DIR/xr2.$h"
 	mapped xr
 	keeps "an X11 window shown again" $h
+	check "it is raised, in sight" "[ \"\$(stack_pos xr)\" = 0 ]"
 	unhold $h
 	stop xr
 	# A new dialog.
@@ -1222,6 +1226,7 @@ for h in launcher wayland box; do
 	touch "$SMOKE_DIR/xd.$h"
 	mapped xdd
 	keeps "a new X11 dialog" $h
+	check "it is raised, in sight" "[ \"\$(stack_pos xdd)\" = 0 ]"
 	check "it doesn't have the focus" "[ \"\$(get xdd active)\" = 0 ]"
 	unhold $h
 	stop xd
@@ -1260,10 +1265,10 @@ for h in launcher wayland box; do
 	[ $h = box ] && stop filler
 done
 
-# A program that answers WM_TAKE_FOCUS with its other window, as Java does with a modal
-# dialog open, while a launcher has the keyboard: given the focus back once, it passes
-# it on again, and mwc follows instead of offering it forever.
-x11 xjava pos=800,100 size=300x200 input=0 take_focus=1 dialog=xjavadlg \
+# A program that sends the focus on to its modal dialog whenever its window gets it, as
+# Java does, while a launcher has the keyboard. Set back once, it passes it on again;
+# mwc follows instead of setting it back forever.
+x11 xjava pos=800,100 size=300x200 modal=1 dialog=xjavadlg \
 	dialog_after="$SMOKE_DIR/xjava1" focus_dialog_after="$SMOKE_DIR/xjava2"
 check "it has the focus" "[ \"\$(get xjava active)\" = 1 ]"
 hold launcher
@@ -1272,13 +1277,46 @@ mapped xjavadlg
 touch "$SMOKE_DIR/xjava2"
 had xjavadlg
 check "mwc follows to the dialog" "[ \"\$(get xjavadlg active)\" = 1 ]"
-offers=$(grep -c '^take-focus' "$SMOKE_DIR/xjava.events")
-[ "$offers" -le 2 ] || fail "the focus went back and forth: $offers offers"
-echo "ok: the focus offered $offers times"
+# The window's title counts the times it passed the focus on.
+passes=$(get xjava tlen)
+[ "$passes" -le 2 ] || fail "the focus went back and forth: passed $passes times"
+echo "ok: the focus passed on $passes times"
 keeps "a program passing the focus back" launcher
 unhold launcher
 check "the launcher gone, the dialog has the keyboard" "[ \"\$(get xjavadlg kbfocus)\" = 1 ]"
 stop xjava
+# The same with the dialog an icon: out of sight, mwc doesn't follow, nor restore it.
+x11 xjic pos=800,100 size=300x200 modal=1 dialog=xjicdlg iconify_ms=500 \
+	iconify_dialog=1 focus_dialog_after="$SMOKE_DIR/xjic"
+check "its dialog is an icon, the window has the focus" \
+	"[ \"\$(get xjicdlg min)\" = 1 ] && [ \"\$(get xjic active)\" = 1 ]"
+hold launcher
+touch "$SMOKE_DIR/xjic"
+had xjicdlg
+# Set back once, it passes the focus on again. Its title counts the times, so mwc has
+# had them all once the length is what xclient logged.
+passed() { grep -c '^passed' "$SMOKE_DIR/xjic.events"; }
+seen() { n=$(passed); [ "$n" -ge "$1" ] && [ "$n" -le 5 ] && [ "$(get xjic tlen)" = "$n" ]; }
+check "it was given the focus back and passed it on" "seen 1"
+keeps "a program passing the focus to an icon" launcher
+check "the dialog stays an icon" "[ \"\$(get xjicdlg min)\" = 1 ]"
+# The launcher gone, the window mwc has as active gets the X focus back, so the keys
+# reach the program: it passes the focus on once more.
+n1=$(passed)
+unhold launcher
+check "the program has the X focus again" "seen $((n1 + 1))"
+stop xjic
+# Starting as an icon and fullscreen, from an X11 window with the focus: the icon never
+# has it either.
+x11 xhas2 pos=100,100 size=300x200
+check "an X11 window has the focus" "[ \"\$(get xhas2 active)\" = 1 ]"
+x11 xif pos=800,100 size=300x200 iconic=1 state=fullscreen
+check "it starts as an icon" "[ \"\$(get xif min)\" = 1 ]"
+check "the other keeps the focus" "[ \"\$(get xhas2 active)\" = 1 ]"
+grep -q '^focus-in' "$SMOKE_DIR/xif.events" && fail "the icon got the X focus"
+echo "ok: the icon never had the X focus"
+stop xif
+stop xhas2
 
 stop_vinput
 stop_mwc

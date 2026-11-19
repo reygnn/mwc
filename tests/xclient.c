@@ -71,8 +71,11 @@
  *                         (rolled up), i for hidden (an icon); says "sent N" each time
  *     focus_main=1        once mapped, give the focus from the dialog to the main window
  *     focus_main_after=FILE  the same once FILE exists
- *     focus_dialog_after=FILE  once FILE exists, give the focus to the dialog; the dialog
- *                         is retitled after it as below
+ *     focus_dialog_after=FILE  once FILE exists, give the focus to the dialog; then the
+ *                         dialog is titled "request sent", as the main window above
+ *     id_file=FILE        write the main window's id to FILE, in hex
+ *     transient_from=FILE once FILE exists, WM_TRANSIENT_FOR to the window whose id it
+ *                         holds (as id_file writes it); retitled after it as above
  *     instance_later=NAME  the same for the instance alone, the class kept
  *     class_later=NAME    once the file class_after=FILE exists, WM_CLASS becomes NAME;
  *                         says "class set"
@@ -100,9 +103,11 @@
  *                         that says the main window is 1x1, as any client can; says
  *                         "spoofed"
  *     dialog_type=TYPE    the dialog's explicit window type, as for type=, also normal
- *     take_focus=1        WM_TAKE_FOCUS in WM_PROTOCOLS; offered the focus, it gives it
- *                         to the dialog while that is mapped, else takes it, as Java
- *                         does with a modal dialog open; says "take-focus main|dialog"
+ *     modal=1             WM_TAKE_FOCUS in WM_PROTOCOLS. Once focus_dialog_after has
+ *                         focused the dialog, the focus offered or given to the main
+ *                         window goes on to the dialog while that is mapped, as Java
+ *                         does with a modal dialog open; says "passed", and the main
+ *                         window is titled with one o per time
  *     pulldown=1          a press posts an override-redirect menu and grabs the pointer,
  *                         as Motif does for press-drag-release; logs what follows
  */
@@ -147,10 +152,11 @@ struct options {
 	int aspect_n, aspect_d, aspect_max_n, aspect_max_d;
 	long motif_funcs, motif_decor;
 	bool has_motif;
-	bool no_input, workarea, clipboard, move_press, pulldown, take_focus;
+	bool no_input, workarea, clipboard, move_press, pulldown, modal;
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
 	const char *dialog_after, *withdraw_after, *withdraw_later, *urgent_after, *spoof_after;
 	const char *normalize_after, *activate_after, *focus_main_after, *focus_dialog_after;
+	const char *id_file, *transient_from;
 	const char *class_later, *class_after, *moveresize_after, *override_after;
 	const char *rehide_before, *rehide_after, *rehide_title, *rehide_class;
 	const char *instance_later;
@@ -232,7 +238,7 @@ static Window create_window(const struct options *o, const char *class,
 	XSetClassHint(dpy, win, &ch);
 	XStoreName(dpy, win, class);
 	Atom protocols[] = { wm_delete, wm_take_focus };
-	XSetWMProtocols(dpy, win, protocols, o->take_focus ? 2 : 1);
+	XSetWMProtocols(dpy, win, protocols, o->modal ? 2 : 1);
 
 	XSizeHints sh = { 0 };
 	if (o->has_pos) {
@@ -337,6 +343,20 @@ static void mark_request(Window win)
 {
 	XStoreName(dpy, win, "request sent");
 	XSync(dpy, False);
+}
+
+/* After it, the main window's title says how many times. */
+static void pass_to_dialog(Window main_win, Window dialog_win, int *passes)
+{
+	char title[64];
+	XSetInputFocus(dpy, dialog_win, RevertToParent, CurrentTime);
+	*passes += *passes < (int)sizeof(title) - 1;
+	memset(title, 'o', *passes);
+	title[*passes] = '\0';
+	XStoreName(dpy, main_win, title);
+	XSync(dpy, False);
+	printf("passed\n");
+	fflush(stdout);
 }
 
 /* The test says when, by creating it. */
@@ -612,6 +632,10 @@ int main(int argc, char *argv[])
 			o.ask_later_after = v;
 		else if (!strcmp(k, "focus_dialog_after"))
 			o.focus_dialog_after = v;
+		else if (!strcmp(k, "id_file"))
+			o.id_file = v;
+		else if (!strcmp(k, "transient_from"))
+			o.transient_from = v;
 		else if (!strcmp(k, "ask_after"))
 			o.ask_after = v;
 		else if (!strcmp(k, "state"))
@@ -658,8 +682,8 @@ int main(int argc, char *argv[])
 			o.iconify_dialog = atoi(v);
 		else if (!strcmp(k, "move_press"))
 			o.move_press = atoi(v);
-		else if (!strcmp(k, "take_focus"))
-			o.take_focus = atoi(v);
+		else if (!strcmp(k, "modal"))
+			o.modal = atoi(v);
 		else if (!strcmp(k, "pulldown"))
 			o.pulldown = atoi(v);
 		else if (!strcmp(k, "override"))
@@ -960,11 +984,38 @@ int main(int argc, char *argv[])
 		printf("focused main\n");
 		fflush(stdout);
 	}
+	bool prefer_dialog = false;
+	if (o.id_file) {
+		char tmp[512];
+		snprintf(tmp, sizeof(tmp), "%s.tmp", o.id_file);
+		FILE *f = fopen(tmp, "w");
+		if (f) {
+			fprintf(f, "%lx\n", (unsigned long)main_win);
+			fclose(f);
+			rename(tmp, o.id_file); /* whole, when the test sees it */
+		}
+	}
+	if (o.transient_from) {
+		XSync(dpy, False);
+		wait_for_file(o.transient_from);
+		unsigned long id = 0;
+		FILE *f = fopen(o.transient_from, "r");
+		if (f) {
+			if (fscanf(f, "%lx", &id) != 1)
+				id = 0;
+			fclose(f);
+		}
+		XSetTransientForHint(dpy, main_win, (Window)id);
+		mark_request(main_win);
+		printf("transient set\n");
+		fflush(stdout);
+	}
 	if (o.focus_dialog_after && dialog_win) {
 		XSync(dpy, False);
 		wait_for_file(o.focus_dialog_after);
 		XSetInputFocus(dpy, dialog_win, RevertToParent, CurrentTime);
 		XSync(dpy, False);
+		prefer_dialog = true;
 		mark_request(dialog_win);
 		printf("focused dialog\n");
 		fflush(stdout);
@@ -1080,6 +1131,7 @@ int main(int argc, char *argv[])
 	int open = dialog_win ? 2 : 1;
 	Window menu_win = None;
 	bool dialog_mapped = false;
+	int passes = 0;
 	while (open > 0) {
 		XEvent e;
 		XNextEvent(dpy, &e);
@@ -1141,6 +1193,11 @@ int main(int argc, char *argv[])
 			break;
 		case FocusIn:
 			printf("focus-in %s\n", e.xfocus.window == main_win ? "main" : "dialog");
+			if (o.modal && prefer_dialog && dialog_mapped &&
+					e.xfocus.window == main_win &&
+					e.xfocus.mode == NotifyNormal &&
+					e.xfocus.detail != NotifyPointer)
+				pass_to_dialog(main_win, dialog_win, &passes);
 			break;
 		case SelectionRequest:
 			answer_selection(&e.xselectionrequest);
@@ -1159,11 +1216,11 @@ int main(int argc, char *argv[])
 		case ClientMessage:
 			if (e.xclient.message_type == wm_protocols &&
 					(Atom)e.xclient.data.l[0] == wm_take_focus) {
-				bool dialog = dialog_mapped;
-				XSetInputFocus(dpy, dialog ? dialog_win : main_win, RevertToParent,
-					CurrentTime);
-				XFlush(dpy);
-				printf("take-focus %s\n", dialog ? "dialog" : "main");
+				if (prefer_dialog && dialog_mapped)
+					pass_to_dialog(main_win, dialog_win, &passes);
+				else
+					XSetInputFocus(dpy, e.xclient.window, RevertToParent,
+						CurrentTime);
 			}
 			if (e.xclient.message_type == wm_protocols &&
 					(Atom)e.xclient.data.l[0] == wm_delete) {

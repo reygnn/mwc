@@ -428,11 +428,18 @@ void view_focus(struct view *view)
 	struct view *prev = view_focused(server);
 	if (prev && prev != view)
 		view_set_activated(prev, false);
-	if (!view->activated)
+	if (!view->activated) {
 		view_set_activated(view, true);
-	/* Already activated, it stayed below the top layer while the keys were there. */
-	else if (from_layer)
-		views_update_layers(server);
+	} else {
+		/* Already activated, it stayed below the top layer while the keys were
+		 * there. An X11 program may have moved the X focus meanwhile, to a window
+		 * mwc hadn't mapped yet or one it refused: wlroots does nothing when it
+		 * has it already. */
+		if (from_layer)
+			views_update_layers(server);
+		if (view->type == VIEW_XWAYLAND)
+			wlr_xwayland_surface_activate(view->xsurface, true);
+	}
 	view_raise(view);
 
 	/* An exclusive layer surface keeps the keyboard until it goes away. */
@@ -672,6 +679,11 @@ void view_focus_top(struct server *server)
 	focus_next_after(server, NULL, false);
 }
 
+void view_focus_top_instead(struct server *server)
+{
+	focus_next_after(server, NULL, true);
+}
+
 void view_close(struct view *view)
 {
 	if (view->type == VIEW_XDG)
@@ -859,15 +871,22 @@ static bool fullscreen_output_point(struct view *view, double *px, double *py)
 	return true;
 }
 
-static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output);
+static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output,
+	bool focus);
 
 void view_set_fullscreen(struct view *view, bool fullscreen)
 {
-	view_fullscreen_at(view, fullscreen, false);
+	view_fullscreen_at(view, fullscreen, false, true);
+}
+
+void view_set_fullscreen_asked(struct view *view, bool fullscreen, bool focus)
+{
+	view_fullscreen_at(view, fullscreen, false, focus);
 }
 
 /* asked_output: on the output the client named with its request, if any. */
-static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output)
+static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output,
+	bool focus)
 {
 	if (view_docked(view))
 		fullscreen = false; /* its place is the dock */
@@ -903,9 +922,7 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 			/* At its new place: the backdrop is placed relative to it, and an X11
 			 * commit of the new size doesn't do it again. */
 			view_update_content_pos(view);
-			/* Asked for by an X11 program: see xwayland_may_take_focus(). */
-			if (view->type != VIEW_XWAYLAND ||
-					xwayland_may_take_focus(view->server))
+			if (focus)
 				view_focus(view);
 		} else {
 			view->fullscreen = false;
@@ -1607,7 +1624,7 @@ void view_handle_map(struct view *view, bool focus)
 	/* A prompt must not stay out of sight in a hidden tab, unless the group is an icon:
 	 * then it waits, as any dialog of a window that is an icon by now. */
 	struct view *root = view_transient_root(view);
-	if (root != view && root->tab_hidden && !root->group->shown->minimized)
+	if (focus && root != view && root->tab_hidden && !root->group->shown->minimized)
 		tabs_bring(root);
 	struct view *parent = view_parent(view);
 	/* Hidden with it, not for being on another desktop: it goes there too, and
@@ -1636,8 +1653,11 @@ void view_handle_map(struct view *view, bool focus)
 		desktop_attention(view);
 		return;
 	}
-	if (!focus)
+	/* In sight, the keyboard where it is: the user decides. */
+	if (!focus) {
+		view_raise(view);
 		return;
+	}
 	if (view->wtype != WT_SPLASH && !view_docked(view))
 		view_focus(view);
 	else
@@ -1957,7 +1977,7 @@ static void xdg_request_maximize(struct wl_listener *listener, void *data)
 static void xdg_request_fullscreen(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_fullscreen);
-	view_fullscreen_at(view, view->xdg_toplevel->requested.fullscreen, true);
+	view_fullscreen_at(view, view->xdg_toplevel->requested.fullscreen, true, true);
 }
 
 static void xdg_request_minimize(struct wl_listener *listener, void *data)

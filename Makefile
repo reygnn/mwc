@@ -383,7 +383,8 @@ build/workspacec: tests/workspacec.c build/ext-workspace-v1-client.h build/ext-w
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/workspacec.c \
 		build/ext-workspace-v1-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
 
-desktop-test: mwc build/vinput build/xclient build/xdgc build/workspacec build/outputc
+desktop-test: mwc build/vinput build/xclient build/xdgc build/workspacec build/outputc \
+		build/layerc
 	tests/desktop.sh
 
 # What an RDP server such as wayrdp does: devices that go mid-press, fresh captures,
@@ -392,7 +393,7 @@ rdp-test: mwc build/vinput build/xdgc build/outputc build/capturec build/powerc 
 		build/pngtool
 	tests/rdp.sh
 
-tabs-test: mwc build/vinput build/pngtool build/xclient build/xdgc
+tabs-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/layerc
 	tests/tabs.sh
 
 session-test: mwc build/vinput build/pngtool build/xclient build/powerc build/outputc \

@@ -582,6 +582,8 @@ void view_close(struct view *view);
 void view_lower(struct view *view);
 void view_set_maximized(struct view *view, bool maximized);
 void view_set_fullscreen(struct view *view, bool fullscreen);
+/* As asked for by a client; focus: false leaves the keyboard where it is. */
+void view_set_fullscreen_asked(struct view *view, bool fullscreen, bool focus);
 void view_minimize(struct view *view);
 void view_restore(struct view *view);
 void view_begin_interactive(struct view *view, enum cursor_mode mode,
@@ -601,7 +603,7 @@ struct wlr_surface *view_surface(struct view *view);
 void view_cycle(struct server *server, bool backwards);
 /* After the xdg or X11 part has set the client. */
 void view_init_common(struct view *view);
-/* focus: false leaves the keyboard and the stacking as they are. */
+/* focus: false raises it, but leaves the keyboard and a hidden tab as they are. */
 void view_handle_map(struct view *view, bool focus);
 void view_handle_unmap(struct view *view);
 void view_handle_destroy(struct view *view);
@@ -615,6 +617,8 @@ void view_set_tiled(struct view *view, bool on, bool apply);
 void view_apply_tile(struct view *view);
 void view_focus_next(struct view *except);
 void view_focus_top(struct server *server);
+/* The same, but an on-demand layer surface keeps the keyboard, as for a window gone. */
+void view_focus_top_instead(struct server *server);
 struct view *view_focused(struct server *server);
 /* Without its dialogs. */
 void view_raise_one(struct view *view);

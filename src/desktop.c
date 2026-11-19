@@ -89,9 +89,11 @@ void desktop_view_mapped(struct view *view)
 }
 
 /* Whatever had the focus may have gone: the topmost window that is left gets it. */
-static void focus_after(struct server *server, bool lost)
+static void focus_after(struct server *server, bool lost, bool asked)
 {
-	if (lost)
+	if (lost && asked)
+		view_focus_top_instead(server); /* a client's doing: a launcher keeps the keys */
+	else if (lost)
 		view_focus_top(server);
 	icons_arrange(server);
 	/* An X11 window's strut only counts while it is shown. */
@@ -124,7 +126,7 @@ void desktop_switch(struct server *server, int n)
 		if (v->activated)
 			lost = false;
 	}
-	focus_after(server, lost);
+	focus_after(server, lost, false);
 }
 
 void view_set_desktop(struct view *view, int n)
@@ -149,7 +151,7 @@ void view_set_desktop(struct view *view, int n)
 		if (!now)
 			v->attention = false;
 	}
-	focus_after(server, lost);
+	focus_after(server, lost, false);
 }
 
 /* One of desktop_recheck()'s family; true if it went out of sight or into it. */
@@ -185,7 +187,7 @@ void desktop_recheck(struct view *view)
 			changed |= recheck_one(v, &lost);
 	}
 	if (changed)
-		focus_after(view->server, lost);
+		focus_after(view->server, lost, true);
 }
 
 /* Out of sight or into it, as each window's desktop now says; the arranging after it
@@ -207,7 +209,7 @@ static void recheck_all(struct server *server, bool always)
 			v->attention = false;
 	}
 	if (changed || always)
-		focus_after(server, lost);
+		focus_after(server, lost, false);
 }
 
 void desktop_config_changed(struct server *server)

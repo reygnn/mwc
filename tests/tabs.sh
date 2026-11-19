@@ -359,6 +359,24 @@ do_input key super+Tab
 check "and comes back with it" "[ \"\$(get dk hidden)\" = 0 ]"
 stop pa
 stop qa
+# Not while a launcher has the keyboard: the tab stays behind, the launcher keeps them.
+x11 tpa dialog=tdk dialog_after="$SMOKE_DIR/tdk" size=300x200
+x11 tqa size=400x300
+do_input key super+g
+shown "a tab in front of the other" tqa
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=top anchor=bottom size=200x100 \
+	keyboard=on-demand color=00ff00 >"$SMOKE_DIR/launcher.log" 2>&1 &
+PID_launcher=$!
+wait_for "a launcher has the keyboard" grep -q keyboard-enter "$SMOKE_DIR/launcher.log"
+touch "$SMOKE_DIR/tdk"
+check "the dialog of the hidden tab is mapped" "[ -n \"\$(get tdk x)\" ]"
+check "the tab stays behind, the launcher keeps the keyboard" \
+	"[ \"\$(get tpa tab_hidden)\" = 1 ] && [ \"\$(global focus layer)\" = 1 ]"
+grep -q keyboard-leave "$SMOKE_DIR/launcher.log" && fail "the launcher lost the keyboard"
+kill "$PID_launcher"
+wait "$PID_launcher" 2>/dev/null
+stop tpa
+stop tqa
 
 # ---- clicks only reach what is shown -------------------------------------------------------
 

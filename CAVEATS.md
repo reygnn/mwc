@@ -92,10 +92,10 @@ title bar and stay without a Motif frame.
 An X11 window that wants the keyboard as it appears (dmenu, rofi under X11, an X11
 program's own menus) gets it only while an X11 window or none has the focus, not from a
 Wayland window, a panel or the icon box. The same holds for an X11 program activating
-or restoring a window, showing one again, opening a dialog for a window that is there,
-going fullscreen or moving the focus between its own windows. This keeps X11 programs
-from taking the keyboard from Wayland ones, but an X11 launcher started from a Wayland
-terminal gets no keys.
+or restoring a window, showing one again, opening a dialog for a window that is there
+(unless that window is in the tab group with the keys), going fullscreen or moving the
+focus between its own windows. This keeps X11 programs from taking the keyboard from
+Wayland ones, but an X11 launcher started from a Wayland terminal gets no keys.
 
 
 ## Programs mwc starts

@@ -282,6 +282,29 @@ stop wnow
 stop asks
 urgent_is "it closes: nothing is urgent any more" ""
 
+# An X11 window that becomes the dialog of one on another desktop goes there. The window
+# that has the focus next doesn't take the keyboard from a launcher.
+x11 far size=300x200 id_file="$SMOKE_DIR/far.id"
+to_desktop far 2
+wayland other size=300x200
+x11 near size=300x200 transient_from="$SMOKE_DIR/near.parent"
+check "it has the focus" "[ \"\$(get near active)\" = 1 ]"
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=top anchor=bottom size=200x100 \
+	keyboard=on-demand color=00ff00 >"$SMOKE_DIR/launcher.log" 2>&1 &
+PID_launcher=$!
+wait_for "a launcher has the keyboard" grep -q keyboard-enter "$SMOKE_DIR/launcher.log"
+cp "$SMOKE_DIR/far.id" "$SMOKE_DIR/near.tmp" && mv "$SMOKE_DIR/near.tmp" "$SMOKE_DIR/near.parent"
+check "mwc has had the request" "[ \"\$(get near tlen)\" = 12 ]"
+on "it went to desktop 2" near 2 0
+check "the launcher keeps the keyboard" "[ \"\$(global focus layer)\" = 1 ]"
+grep -q keyboard-leave "$SMOKE_DIR/launcher.log" && fail "the launcher lost the keyboard"
+echo "ok: no keyboard-leave"
+kill "$PID_launcher"
+wait "$PID_launcher" 2>/dev/null
+stop near
+stop other
+stop far
+
 # A window withdrawn to the tray keeps no desktop for its dialogs: one opening while
 # the user is elsewhere opens there, in sight, not on the desktop the window was left
 # on. Nor does an owner that is never shown hold them on desktop 0.

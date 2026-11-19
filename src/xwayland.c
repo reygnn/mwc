@@ -214,7 +214,7 @@ static void xw_map(struct wl_listener *listener, void *data)
 	 * ones it had: wlroots forgets those with the property, which a withdrawn window
 	 * may delete, without telling. */
 	if (view->fullscreen != xs->fullscreen)
-		view_set_fullscreen(view, xs->fullscreen);
+		view_set_fullscreen_asked(view, xs->fullscreen, focus);
 	/* Vertically alone is what a half says of itself, see view_publish_snap(). */
 	bool half = view->snap == SNAP_LEFT || view->snap == SNAP_RIGHT;
 	bool maximized = xs->maximized_horz || (xs->maximized_vert && !half);
@@ -495,7 +495,8 @@ static void xw_request_fullscreen(struct wl_listener *listener, void *data)
 	struct view *view = wl_container_of(listener, view, request_fullscreen);
 	if (!view->mapped)
 		return; /* xw_map reads it */
-	view_set_fullscreen(view, view->xsurface->fullscreen);
+	view_set_fullscreen_asked(view, view->xsurface->fullscreen,
+		xwayland_may_take_focus(view->server));
 }
 
 /* wlroots lets a program move the focus between its own windows, which Java and Steam
@@ -507,22 +508,28 @@ static void xw_focus_in(struct wl_listener *listener, void *data)
 		return;
 	/* wlroots lets a program move the X focus between its own windows. One on
 	 * another desktop must not get it: back to where it is, and that one is marked.
-	 * Nor while a panel, the icon box or a Wayland window has the keys, see
-	 * xwayland_may_take_focus(). */
+	 * Nor while a panel has the keys, see xwayland_may_take_focus(). (A Wayland
+	 * window or the icon box with the keys took the X focus away, and wlroots lets
+	 * none through then.) */
 	struct server *server = view->server;
-	if (!view->off_desktop && xwayland_may_take_focus(server)) {
+	if (!view->off_desktop && !server->focused_layer) {
 		view_focus(view);
 		return;
 	}
 	struct view *focused = view_focused(server);
 	if (!focused || focused->type != VIEW_XWAYLAND) {
 		wlr_xwayland_surface_activate(view->xsurface, false);
-	} else if (server->x11_refocused == focused && !view->off_desktop) {
-		/* It was given the focus back and passed it on again, as a program does
-		 * that answers WM_TAKE_FOCUS with its other window. Another offer gets the
-		 * same answer: mwc follows, and the panel keeps the keys. */
-		view_focus_instead(view);
-		return;
+	} else if (server->x11_refocused == focused) {
+		/* It was given the focus back and passed it on again, as Java does to a
+		 * modal dialog. Setting it back again gets the same answer: mwc follows to
+		 * a window in sight, and the panel keeps the keys. One out of sight loses
+		 * the X focus instead. */
+		if (!view->off_desktop && view_focusable(view) && !view->minimized &&
+				!view->tab_hidden && !view->hidden_with_parent) {
+			view_focus_instead(view);
+			return;
+		}
+		wlr_xwayland_surface_activate(view->xsurface, false);
 	} else {
 		wlr_xwayland_surface_activate(focused->xsurface, true);
 		server->x11_refocused = focused;
