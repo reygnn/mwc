@@ -1,133 +1,5 @@
 TODO
 
-* Sloppy Focus als Alternative zu Click-to-Focus. Der Fokus folgt dem Zeiger
-  in ein Fenster und bleibt dort, wenn der Zeiger auf den Desktop, eine Lücke
-  im Tiling oder ein Panel geht. Einstellbar wie in mwm über
-  Mwm*keyboardFocusPolicy: explicit (Vorgabe, wie bisher) oder pointer, dazu
-  Mwm*focusAutoRaise (bei pointer standardmäßig aus, damit Fenster beim
-  Überfahren nicht nach vorn springen).
-  Zu klären: kein Fokuswechsel während Move/Resize, Drag and Drop, offenem
-  Menü oder Zeigergriff; Popups und Override-Redirect-Fenster von X11 nehmen
-  den Fokus nicht; nach Alt+Tab erst bei echter Zeigerbewegung wechseln, nicht
-  wenn ein Fenster unter einem stehenden Zeiger auftaucht oder verschwindet;
-  exklusive Tastatur von Layer-Shell-Flächen hat Vorrang; Fenster ohne
-  Eingabefokus (WM_HINTS) bleiben außen vor.
-  Abnahme: ein Test in tests/pointer.sh, der diese Fälle mit vinput abfährt,
-  und README unter Mouse und Configuration.
-
-* Programme als Icon starten, etwa Firefox aus dem Autostart (geparkt
-  2026-11-11). X11-Programme, die selbst iconic starten wollen (xterm
-  -iconic, WM_HINTS), kann mwc schon; Firefox hat dafür keine Option, und
-  unter Wayland gibt es kein Protokoll dafür. Idee: Mwm*NAME*startIconic: true,
-  wie allDesktops pro Programm; das Fenster kommt gleich beim Mappen als Icon,
-  ohne kurz sichtbar zu sein (in view_handle_map(), vor dem Einschalten des
-  Knotens). Dialoge sind ausgenommen.
-  Zu klären: gilt es nur für das erste Fenster, das ein Programm seit dem
-  Start von mwc öffnet (passt zum Autostart, ein späteres Strg+N öffnet
-  normal), oder für jedes Hauptfenster?
-  Abnahme: ein Test in tests/window.sh mit xdgc und xclient, README unter
-  Configuration.
-
-* Zeigerbild nach einer Aufnahme mit eingemaltem Zeiger. wlroots zeichnet den
-  Zeiger nach jeder Aufnahme, die ihn eingemalt haben will
-  (ext-image-copy-capture mit paint_cursors, wlr-screencopy mit
-  overlay_cursor, also auch grim -c), in Software, bis sich das Zeigerbild
-  ändert: eine Zeiger-Sitzung (wayvnc) bekommt dann kein Bild, normale
-  Aufnahmen den Zeiger verzögert eingebacken. Über einem Client-Fenster
-  dauert das, bis der Zeiger eine Fläche wechselt. Ausweg: in output_frame
-  merken, wann software_cursor_locks auf 0 fällt, und das Bild neu setzen
-  wie output_back_on() — dafür müsste request_cursor die Fläche und den
-  Hotspot des Clients merken (wlr_cursor_set_surface übergeht dieselbe Fläche
-  ein zweites Mal), oder den Zeigerfokus kurz lösen, damit der Client sein Bild
-  neu schickt. Nach Aus und An über output-power bleibt das Bild eines Clients
-  dagegen erhalten: headless geprüft (foot, Zeiger-Sitzung), wlroots baut es
-  beim Einschalten selbst neu; auf DRM ungeprüft.
-  Abnahme: session.sh fängt den Zeiger nach einer Aufnahme mit "cursors"
-  und bekommt ein Bild; ein Upstream-Bericht an wlroots.
-
-* Bildschirmaufnahme eines Monitors, der aus war. wlroots 0.19.2 legt die
-  Aufnahmequelle eines Monitors beim ersten Aufnahmewunsch an und nimmt Größe
-  und Formate aus einem Swapchain-Test. Ist der Monitor da aus, bleibt sie bei
-  0x0 ohne Formate und erneuert sich nur bei einem Commit mit neuem Modus oder
-  Renderformat; mwc schaltet ihn aber mit dem alten Modus wieder ein. Ein wayvnc,
-  der während DPMS-aus startet, bekommt so nie ein Bild, bis jemand den Modus
-  ändert. wlroots 0.19.3 und 0.20.2 beheben das (die Quelle hört dort auch auf
-  ENABLED; 0.19.3: 0f9a1f1).
-  Bestätigt von wayrdp im Code und im Versuch (2026-11-11): erste Aufnahme bei
-  ausgeschaltetem Monitor, dann ein: kein Bild; nach einem Moduswechsel wieder.
-  Ein erzwungener Moduswechsel beim Einschalten würde es in mwc umgehen, wird
-  aber bewusst nicht gebaut (Entscheidung 2026-11-11: keine Umgehungen für
-  Fehler, die wlroots schon behoben hat). Erledigt sich mit dem Umstieg auf
-  0.19.3 oder 0.20.2; bis dahin hilft ein Moduswechsel per Hand (outputc apply, wlr-randr).
-  wayrdp löst es nicht selbst aus (schaltet vor jeder Aufnahme ein), bleibt
-  aber ohne Bild, wenn ein anderes Programm (grim, wayvnc, capturec) zuerst
-  bei abgeschaltetem Monitor aufgenommen hat: Es bekommt dieselbe leere Quelle.
-  Abnahme nach dem Umstieg: session.sh schaltet mit powerc aus, startet
-  capturec, schaltet ein und bekommt ein Bild.
-
-* wlroots 0.19.3 (Review 2026-11-18). Erschienen, mit dem Fix, auf den mwc
-  wartet: 0f9a1f1 (Aufnahmequelle nach dem Einschalten, siehe oben), dazu
-  878aebf (virtueller Zeiger setzt die Achsenquelle bei jeder Achse; bis dahin
-  in CAVEATS unter Virtual input). 4279ee5 (wlr_buffer_finish in den
-  Allocatoren) betrifft mwc nur noch, wo wlroots udmabuf wählt, was in mwcs
-  üblichen Setups nicht vorkommt; den shm-Allocator ersetzt src/shmalloc.c.
-  Keine API-Änderung: ein kleiner Schritt, unabhängig vom Umstieg auf 0.20.
-  src/shmalloc.c bleibt (entschieden 2026-11-18): wlroots' shm-Allocator legt
-  seine Puffer auch in 0.19.3 und 0.20.2 mit shm_open in /dev/shm an, und ein
-  Puffer größer als der freie Platz in /dev/shm (Docker und Podman: 64 MiB)
-  brächte mwc mit SIGBUS zu Fall. main.c nimmt shmalloc.c ohne
-  Versionsabfrage: mwcs eigener Allocator, keine Umgehung.
-  Ubuntu-Paket libwlroots-0.19-dev mit 0.19.3 prüfen; die distrobox baut
-  wlroots sonst selbst. Nach dem Umstieg den Abschnitt Virtual input aus
-  CAVEATS streichen.
-  Abnahme: make check gegen 0.19.3, tests/fifo.sh und die Aufnahme nach dem
-  Einschalten (session.sh mit powerc und capturec) bestehen; ein Fall in
-  tests/pointer.sh, in dem vinput mit Achsenquelle finger auf beiden Achsen
-  scrollt (erst ab 0.19.3, auf 0.19.2 bricht mwc ab; vinput kann bisher nur
-  "wheel N", senkrecht mit Quelle wheel, und braucht dafür einen neuen
-  Befehl).
-  Unabhängig davon: ein Test mit einem Output größer als /dev/shm (headless,
-  im Container aus tests/Containerfile).
-
-* wlroots 0.20. Ubuntu-Paket libwlroots-0.20-dev prüfen. Den Fix für die
-  Aufnahmequelle (auf 0.19: 0f9a1f1) hat 0.20.2; 0.20.0 und 0.20.1 sind
-  ungeprüft. Ob der Fix für den virtuellen Zeiger (auf 0.19: 878aebf,
-  "wlr_virtual_pointer: Set axis source on all axis") in 0.20.2 ist, am Titel
-  prüfen: auf 0.20 hätte er einen anderen Hash. src/shmalloc.c bleibt auch
-  mit 0.20. Nicht behoben ist der Absturz in wlr-output-management
-  (head_send_state, 40640950 nur auf master):
-  Mwm*outputManagement bleibt nötig. src/fifo.c bleibt: wlroots hat auch in
-  0.20.2 kein wp_fifo_v1 (geprüft am Quellbaum von 0.20.2 und master).
-  Verdeckte FIFO-Fenster: 0.19 schickt einer Oberfläche, die ganz unter
-  undurchsichtigen Fenstern liegt, wl_surface.leave, und src/fifo.c gibt ihr
-  dann ein Update pro Sekunde. 0.20 schickt bei null Outputs kein leave mehr
-  (9c3bfbe, Absicht), sie bliebe beim Takt des Monitors. Vorher einen Fall in
-  tests/fifo.sh (fifoc cued unter einem undurchsichtigen Fenster, 2.5 bis 6 s),
-  dann das outputs_update-Ereignis des Scene-Buffers (size 0) in fifo.c nehmen.
-  Versteckte Fenster regelt fifo.c schon selbst über view_from_surface(); ihr
-  Fall in fifo.sh muss mit 0.20 weiter bestehen.
-  Ein eigener Branch, mit allen API-Änderungen von 0.19 auf 0.20.
-
-* X11-Geometrie (Review des Branches fix/review-2026-11-18-teil3), ein eigener
-  Branch:
-  - Beim Resize an der linken oder oberen Kante setzt view_set_geometry() x/y
-    und den Scene-Knoten sofort, die Breite kommt erst mit dem Commit: bis
-    dahin springt die Gegenkante. Während des Griffs nur das X-Fenster
-    konfigurieren und den Knoten beim Commit setzen, wie bei xdg; ein
-    Pixeltest der Gegenkante.
-  - Ein Reload beendet jeden Griff (views_layout_changed() -> grab_give_way()),
-    auch wenn sich am Layout nichts geändert hat, wlroots meldet die Änderung
-    immer. Dabei geht eine wartende Größe verloren, bei xdg und X11. Griffe
-    nur bei echter Änderung der Output-Boxen beenden; Test: Reload während
-    eines Resize, das Fenster folgt danach dem Zeiger.
-  - xwayland_configure(), xw_request_configure() und view_begin_interactive()
-    (grab_orig, grab_geobox) nehmen xsurface->width als zuletzt angeforderte
-    Größe. Das setzt jedes ConfigureNotify, auch ein
-    veraltetes oder eines, das ein anderer Client schickt (xclient
-    spoof_after): das nächste Verschieben macht das Fenster dann 1x1, Alt+F8
-    lässt es zusammenfallen. mwcs eigene zuletzt gesendete Größe führen und
-    überall dort nehmen; Test: Spoof, dann Alt+F8 und ein Pfeil.
-
 * X11-Fokus härten (zweites Review des Branches test/review-2026-11-18-teil4),
   ein eigener Branch. Aktivierung, Wiederherstellen aus dem Icon und FocusIn
   im eigenen Programm sind geschützt (x11_may_take_focus(), xw_focus_in()).
@@ -157,31 +29,26 @@ TODO
   Je ein Test unter einem on-demand-Launcher, der Iconbox und einem
   Wayland-Fenster.
 
-* FIFO über zwei Monitore (Review des Branches teil3): watch_output() nimmt den
-  ersten Output in current_outputs, also den zuletzt betretenen. Ein Spiel,
-  das mit einem Streifen auf einen 60-Hz-Monitor ragt, läuft dann mit 60 statt
-  144 Hz. Den Output mit der höchsten Rate oder den primary_output des
-  Scene-Buffers nehmen; Test mit zwei Outputs verschiedener Rate.
-
-* Wallpaper beim Reload nur neu laden, wenn es sich geändert hat (Review
-  2026-11-17). Jetzt dekodiert ein Reload das PNG einmal zur Prüfung und
-  einmal pro Output, auch wenn nur eine Farbe geändert wurde; bei einem
-  großen Foto auf zwei 4K-Monitoren steht die Session dabei spürbar.
-  Pfad, mtime und Größe merken und nur bei einer Änderung neu zeichnen; die
-  Prüf-Dekodierung in wallpaper_init() entfällt.
-  Abnahme: ein Test in tests/wallpaper.sh, der zählt, wie oft dekodiert wird.
-
-* allDesktops in einer Tab-Gruppe (zweites Review des Branches
-  fix/review-2026-11-18-low). Ob ein Fenster auf allen Desktops ist, gilt für
-  das Fenster und seine Dialoge, nicht für seine Gruppe: tabs_fit_together()
-  mischt ein allDesktops-Fenster mit einem gewöhnlichen, und eine späte app_id
-  macht nur eine Karte allgegenwärtig. Auf einem anderen Desktop zeigt die
-  Gruppe dann nichts, oder eine Karte, die außer Sicht bleibt, wenn man sie
-  wählt. Entweder gilt es für die ganze Gruppe (view_on_all_desktops() fragt
-  die Gruppe), oder solche Fenster gruppieren sich nicht, und eine späte
-  Änderung löst die Karte aus der Gruppe.
-  Abnahme: desktop.sh, zwei Karten, eine bekommt spät eine allDesktops-app_id;
-  auf Desktop 2 ist die Gruppe zu sehen und jede Karte zeigbar.
+* X11-Geometrie (Review des Branches fix/review-2026-11-18-teil3), ein eigener
+  Branch:
+  - Beim Resize an der linken oder oberen Kante setzt view_set_geometry() x/y
+    und den Scene-Knoten sofort, die Breite kommt erst mit dem Commit: bis
+    dahin springt die Gegenkante (auch Review 2026-11-17). Während des Griffs
+    nur das X-Fenster konfigurieren und den Knoten beim Commit setzen, wie bei
+    xdg (xw_commit() verankert schon über grab_geobox); ein Pixeltest der
+    Gegenkante in tests/move.sh mit langsamem Client.
+  - Ein Reload beendet jeden Griff (views_layout_changed() -> grab_give_way()),
+    auch wenn sich am Layout nichts geändert hat, wlroots meldet die Änderung
+    immer. Dabei geht eine wartende Größe verloren, bei xdg und X11. Griffe
+    nur bei echter Änderung der Output-Boxen beenden; Test: Reload während
+    eines Resize, das Fenster folgt danach dem Zeiger.
+  - xwayland_configure(), xw_request_configure() und view_begin_interactive()
+    (grab_orig, grab_geobox) nehmen xsurface->width als zuletzt angeforderte
+    Größe. Das setzt jedes ConfigureNotify, auch ein
+    veraltetes oder eines, das ein anderer Client schickt (xclient
+    spoof_after): das nächste Verschieben macht das Fenster dann 1x1, Alt+F8
+    lässt es zusammenfallen. mwcs eigene zuletzt gesendete Größe führen und
+    überall dort nehmen; Test: Spoof, dann Alt+F8 und ein Pfeil.
 
 * Matrixtest über Invarianten, eigener Branch (test/invariant-matrix). Die
   Tests prüfen Floating, Tabs, Tiling, Shading und Desktops je für sich; die
@@ -211,9 +78,138 @@ TODO
   Abnahme: Matrix in make test, make walk mit 1000 Schritten ohne Befund oder
   mit den Befunden als eigene Tests.
 
-* Opakes Resize von X11-Fenstern von links oder oben: die gegenüberliegende
-  Kante zittert (Review 2026-11-17). view_set_geometry() setzt die neue
-  Position sofort, das Fenster hat aber noch die alte Größe, bis Xwayland
-  committet. Wie bei xdg: Position erst mit dem Commit setzen
-  (xw_commit() verankert schon über grab_geobox).
-  Abnahme: ein Pixeltest in tests/move.sh mit langsamem Client.
+* allDesktops in einer Tab-Gruppe (zweites Review des Branches
+  fix/review-2026-11-18-low). Ob ein Fenster auf allen Desktops ist, gilt für
+  das Fenster und seine Dialoge, nicht für seine Gruppe: tabs_fit_together()
+  mischt ein allDesktops-Fenster mit einem gewöhnlichen, und eine späte app_id
+  macht nur eine Karte allgegenwärtig. Auf einem anderen Desktop zeigt die
+  Gruppe dann nichts, oder eine Karte, die außer Sicht bleibt, wenn man sie
+  wählt. Entweder gilt es für die ganze Gruppe (view_on_all_desktops() fragt
+  die Gruppe), oder solche Fenster gruppieren sich nicht, und eine späte
+  Änderung löst die Karte aus der Gruppe.
+  Abnahme: desktop.sh, zwei Karten, eine bekommt spät eine allDesktops-app_id;
+  auf Desktop 2 ist die Gruppe zu sehen und jede Karte zeigbar.
+
+* Zeigerbild nach einer Aufnahme mit eingemaltem Zeiger. wlroots zeichnet den
+  Zeiger nach jeder Aufnahme, die ihn eingemalt haben will
+  (ext-image-copy-capture mit paint_cursors, wlr-screencopy mit
+  overlay_cursor, also auch grim -c), in Software, bis sich das Zeigerbild
+  ändert: eine Zeiger-Sitzung (wayvnc) bekommt dann kein Bild, normale
+  Aufnahmen den Zeiger verzögert eingebacken. Über einem Client-Fenster
+  dauert das, bis der Zeiger eine Fläche wechselt. Ausweg: in output_frame
+  merken, wann software_cursor_locks auf 0 fällt, und das Bild neu setzen
+  wie output_back_on() — dafür müsste request_cursor die Fläche und den
+  Hotspot des Clients merken (wlr_cursor_set_surface übergeht dieselbe Fläche
+  ein zweites Mal), oder den Zeigerfokus kurz lösen, damit der Client sein Bild
+  neu schickt. Nach Aus und An über output-power bleibt das Bild eines Clients
+  dagegen erhalten: headless geprüft (foot, Zeiger-Sitzung), wlroots baut es
+  beim Einschalten selbst neu; auf DRM ungeprüft.
+  Abnahme: session.sh fängt den Zeiger nach einer Aufnahme mit "cursors"
+  und bekommt ein Bild; ein Upstream-Bericht an wlroots.
+
+* FIFO über zwei Monitore (Review des Branches teil3): watch_output() nimmt den
+  ersten Output in current_outputs, also den zuletzt betretenen. Ein Spiel,
+  das mit einem Streifen auf einen 60-Hz-Monitor ragt, läuft dann mit 60 statt
+  144 Hz. Den Output mit der höchsten Rate oder den primary_output des
+  Scene-Buffers nehmen; Test mit zwei Outputs verschiedener Rate.
+
+* Wallpaper beim Reload nur neu laden, wenn es sich geändert hat (Review
+  2026-11-17). Jetzt dekodiert ein Reload das PNG einmal zur Prüfung und
+  einmal pro Output, auch wenn nur eine Farbe geändert wurde; bei einem
+  großen Foto auf zwei 4K-Monitoren steht die Session dabei spürbar.
+  Pfad, mtime und Größe merken und nur bei einer Änderung neu zeichnen; die
+  Prüf-Dekodierung in wallpaper_init() entfällt.
+  Abnahme: ein Test in tests/wallpaper.sh, der zählt, wie oft dekodiert wird.
+
+* wlroots 0.19.3 (Review 2026-11-18). Wartet auf das Ubuntu-Paket: apt hat
+  libwlroots-0.19-dev 0.19.3 noch nicht (2026-11-19); ab und zu mit
+  apt policy libwlroots-0.19-dev nachsehen. Selbst bauen lohnt nicht: das
+  installierte mwc linkt gegen die libwlroots des Hosts.
+  Erschienen, mit dem Fix, auf den mwc wartet: 0f9a1f1 (Aufnahmequelle nach
+  dem Einschalten, siehe unten), dazu
+  878aebf (virtueller Zeiger setzt die Achsenquelle bei jeder Achse; bis dahin
+  in CAVEATS unter Virtual input). 4279ee5 (wlr_buffer_finish in den
+  Allocatoren) betrifft mwc nur noch, wo wlroots udmabuf wählt, was in mwcs
+  üblichen Setups nicht vorkommt; den shm-Allocator ersetzt src/shmalloc.c.
+  Keine API-Änderung: ein kleiner Schritt, unabhängig vom Umstieg auf 0.20.
+  src/shmalloc.c bleibt (entschieden 2026-11-18): wlroots' shm-Allocator legt
+  seine Puffer auch in 0.19.3 und 0.20.2 mit shm_open in /dev/shm an, und ein
+  Puffer größer als der freie Platz in /dev/shm (Docker und Podman: 64 MiB)
+  brächte mwc mit SIGBUS zu Fall. main.c nimmt shmalloc.c ohne
+  Versionsabfrage: mwcs eigener Allocator, keine Umgehung.
+  Nach dem Umstieg den Abschnitt Virtual input aus CAVEATS streichen.
+  Abnahme: make check gegen 0.19.3, tests/fifo.sh und die Aufnahme nach dem
+  Einschalten (session.sh mit powerc und capturec) bestehen; ein Fall in
+  tests/pointer.sh, in dem vinput mit Achsenquelle finger auf beiden Achsen
+  scrollt (erst ab 0.19.3, auf 0.19.2 bricht mwc ab; vinput kann bisher nur
+  "wheel N", senkrecht mit Quelle wheel, und braucht dafür einen neuen
+  Befehl).
+  Unabhängig davon: ein Test mit einem Output größer als /dev/shm (headless,
+  im Container aus tests/Containerfile).
+
+* Bildschirmaufnahme eines Monitors, der aus war. wlroots 0.19.2 legt die
+  Aufnahmequelle eines Monitors beim ersten Aufnahmewunsch an und nimmt Größe
+  und Formate aus einem Swapchain-Test. Ist der Monitor da aus, bleibt sie bei
+  0x0 ohne Formate und erneuert sich nur bei einem Commit mit neuem Modus oder
+  Renderformat; mwc schaltet ihn aber mit dem alten Modus wieder ein. Ein wayvnc,
+  der während DPMS-aus startet, bekommt so nie ein Bild, bis jemand den Modus
+  ändert. wlroots 0.19.3 und 0.20.2 beheben das (die Quelle hört dort auch auf
+  ENABLED; 0.19.3: 0f9a1f1).
+  Bestätigt von wayrdp im Code und im Versuch (2026-11-11): erste Aufnahme bei
+  ausgeschaltetem Monitor, dann ein: kein Bild; nach einem Moduswechsel wieder.
+  Ein erzwungener Moduswechsel beim Einschalten würde es in mwc umgehen, wird
+  aber bewusst nicht gebaut (Entscheidung 2026-11-11: keine Umgehungen für
+  Fehler, die wlroots schon behoben hat). Erledigt sich mit dem Umstieg auf
+  0.19.3 oder 0.20.2; bis dahin hilft ein Moduswechsel per Hand (outputc apply, wlr-randr).
+  wayrdp löst es nicht selbst aus (schaltet vor jeder Aufnahme ein), bleibt
+  aber ohne Bild, wenn ein anderes Programm (grim, wayvnc, capturec) zuerst
+  bei abgeschaltetem Monitor aufgenommen hat: Es bekommt dieselbe leere Quelle.
+  Abnahme nach dem Umstieg: session.sh schaltet mit powerc aus, startet
+  capturec, schaltet ein und bekommt ein Bild.
+
+* wlroots 0.20. Ubuntu-Paket libwlroots-0.20-dev prüfen. Den Fix für die
+  Aufnahmequelle (auf 0.19: 0f9a1f1) hat 0.20.2; 0.20.0 und 0.20.1 sind
+  ungeprüft. Ob der Fix für den virtuellen Zeiger (auf 0.19: 878aebf,
+  "wlr_virtual_pointer: Set axis source on all axis") in 0.20.2 ist, am Titel
+  prüfen: auf 0.20 hätte er einen anderen Hash. src/shmalloc.c bleibt auch
+  mit 0.20. Nicht behoben ist der Absturz in wlr-output-management
+  (head_send_state, 40640950 nur auf master):
+  Mwm*outputManagement bleibt nötig. src/fifo.c bleibt: wlroots hat auch in
+  0.20.2 kein wp_fifo_v1 (geprüft am Quellbaum von 0.20.2 und master).
+  Verdeckte FIFO-Fenster: 0.19 schickt einer Oberfläche, die ganz unter
+  undurchsichtigen Fenstern liegt, wl_surface.leave, und src/fifo.c gibt ihr
+  dann ein Update pro Sekunde. 0.20 schickt bei null Outputs kein leave mehr
+  (9c3bfbe, Absicht), sie bliebe beim Takt des Monitors. Vorher einen Fall in
+  tests/fifo.sh (fifoc cued unter einem undurchsichtigen Fenster, 2.5 bis 6 s),
+  dann das outputs_update-Ereignis des Scene-Buffers (size 0) in fifo.c nehmen.
+  Versteckte Fenster regelt fifo.c schon selbst über view_from_surface(); ihr
+  Fall in fifo.sh muss mit 0.20 weiter bestehen.
+  Ein eigener Branch, mit allen API-Änderungen von 0.19 auf 0.20.
+
+* Sloppy Focus als Alternative zu Click-to-Focus. Der Fokus folgt dem Zeiger
+  in ein Fenster und bleibt dort, wenn der Zeiger auf den Desktop, eine Lücke
+  im Tiling oder ein Panel geht. Einstellbar wie in mwm über
+  Mwm*keyboardFocusPolicy: explicit (Vorgabe, wie bisher) oder pointer, dazu
+  Mwm*focusAutoRaise (bei pointer standardmäßig aus, damit Fenster beim
+  Überfahren nicht nach vorn springen).
+  Zu klären: kein Fokuswechsel während Move/Resize, Drag and Drop, offenem
+  Menü oder Zeigergriff; Popups und Override-Redirect-Fenster von X11 nehmen
+  den Fokus nicht; nach Alt+Tab erst bei echter Zeigerbewegung wechseln, nicht
+  wenn ein Fenster unter einem stehenden Zeiger auftaucht oder verschwindet;
+  exklusive Tastatur von Layer-Shell-Flächen hat Vorrang; Fenster ohne
+  Eingabefokus (WM_HINTS) bleiben außen vor.
+  Abnahme: ein Test in tests/pointer.sh, der diese Fälle mit vinput abfährt,
+  und README unter Mouse und Configuration.
+
+* Programme als Icon starten, etwa Firefox aus dem Autostart (geparkt
+  2026-11-11). X11-Programme, die selbst iconic starten wollen (xterm
+  -iconic, WM_HINTS), kann mwc schon; Firefox hat dafür keine Option, und
+  unter Wayland gibt es kein Protokoll dafür. Idee: Mwm*NAME*startIconic: true,
+  wie allDesktops pro Programm; das Fenster kommt gleich beim Mappen als Icon,
+  ohne kurz sichtbar zu sein (in view_handle_map(), vor dem Einschalten des
+  Knotens). Dialoge sind ausgenommen.
+  Zu klären: gilt es nur für das erste Fenster, das ein Programm seit dem
+  Start von mwc öffnet (passt zum Autostart, ein späteres Strg+N öffnet
+  normal), oder für jedes Hauptfenster?
+  Abnahme: ein Test in tests/window.sh mit xdgc und xclient, README unter
+  Configuration.
