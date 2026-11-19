@@ -358,7 +358,8 @@ build/idlec: tests/idlec.c $(IDLEC_GEN)
 
 # A window that waits for the refresh with wp_fifo_v1, as SDL 3 does.
 FIFOC_GEN = build/fifo-v1-client.h build/fifo-v1-client-code.c \
-	build/xdg-shell-client.h build/xdg-shell-code.c
+	build/xdg-shell-client.h build/xdg-shell-code.c \
+	build/xdg-decoration-unstable-v1-client.h build/xdg-decoration-unstable-v1-code.c
 
 build/fifo-v1-client.h: $(WAYLAND_PROTOCOLS)/staging/fifo/fifo-v1.xml | build
 	$(WAYLAND_SCANNER) client-header $< $@
@@ -370,6 +371,7 @@ build/fifoc: tests/fifoc.c $(FIFOC_GEN)
 	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/fifoc.c \
 		build/fifo-v1-client-code.c build/xdg-shell-code.c \
+		build/xdg-decoration-unstable-v1-code.c \
 		$(shell $(PKG_CONFIG) --libs wayland-client)
 
 fifo-test: mwc build/fifoc build/powerc build/workspacec
@@ -413,7 +415,8 @@ outputs-test: mwc build/vinput build/pngtool build/xclient build/layerc build/ba
 	build/outputc
 	tests/outputs.sh
 
-tile-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/outputc
+tile-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/outputc \
+	build/fifoc
 	tests/tile.sh
 
 snap-test: mwc build/vinput build/pngtool build/xclient build/xdgc

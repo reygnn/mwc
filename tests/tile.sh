@@ -6,7 +6,7 @@ LOG=build/tile.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xclient build/xdgc build/outputc; do
+for tool in build/vinput build/pngtool build/xclient build/xdgc build/outputc build/fifoc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -437,6 +437,31 @@ stop a
 stop b
 finish
 unset MWC_TILING MWC_TILE_MAIN_WIDTH
+
+# A game rolled up in the stack is out of sight: about one update a second (wp_fifo_v1,
+# see fifo.sh). Its surface keeps its output in wlroots; mwc goes by the shading.
+echo 'Mwm*tiling: true' >"$RC"
+begin
+rm -f "$SMOKE_DIR/go"
+FIFOC_GO=$SMOKE_DIR/go WAYLAND_DISPLAY=wayland-0 timeout 20 build/fifoc cued 5 \
+	>"$SMOKE_DIR/cued.out" 2>&1 &
+cued=$!
+wait_for "a game is mapped" grep -q '^mapped' "$SMOKE_DIR/cued.out"
+wayland other size=300x200
+check "the game is in the stack" "[ \"\$(get fifoc tiled)\" = 1 ] && [ \"\$(get fifoc tile_main)\" = 0 ]"
+# Too narrow for title buttons at its own size: Alt+F9 does the same.
+do_input key alt+Tab
+check "the game has the focus" "[ \"\$(get fifoc active)\" = 1 ]"
+do_input key alt+F9
+check "rolled up" "[ \"\$(get fifoc shaded)\" = 1 ]"
+touch "$SMOKE_DIR/go"
+wait "$cued" || fail "fifoc cued: $(cat "$SMOKE_DIR/cued.out")"
+t=$(sed -n 's/^seconds=\([0-9.]*\).*/\1/p' "$SMOKE_DIR/cued.out")
+awk -v t="${t:-0}" 'BEGIN { exit !(t >= 2.5 && t <= 6) }' ||
+	fail "rolled up: ${t:-no result} s for five updates, expected 2.5 to 6"
+echo "ok: a game rolled up in the stack gets about one update a second ($t s)"
+stop other
+finish
 
 # Tiling covers the oldest monitor in the layout. One a wlr-output-management client
 # switched off, as a docking profile does, has no area: the windows go to the other

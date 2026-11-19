@@ -10,6 +10,8 @@
  *   fifoc unseen N    the same on the monitor as it is, for one switched off
  *   fifoc cued N      the same once the file $FIFOC_GO exists, after printing
  *                     "mapped": the test hides the window meanwhile
+ *   FIFOC_SUB=1       for those three: the updates go to a desynchronized
+ *                     subsurface, as a swapchain of its own may
  *   fifoc twice       a second wp_fifo_v1 for the same surface
  *   fifoc gone        set_barrier after the surface was destroyed
  *
@@ -36,11 +38,14 @@
 #include <unistd.h>
 #include <wayland-client.h>
 #include "fifo-v1-client.h"
+#include "xdg-decoration-unstable-v1-client.h"
 #include "xdg-shell-client.h"
 
 #define SIZE 64
 
 static struct wl_compositor *compositor;
+static struct wl_subcompositor *subcompositor;
+static struct zxdg_decoration_manager_v1 *deco_manager;
 static struct wl_shm *shm;
 static struct xdg_wm_base *wm_base;
 static struct wp_fifo_manager_v1 *fifo_manager;
@@ -98,6 +103,11 @@ static void global(void *data, struct wl_registry *registry, uint32_t name,
 {
 	if (!strcmp(interface, wl_compositor_interface.name))
 		compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
+	else if (!strcmp(interface, wl_subcompositor_interface.name))
+		subcompositor = wl_registry_bind(registry, name, &wl_subcompositor_interface, 1);
+	else if (!strcmp(interface, zxdg_decoration_manager_v1_interface.name))
+		deco_manager = wl_registry_bind(registry, name,
+			&zxdg_decoration_manager_v1_interface, 1);
 	else if (!strcmp(interface, wl_shm_interface.name))
 		shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
 	else if (!strcmp(interface, xdg_wm_base_interface.name)) {
@@ -182,6 +192,27 @@ static struct wl_buffer *make_buffer(void)
 static int off_screen_updates(struct wl_display *display, struct wl_surface *surface,
 	struct xdg_toplevel *toplevel, bool minimize, int n)
 {
+	if (getenv("FIFOC_SUB")) {
+		/* Shown first, so that it has entered the output, as a running game's has. */
+		struct wl_buffer *first = make_buffer();
+		if (!subcompositor || !first)
+			return 1;
+		struct wl_surface *child = wl_compositor_create_surface(compositor);
+		struct wl_subsurface *sub = wl_subcompositor_get_subsurface(subcompositor,
+			child, surface);
+		wl_subsurface_set_desync(sub);
+		wl_surface_attach(child, first, 0, 0);
+		wl_surface_damage_buffer(child, 0, 0, SIZE, SIZE);
+		callbacks_done = 0;
+		wl_callback_add_listener(wl_surface_frame(child), &frame_listener, NULL);
+		wl_surface_commit(child);
+		wl_surface_commit(surface);
+		while (callbacks_done < 1)
+			if (wl_display_dispatch(display) < 0)
+				return 1;
+		callbacks_done = 0;
+		surface = child;
+	}
 	if (minimize) {
 		/* Done by the time the compositor answers: it has nothing to tell the client. */
 		xdg_toplevel_set_minimized(toplevel);
@@ -291,6 +322,11 @@ int main(int argc, char *argv[])
 	xdg_toplevel_add_listener(toplevel, &toplevel_listener, NULL);
 	xdg_toplevel_set_title(toplevel, "fifoc");
 	xdg_toplevel_set_app_id(toplevel, "fifoc");
+	/* A frame, as a game in a window has: tiling's stack rolls up only by its title. */
+	if (deco_manager)
+		zxdg_toplevel_decoration_v1_set_mode(
+			zxdg_decoration_manager_v1_get_toplevel_decoration(deco_manager, toplevel),
+			ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 	if (!strcmp(mode, "hold"))
 		xdg_toplevel_set_fullscreen(toplevel, NULL);
 	wl_surface_commit(surface);

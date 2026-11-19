@@ -57,6 +57,10 @@ refreshes_between "destroying the wp_fifo_v1 lets the held updates go" 0 6 relea
 # first until the fourth is through, three to four seconds. Hidden by mwc it keeps its
 # output in wlroots, so mwc goes by its own state there.
 seconds_between "a minimized window gets about one update a second" 2.5 6 minimized 5
+# Its swapchain on a subsurface of its own: mwc goes by the window it belongs to.
+export FIFOC_SUB=1
+seconds_between "so does one with its updates on a subsurface" 2.5 6 minimized 5
+unset FIFOC_SUB
 # On another desktop: the window is mapped here, then the desktop goes.
 rm -f "$SMOKE_DIR/go"
 FIFOC_GO=$SMOKE_DIR/go WAYLAND_DISPLAY=wayland-0 timeout 15 build/fifoc cued 5 \
