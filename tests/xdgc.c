@@ -35,6 +35,8 @@
  *                  at buffer scale S
  *     menu_at=X,Y  a button press asks for the window menu at X,Y, any int32;
  *                  says "menu asked"
+ *     titles=N     once mapped, N different titles in one burst, the last "last";
+ *                  says "titles sent"
  *     shadow=N     a margin of N around the window geometry, as GTK draws its shadow
  *                  in: the surface is N larger on each side
  *     popup=X,Y,W,H  once the file popup_after=FILE exists, a WxH popup anchored at
@@ -78,7 +80,7 @@ static int32_t menu_x, menu_y;
 static struct wl_seat *the_seat;
 static struct xdg_toplevel *menu_toplevel;
 static struct wl_surface *cursor_surf;
-static int shadow;
+static int shadow, titles;
 static int popup_x, popup_y, popup_w, popup_h;
 static const char *popup_after;
 
@@ -513,6 +515,8 @@ int main(int argc, char *argv[])
 			menu_asked = sscanf(v, "%d,%d", &menu_x, &menu_y) == 2;
 		else if (!strcmp(argv[i], "shadow"))
 			shadow = atoi(v);
+		else if (!strcmp(argv[i], "titles"))
+			titles = atoi(v);
 		else if (!strcmp(argv[i], "popup"))
 			sscanf(v, "%d,%d,%d,%d", &popup_x, &popup_y, &popup_w, &popup_h);
 		else if (!strcmp(argv[i], "popup_after"))
@@ -588,6 +592,19 @@ int main(int argc, char *argv[])
 		draw(main_win);
 		wl_display_flush(display);
 		printf("grown\n");
+		fflush(stdout);
+	}
+	if (titles > 0) {
+		wl_display_roundtrip(display);
+		wl_display_roundtrip(display);
+		char t[32];
+		for (int i = 1; i < titles; i++) {
+			snprintf(t, sizeof(t), "title %d", i);
+			xdg_toplevel_set_title(main_win->toplevel, t);
+		}
+		xdg_toplevel_set_title(main_win->toplevel, "last");
+		wl_display_flush(display);
+		printf("titles sent\n");
 		fflush(stdout);
 	}
 	if (popup_w > 0 && popup_after) {

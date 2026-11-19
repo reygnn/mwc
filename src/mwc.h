@@ -200,6 +200,9 @@ struct view {
 	struct wlr_scene_rect *backdrop; /* black behind a fullscreen window (xdg-shell) */
 	int drawn_w, drawn_h;  /* at the last frame_render() */
 	char *drawn_title;     /* see view_update_title() */
+	struct throttle title_redraw;
+	int title_draws;       /* for the tests, */
+	size_t title_drawn_len; /* and the length of the title last drawn */
 	char *known_app_id;    /* see view_app_id_changed() */
 	struct wlr_scene_buffer *icon_node;
 

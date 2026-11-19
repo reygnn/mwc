@@ -1050,8 +1050,17 @@ void view_update_title(struct view *view)
 		return;
 	free(view->drawn_title);
 	view->drawn_title = title ? strdup(title) : NULL;
+	/* A program may send thousands in a burst: at most one drawn a refresh, the last. */
+	throttle_call(&view->title_redraw, view->server->event_loop);
+}
+
+static void title_redraw(void *data)
+{
+	struct view *view = data;
 	/* The tabs of a group are all drawn by the shown view. */
 	frame_render_title(view->tab_hidden ? view->group->shown : view);
+	view->title_draws++;
+	view->title_drawn_len = strlen(view_title(view));
 	/* The icon's label is the title only without an app_id. */
 	const char *app_id = view_app_id(view);
 	if (view->minimized && (!app_id || !*app_id))
@@ -1421,6 +1430,7 @@ struct view *view_at(struct server *server, double lx, double ly,
 void view_init_common(struct view *view)
 {
 	struct server *server = view->server;
+	view->title_redraw = (struct throttle){ .ms = 16, .run = title_redraw, .data = view };
 	view->tree = wlr_scene_tree_create(server->layer_views);
 	view->tree->node.data = view;
 	view->backdrop = wlr_scene_rect_create(view->tree, 0, 0,
@@ -1669,6 +1679,7 @@ void view_handle_destroy(struct view *view)
 	if (server->last_click_view == view)
 		server->last_click_view = NULL;
 	wl_list_remove(&view->link);
+	throttle_cancel(&view->title_redraw);
 	wlr_scene_node_destroy(&view->icon_node->node);
 	wlr_scene_node_destroy(&view->tree->node);
 	free(view->drawn_title);

@@ -1032,6 +1032,21 @@ wait_for "and _NET_WM_STATE says hidden again" \
 stop xhidden
 stop wfront3
 
+# ---- a burst of titles ---------------------------------------------------------------------
+
+# A program that sets its title as fast as it can (a progress counter, a terminal
+# forwarding title escapes): the title bar is drawn at most once a refresh, with the last
+# one, not once per title (Review 2026-11-18 #18).
+wayland titled size=600x200 titles=2000
+mapped titled
+saw "it sends 2000 titles" titled '^titles sent'
+check "the last one counts" "[ \"\$(get titled tlen)\" = 4 ]"
+check "and is drawn" "[ \"\$(get titled tdrawn)\" = 4 ]"
+n=$(get titled tdraws)
+[ "$n" -le 60 ] || fail "2000 titles drew the title bar $n times"
+echo "ok: 2000 titles drew the title bar $n times"
+stop titled
+
 # ---- the window menu a client asks for -------------------------------------------------
 
 # show_window_menu says where in surface coordinates, which include a shadow drawn
