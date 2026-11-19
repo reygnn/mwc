@@ -61,6 +61,12 @@ void wallpaper_place(struct output *output, bool force)
 	struct wlr_box box;
 	wlr_output_layout_get_box(output->server->output_layout,
 		output->wlr_output, &box);
+	/* Out of the layout (a client switched it off) its box is empty: at 0,0 at the
+	 * buffer's own size it would cover another output's. */
+	bool in_layout = !wlr_box_empty(&box);
+	wlr_scene_node_set_enabled(&output->wallpaper->node, in_layout);
+	if (!in_layout)
+		return;
 	wlr_scene_node_set_position(&output->wallpaper->node, box.x, box.y);
 	wlr_scene_buffer_set_dest_size(output->wallpaper, box.width, box.height);
 

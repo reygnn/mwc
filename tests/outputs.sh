@@ -354,4 +354,21 @@ wait "$PID_half" "$PID_full" 2>/dev/null
 rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 stop_vinput
 stop_mwc
+
+# An output a client switches off has no place in the layout, and no wallpaper to show:
+# the one rendered for it must not turn up at the layout's origin, over the other one.
+# Rendered for 2560x720 its red edge is 640 wide, against 320 on the first output's own.
+echo 'Mwm*outputManagement: true' >"$XDG_CONFIG_HOME/mwc/mwmrc"
+start_mwc 'exec sleep 300'
+refresh
+left=HEADLESS-1 right=HEADLESS-2
+[ "$(global output_HEADLESS-2 x)" = 0 ] && left=HEADLESS-2 right=HEADLESS-1
+WAYLAND_DISPLAY=wayland-0 build/outputc apply "$right" 2560x720 || fail "a wider $right"
+check "the second output is 2560 wide" "[ \"\$(global output_$right w)\" = 2560 ]"
+pixel_is "the first output has its own wallpaper" 400 360 0000ff
+WAYLAND_DISPLAY=wayland-0 build/outputc apply "$right" off || fail "$right off"
+check "the second output is out of the layout" "[ \"\$(global output_$right w)\" = 0 ]"
+pixel_is "and the first still has its own wallpaper" 400 360 0000ff
+rm "$XDG_CONFIG_HOME/mwc/mwmrc"
+stop_mwc
 echo "PASS: outputs"
