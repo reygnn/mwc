@@ -451,7 +451,7 @@ static bool cyclable(struct view *view)
 /* A window went away and v takes its place. An on-demand layer surface with the
  * keyboard keeps it, and its popup stays open: the user types there. v gets the keys
  * when the surface lets go (take_keyboard_back()). */
-static void focus_instead(struct view *v)
+void view_focus_instead(struct view *v)
 {
 	struct server *server = v->server;
 	if (!server->focused_layer || server->exclusive_layer || !view_focusable(v) ||
@@ -486,7 +486,7 @@ static void focus_next_after(struct server *server, struct view *except, bool go
 	}
 	if (next) {
 		if (gone)
-			focus_instead(next);
+			view_focus_instead(next);
 		else
 			view_focus(next);
 		return;

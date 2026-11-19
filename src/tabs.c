@@ -180,7 +180,10 @@ static void switch_to(struct tab_group *g, struct view *to, struct view *from, b
 	frame_render(to);
 	g->busy = false;
 
-	if (focus)
+	/* One that went away by itself takes no keys from where the user types. */
+	if (focus && gone)
+		view_focus_instead(to);
+	else if (focus)
 		view_focus(to);
 	else
 		views_update_layers(server);

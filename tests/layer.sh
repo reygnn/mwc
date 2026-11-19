@@ -273,6 +273,33 @@ has_event od keyboard-leave && fail "the surface lost the keyboard to the next w
 echo "ok: it keeps the keyboard"
 layerc_stop od
 check "when it goes, foot has the keyboard" "[ \"\$(get foot kbfocus)\" = 1 ]"
+# The same for the shown tab of a group: the next tab comes to the front and is the
+# active one, the keys stay with the surface (Review 2026-11-18 #16).
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=tab1 >/dev/null 2>&1 &
+PID_tab1=$!
+check "a first tab" "[ \"\$(get tab1 kbfocus)\" = 1 ]"
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=tab2 >/dev/null 2>&1 &
+PID_tab2=$!
+check "a second one" "[ \"\$(get tab2 kbfocus)\" = 1 ]"
+do_input key super+g
+check "the two are a group, the second shown" \
+	"[ \"\$(get tab2 tab)\" != -1 ] && [ \"\$(get tab1 tab_hidden)\" = 1 ]"
+layerc_start od2 layer=top anchor=right size=50x50 keyboard=on-demand color=444444
+wait_for "an on-demand surface takes the keyboard" has_event od2 keyboard-enter
+kill "$PID_tab2"
+wait "$PID_tab2" 2>/dev/null
+check "the shown tab is gone, the other one is shown and active" \
+	"[ -z \"\$(get tab2 x)\" ] && [ \"\$(get tab1 tab_hidden)\" = 0 ] && \
+	 [ \"\$(get tab1 active)\" = 1 ]"
+do_input key a
+wait_for "the keys still go to the surface" has_event od2 "key 30"
+has_event od2 keyboard-leave && fail "the surface lost the keyboard to the next tab"
+echo "ok: it keeps the keyboard"
+layerc_stop od2
+check "when it goes, the tab has the keyboard" "[ \"\$(get tab1 kbfocus)\" = 1 ]"
+kill "$PID_tab1"
+wait "$PID_tab1" 2>/dev/null
+check "the tab is gone" "[ -z \"\$(get tab1 x)\" ]"
 
 # Two that insist: when the newer one goes, the keyboard goes to the other, not a window.
 layerc_start lock1 layer=overlay anchor=left size=50x50 keyboard=exclusive color=555555

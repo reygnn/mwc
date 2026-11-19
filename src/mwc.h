@@ -558,6 +558,8 @@ void xdg_init(struct server *server);
 /* In base->data for as long as the tree lives: a surface can outlast its role. */
 void xdg_surface_set_tree(struct wlr_xdg_surface *base, struct wlr_scene_tree *tree);
 void view_focus(struct view *view);
+/* In place of a window that went away: an on-demand layer surface keeps the keys. */
+void view_focus_instead(struct view *v);
 void view_set_position(struct view *view, int x, int y);
 void view_set_geometry(struct view *view, int x, int y, int w, int h);
 /* Where the frame goes when the client resizes itself, keeping gravity_edges. */
