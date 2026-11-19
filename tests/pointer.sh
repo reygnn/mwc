@@ -355,12 +355,16 @@ check "refused for X11 too" "[ \"\$(global cursor mode)\" = 0 ]"
 stop xlate
 
 # Asked while a button is held on another window: it can't take over the user's drag.
-x11 xother moveresize=3 pos=100,100 size=300x200
+# It asks only once the button is down: a fixed delay could fire before, and the request
+# would then be refused for no button at all (Review 2026-11-18 #37).
+x11 xother moveresize_after="$SMOKE_DIR/mr" pos=100,100 size=300x200
 x11 xheld pos=600,100 size=300x200
 do_input move 750 200
 do_input down left
+touch "$SMOKE_DIR/mr"
 wait_for "an X client asks while the button is held on another" has xother '^asked'
-sleep 0.2 # an X11 client: no way to ask it
+# Retitled after the request (xclient's usage): by then mwc has handled it.
+check "mwc has had the request" "[ \"\$(get xother tlen)\" = 12 ]"
 check "refused: the drag stays the user's" \
 	"[ \"\$(global cursor mode)\" = 0 ] && [ \"\$(get xother x)\" = 100 ]"
 do_input up left

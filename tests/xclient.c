@@ -33,6 +33,7 @@
  *     clipboard=1         own CLIPBOARD and answer with 200 KB of text
  *     moveresize=2        map it, then ask for _NET_WM_MOVERESIZE with no button down
  *     moveresize=3        the same 2 s after mapping, time to hold a button elsewhere
+ *     moveresize_after=FILE  the same once FILE exists; retitled after it as below
  *     move_press=1        a press asks for _NET_WM_MOVERESIZE, as toolkits do
  *     report=1            print _NET_FRAME_EXTENTS as it changes, and whether a Motif
  *                         window manager can be found, as XmIsMotifWMRunning looks
@@ -133,7 +134,7 @@ struct options {
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
 	const char *dialog_after, *withdraw_after, *urgent_after, *spoof_after;
 	const char *normalize_after, *activate_after, *focus_main_after;
-	const char *class_later, *class_after;
+	const char *class_later, *class_after, *moveresize_after;
 	bool nomap;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	int decor_later, decor_ms;
@@ -565,6 +566,8 @@ int main(int argc, char *argv[])
 			o.class_later = v;
 		else if (!strcmp(k, "class_after"))
 			o.class_after = v;
+		else if (!strcmp(k, "moveresize_after"))
+			o.moveresize_after = v;
 
 		else if (!strcmp(k, "ask_before"))
 			o.ask_before = v;
@@ -735,10 +738,15 @@ int main(int argc, char *argv[])
 		printf("activate asked\n");
 		fflush(stdout);
 	}
-	if (o.moveresize == 2 || o.moveresize == 3) {
+	if (o.moveresize == 2 || o.moveresize == 3 || o.moveresize_after) {
 		XSync(dpy, False);
-		usleep(o.moveresize == 3 ? 2000000 : 500000);
+		if (o.moveresize_after)
+			wait_for_file(o.moveresize_after);
+		else
+			usleep(o.moveresize == 3 ? 2000000 : 500000);
 		ask_moveresize(main_win);
+		if (o.moveresize_after)
+			mark_request(main_win);
 		printf("asked\n");
 	}
 	if (o.override && !strcmp(o.override, "mapped")) {
