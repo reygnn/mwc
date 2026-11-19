@@ -93,6 +93,29 @@ static void layout_menu(struct menu *m)
 	cairo_surface_destroy(tmp);
 }
 
+/* The raised shadow of the armed item, over the menu: arming another item moves it
+ * rather than drawing the menu, and its text, again. */
+static void render_highlight(struct menu *m)
+{
+	struct cairo_buffer *buf = cairo_buffer_create(m->width - 2 * theme.bevel,
+		theme.menu_item_height);
+	if (!buf)
+		return;
+	draw_bevel(buf->cr, 0, 0, m->width - 2 * theme.bevel, theme.menu_item_height, 2,
+		&theme.menu, false);
+	wlr_scene_buffer_set_buffer(m->highlight, &buf->base);
+	cairo_buffer_drop(buf);
+}
+
+static void place_highlight(struct menu *m)
+{
+	bool on = m->armed >= 0 && m->armed < m->n_items;
+	if (on)
+		wlr_scene_node_set_position(&m->highlight->node, theme.bevel,
+			m->item_y[m->armed]);
+	wlr_scene_node_set_enabled(&m->highlight->node, on);
+}
+
 static void render_menu(struct server *server)
 {
 	struct menu *m = &server->menu;
@@ -101,6 +124,7 @@ static void render_menu(struct server *server)
 	if (!buf)
 		return;
 	cairo_t *cr = buf->cr;
+	m->renders++;
 
 	set_source(cr, s->bg);
 	cairo_paint(cr);
@@ -129,10 +153,6 @@ static void render_menu(struct server *server)
 				m->width - 2 * theme.bevel, s);
 			continue;
 		}
-		if (i == m->armed)
-			draw_bevel(cr, theme.bevel, y,
-				m->width - 2 * theme.bevel, theme.menu_item_height, 2, s, false);
-
 		struct mwc_color fg = it->sensitive ? s->fg : dim;
 		cairo_save(cr);
 		cairo_set_antialias(cr, CAIRO_ANTIALIAS_DEFAULT);
@@ -154,8 +174,9 @@ static void render_menu(struct server *server)
 		cairo_restore(cr);
 	}
 
-	wlr_scene_buffer_set_buffer(m->node, &buf->base);
+	wlr_scene_buffer_set_buffer(m->body, &buf->base);
 	cairo_buffer_drop(buf);
+	render_highlight(m);
 }
 
 static void add(struct menu *m, const char *label, char mnemonic,
@@ -215,11 +236,15 @@ static void open_at(struct server *server, int x, int y)
 	m->y = y;
 	m->armed = -1;
 	m->open = true;
-	if (!m->node)
-		m->node = wlr_scene_buffer_create(server->layer_menu, NULL);
-	wlr_scene_node_set_position(&m->node->node, x, y);
-	wlr_scene_node_set_enabled(&m->node->node, true);
+	if (!m->tree) {
+		m->tree = wlr_scene_tree_create(server->layer_menu);
+		m->body = wlr_scene_buffer_create(m->tree, NULL);
+		m->highlight = wlr_scene_buffer_create(m->tree, NULL);
+	}
+	wlr_scene_node_set_position(&m->tree->node, x, y);
+	wlr_scene_node_set_enabled(&m->tree->node, true);
 	render_menu(server);
+	place_highlight(m);
 
 	server->cursor_mode = CURSOR_MENU;
 	cursor_set_name(server, "default");
@@ -357,7 +382,7 @@ static void open_confirm(struct server *server, const char *title,
 	add(m, "Cancel", 'C', NULL, ACT_NONE, true);
 	open_at(server, x, y);
 	m->armed = 1;
-	render_menu(server);
+	place_highlight(m);
 }
 
 void menu_close(struct server *server)
@@ -367,7 +392,7 @@ void menu_close(struct server *server)
 		return;
 	m->open = false;
 	m->target = NULL;
-	wlr_scene_node_set_enabled(&m->node->node, false);
+	wlr_scene_node_set_enabled(&m->tree->node, false);
 	if (server->cursor_mode == CURSOR_MENU) {
 		server->cursor_mode = CURSOR_PASSTHROUGH;
 		input_pointer_changed(server);
@@ -392,7 +417,7 @@ static void arm(struct server *server, int idx)
 	if (server->menu.armed == idx)
 		return;
 	server->menu.armed = idx;
-	render_menu(server);
+	place_highlight(&server->menu);
 }
 
 static void activate(struct server *server, int idx, uint32_t time_msec)

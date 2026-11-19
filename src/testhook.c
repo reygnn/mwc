@@ -126,9 +126,11 @@ static int dump_state(int signal, void *data)
 		}
 	}
 	sensitive[n] = '\0';
-	fprintf(f, "menu open=%d x=%d y=%d items=%d title=%s sensitive=%s\n",
-		server->menu.open, server->menu.x, server->menu.y, server->menu.n_items,
-		server->menu.open && server->menu.title ? "yes" : "no", sensitive);
+	const struct menu *m = &server->menu;
+	fprintf(f, "menu open=%d x=%d y=%d items=%d title=%s sensitive=%s armed=%d ay=%d "
+		"renders=%d\n", m->open, m->x, m->y, m->n_items,
+		m->open && m->title ? "yes" : "no", sensitive, m->armed,
+		m->open && m->armed >= 0 ? m->y + m->item_y[m->armed] : -1, m->renders);
 	struct output *o = output_at(server, 0, 0);
 	if (o)
 		fprintf(f, "output ux=%d uy=%d uw=%d uh=%d on=%d\n", o->usable.x,

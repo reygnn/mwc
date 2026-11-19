@@ -317,8 +317,27 @@ done >"$RC"
 start_mwc "exec sleep 120"
 start_vinput
 log_has "more than can be used is reported" "only the first 20"
+# Arming an item moves its raised shadow there; the menu itself, with its text, is drawn
+# once (Review 2026-11-18 #21). Left of the label, the top of an armed row is the shadow,
+# its middle the menu's background.
 root_menu_open
-for i in $(seq 1 20); do do_input key Down; done
+r=$(global menu renders)
+mx=$(($(global menu x) + 7))
+do_input key Down
+check "the first item is armed" "[ \"\$(global menu armed)\" = 0 ]"
+y1=$(global menu ay)
+WAYLAND_DISPLAY=wayland-0 grim "$SMOKE_DIR/shot.png"
+bg=$(build/pngtool pixel "$SMOKE_DIR/shot.png" $mx $((y1 + 12)))
+pixel_isnt "the first item has a shadow" $mx $y1 "$bg"
+top=$(build/pngtool pixel "$SMOKE_DIR/shot.png" $mx $y1)
+for i in $(seq 2 20); do do_input key Down; done
+check "the twentieth is armed" "[ \"\$(global menu armed)\" = 19 ]"
+y20=$(global menu ay)
+pixel_is "the twentieth has it" $mx $y20 "$top"
+pixel_is "the first has it no more" $mx $y1 "$bg"
+[ "$(global menu renders)" = "$r" ] ||
+	fail "arming 20 items drew the menu $(($(global menu renders) - r)) times more"
+echo "ok: arming 20 items drew the menu no more"
 do_input key Return
 wait_for "the twentieth is there" ran 20
 root_menu_open

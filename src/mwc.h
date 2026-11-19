@@ -390,7 +390,10 @@ struct menu {
 	int n_items;
 	int armed;              /* -1: none */
 	struct view *target;    /* window menu */
-	struct wlr_scene_buffer *node;
+	struct wlr_scene_tree *tree;
+	struct wlr_scene_buffer *body; /* drawn once a menu */
+	struct wlr_scene_buffer *highlight; /* moved to the armed item */
+	int renders;            /* for the tests */
 	int x, y, width, height;
 	int item_y[MENU_MAX_ITEMS], item_h[MENU_MAX_ITEMS];
 	uint32_t opened_msec;
