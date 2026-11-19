@@ -128,6 +128,35 @@ TODO
     lässt es zusammenfallen. mwcs eigene zuletzt gesendete Größe führen und
     überall dort nehmen; Test: Spoof, dann Alt+F8 und ein Pfeil.
 
+* X11-Fokus härten (zweites Review des Branches test/review-2026-11-18-teil4),
+  ein eigener Branch. Aktivierung, Wiederherstellen aus dem Icon und FocusIn
+  im eigenen Programm sind geschützt (x11_may_take_focus(), xw_focus_in()).
+  Ein X11-Programm kommt aber noch so an die Tastatur eines Launchers, der
+  Iconbox oder eines Wayland-Fensters:
+  - Ein Fenster, das als Icon startet (WM_HINTS initial_state): xw_map()
+    fokussiert über view_handle_map() und minimiert erst danach; der
+    Launcher bekommt die Tasten nicht zurück. Den Anfangszustand vor dem
+    Fokussieren lesen.
+  - _NET_WM_STATE_FULLSCREEN: view_fullscreen_at() ruft view_focus().
+  - Unmap und erneutes Map eines bekannten Fensters, ein neuer Dialog:
+    view_handle_map() fokussiert ohne Prüfung. Für been_mapped höchstens
+    anheben oder markieren.
+  - Unmap eines Icons zeigt seine versteckten Dialoge und fokussiert einen,
+    auch wenn die Iconbox oder ein Launcher die Tasten hat.
+  - view_handle_unmap() setzt activated ohne wlr_xwayland_surface_activate():
+    wlroots behält den X-Fokus auf dem zurückgezogenen Fenster, und das
+    Programm darf per XSetInputFocus sein anderes Fenster fokussieren, auch
+    unter einem Wayland-Fenster. xw_focus_in() dann wie x11_may_take_focus().
+  - Eine abgelehnte Aktivierung eines Fensters auf einem anderen Desktop
+    markiert ihn nicht dringend (README verspricht es), FocusIn schon.
+  - Hin und Her mit einem Programm, das auf WM_TAKE_FOCUS sein anderes
+    Fenster fokussiert (Wine, Java), solange ein Launcher die Tasten hat:
+    ungeprüft, mit xclient input=0 nachstellen.
+  - Wiederherstellen durch erneutes Mappen (ICCCM 4.1.4) tut nichts: in
+    CAVEATS oder umsetzen.
+  Je ein Test unter einem on-demand-Launcher, der Iconbox und einem
+  Wayland-Fenster.
+
 * FIFO über zwei Monitore (Review des Branches teil3): watch_output() nimmt den
   ersten Output in current_outputs, also den zuletzt betretenen. Ein Spiel,
   das mit einem Streifen auf einen 60-Hz-Monitor ragt, läuft dann mit 60 statt

@@ -202,7 +202,7 @@ x11 maxed size=300x200 state=maximized normalize=1
 check "maximized" "[ \"\$(get maxed max)\" = 1 ]"
 switch_to 2
 wait_for "it says it is a normal window" said maxed normalized
-sleep 0.3
+check "mwc has had it" "[ \"\$(get maxed tlen)\" = 12 ]"
 switch_to 1
 check "still maximized" "[ \"\$(get maxed max)\" = 1 ] && [ \"\$(get maxed visible)\" = 1 ]"
 stop maxed

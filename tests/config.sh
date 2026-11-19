@@ -154,7 +154,7 @@ Mwm*background:         #00aa00
 Mwm*rootBackground:     #445566
 Mwm*fontList:           Sans Bold 30
 EOF
-kill -HUP "$pid"
+reload_mwc
 check "SIGHUP: the title bar grows with the font" "[ \"\$(global theme title)\" -gt 30 ]"
 check "SIGHUP: a maximized window still fits the screen" \
 	"[ \$((\$(get foot h) + 2 * B + \$(global theme title))) = 720 ] && [ \"\$(get foot max)\" = 1 ]"
@@ -178,7 +178,7 @@ pixel_is "Reload: wallpaper from the file" 1270 700 ff0000
 check "the window is still there" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get XTerm x)\" ]"
 
 rm "$RC"
-kill -HUP "$pid"
+reload_mwc
 pixel_is "without the file: back to the defaults" 1270 700 5b7792
 check "the title bar is back to normal" "[ \"\$(global theme title)\" = $T ]"
 log_has "a reload is logged" "reloading the configuration"
@@ -369,12 +369,12 @@ refresh
 pixel_near "the icon has its colour" $(($(get foot icon_x) + 3)) $(($(get foot icon_y) + 30)) aa0000
 sed -i 's/Mwm\*foot\*background:.*/Mwm*foot*background: #0000aa/' "$RC"
 echo "Mwm*wallpaper: $SMOKE_DIR/same.png" >>"$RC"
-kill -HUP "$pid"
+reload_mwc
 pixel_near "a reload paints the icon anew" $(($(get foot icon_x) + 3)) $(($(get foot icon_y) + 30)) 0000aa
 pixel_is "the wallpaper comes" 1270 700 ff0000
 # Same name, same size, other picture: only rendering it again can show that.
 build/pngtool stripes "$SMOKE_DIR/same.png" 1280 720 00ff00 00ff00
-kill -HUP "$pid"
+reload_mwc
 pixel_is "a reload reads the wallpaper again" 1270 700 00ff00
 
 # ---- iconPlacement ------------------------------------------------------------
@@ -388,18 +388,18 @@ icons_at() {
 }
 icons_at "by default along the bottom from the left" 8,640 88,640
 echo "Mwm*iconPlacement: top right" >>"$RC"
-kill -HUP "$pid"
+reload_mwc
 icons_at "top right: down the right edge" 1200,8 1200,88
 echo "Mwm*iconPlacement: right top tight" >>"$RC"
-kill -HUP "$pid"
+reload_mwc
 icons_at "right top tight: along the top from the right, no gap" 1200,8 1128,8
 # In the middle of an edge, as one block: two icons of 72 with 8 between are 152
 # high, so on 720 they start at 284.
 echo "Mwm*iconPlacement: center right" >>"$RC"
-kill -HUP "$pid"
+reload_mwc
 icons_at "center right: both together in the middle of the right edge" 1200,284 1200,364
 echo "Mwm*iconPlacement: right center" >>"$RC"
-kill -HUP "$pid"
+reload_mwc
 icons_at "right center is the same" 1200,284 1200,364
 # One goes: the other closes up to the middle. It comes back: both as before.
 do_input move $(($(get foot icon_x) + 30)) $(($(get foot icon_y) + 30))
@@ -412,17 +412,17 @@ check "foot is an icon again" "[ \"\$(get foot min)\" = 1 ]"
 check "first again, as it became an icon first" \
 	"[ \"\$(get foot icon_y)\" = 284 ] && [ \"\$(get XTerm icon_y)\" = 364 ]"
 echo "Mwm*iconPlacement: center bottom tight" >>"$RC"
-kill -HUP "$pid"
+reload_mwc
 icons_at "center bottom tight: along the bottom in the middle, no gap" 568,640 640,640
 echo "Mwm*iconPlacement: center center" >>"$RC"
-kill -HUP "$pid"
+reload_mwc
 wait_for "center twice is reported" grep -q 'not "center center"' "$LOG"
 echo "Mwm*iconPlacement: left right" >>"$RC"
-kill -HUP "$pid"
+reload_mwc
 wait_for "a wrong iconPlacement is reported" grep -q 'iconPlacement: expected a placement' "$LOG"
 icons_at "and the default is used" 8,640 88,640
 echo "Mwm*iconPlacement: top right" >>"$RC"
-kill -HUP "$pid"
+reload_mwc
 icons_at "top right again" 1200,8 1200,88
 do_input key super+t
 do_input move $(($(get XTerm icon_x) + 30)) $(($(get XTerm icon_y) + 30))

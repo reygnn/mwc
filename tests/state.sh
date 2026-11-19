@@ -325,8 +325,8 @@ stop semover
 x11 normal pos=100,100 size=300x200 normalize=1
 do_input key alt+F10
 check "maximized" "[ \"\$(get normal max)\" = 1 ]"
-wait_for "the client says NormalState" grep -q '^normalized' "$SMOKE_DIR/normal.log"
-sleep 0.2
+# Retitled after the request (xclient's usage): by then mwc has handled it.
+check "mwc has had the NormalState" "[ \"\$(get normal tlen)\" = 12 ]"
 check "that doesn't un-maximize it" "[ \"\$(get normal max)\" = 1 ]"
 do_input key alt+F10
 stop normal

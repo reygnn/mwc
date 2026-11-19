@@ -171,8 +171,7 @@ check "the window is gone" "[ -z \"\$(get win x)\" ]"
 RC=$XDG_CONFIG_HOME/mwc/mwmrc
 mkdir -p "$(dirname "$RC")"
 echo 'Mwm*corner*geometry: -0-0' >"$RC"
-kill -HUP "$pid"
-settle
+reload_mwc
 for edge in 2560 1280; do
 	do_input move $((edge - 640)) 300
 	DISPLAY=$X_DISPLAY build/xclient class=corner size=300x200 >/dev/null 2>&1 &
@@ -186,8 +185,7 @@ for edge in 2560 1280; do
 	check "the window is gone" "[ -z \"\$(get corner x)\" ]"
 done
 rm "$RC"
-kill -HUP "$pid"
-settle
+reload_mwc
 
 # A panel on the inner edge of the right output: a strut counts from the edge of the whole
 # screen, so it reaches over all of the left output, where it means nothing.

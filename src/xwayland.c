@@ -476,9 +476,10 @@ static void xw_focus_in(struct wl_listener *listener, void *data)
 		return;
 	/* wlroots lets a program move the X focus between its own windows. One on
 	 * another desktop must not get it: back to where it is, and that one is marked.
-	 * Nor while a panel or the icon box has the keys, see x11_may_take_focus(). */
+	 * Nor while a panel has the keys, see x11_may_take_focus(). (With the icon box
+	 * focused wlroots lets none through: iconbox_focus() takes its X focus away.) */
 	struct server *server = view->server;
-	if (view->off_desktop || server->focused_layer || iconbox_has_focus()) {
+	if (view->off_desktop || server->focused_layer) {
 		struct view *focused = view_focused(server);
 		if (focused && focused->type == VIEW_XWAYLAND)
 			wlr_xwayland_surface_activate(focused->xsurface, true);

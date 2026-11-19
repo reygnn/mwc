@@ -893,24 +893,24 @@ stop clear
 saw() { wait_for "$1" grep -q "$3" "$SMOKE_DIR/$2.events"; }
 # A program asks for its window to be activated (_NET_ACTIVE_WINDOW): not from a
 # Wayland window that has the focus.
-x11 asker size=300x200 activate_ms=2500
+x11 asker size=300x200 activate_after="$SMOKE_DIR/ask1"
 mapped asker
 wayland wfront size=300x200
 mapped wfront
 check "the Wayland window has the focus" "[ \"\$(get wfront kbfocus)\" = 1 ]"
-saw "the X11 program asks to be activated" asker '^activate asked'
+touch "$SMOKE_DIR/ask1"
 # Retitled after the request: by then mwc has handled it (xclient's usage).
 check "mwc has had the request" "[ \"\$(get asker tlen)\" = 12 ]"
 check "the Wayland window keeps it" \
 	"[ \"\$(get wfront kbfocus)\" = 1 ] && [ \"\$(get asker active)\" = 0 ]"
 stop asker
 # From another X11 window it may: that is how X taskbars and emacsclient work.
-x11 asker2 size=300x200 activate_ms=2500
+x11 asker2 size=300x200 activate_after="$SMOKE_DIR/ask2"
 mapped asker2
 x11 xfront size=300x200
 mapped xfront
 check "an X11 window has the focus" "[ \"\$(get xfront active)\" = 1 ]"
-saw "the other X11 program asks" asker2 '^activate asked'
+touch "$SMOKE_DIR/ask2"
 check "it gets the focus" "[ \"\$(get asker2 active)\" = 1 ]"
 stop asker2
 stop xfront
@@ -981,8 +981,14 @@ check "none of them gets the keyboard" \
 grep -q keyboard-leave "$SMOKE_DIR/launcher.events" &&
 	fail "the launcher lost the keyboard to an X11 program"
 echo "ok: the launcher keeps the keyboard"
+# The X focus the program took goes back to its dialog, which has it when the launcher goes.
+wait_for "the X focus is back on the dialog" \
+	eval "grep '^focus-in' \"\$SMOKE_DIR/xbelow.events\" | tail -1 | grep -qx 'focus-in dialog'"
+check "mwc still has the dialog as the window with the focus" \
+	"[ \"\$(get xbelowdlg active)\" = 1 ] && [ \"\$(get xbelow active)\" = 0 ]"
 kill "$PID_launcher"
 wait "$PID_launcher" 2>/dev/null
+check "the launcher gone, the dialog has the keyboard" "[ \"\$(get xbelowdlg kbfocus)\" = 1 ]"
 stop xicon3
 stop xasks
 stop xbelow

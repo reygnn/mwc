@@ -306,7 +306,6 @@ static void set_override_redirect(Window win, bool on)
 	XSync(dpy, False);
 }
 
-/* What a client in a toolkit does for a window-manager-driven move. */
 /* After a request: a title the window manager reads after it, see the usage. */
 static void mark_request(Window win)
 {
@@ -321,6 +320,7 @@ static void wait_for_file(const char *path)
 		usleep(50000);
 }
 
+/* What a client in a toolkit does for a window-manager-driven move. */
 static void ask_moveresize(Window win)
 {
 	XEvent e = { 0 };
