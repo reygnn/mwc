@@ -1886,6 +1886,8 @@ static void xdg_set_app_id(struct wl_listener *listener, void *data)
 		return; /* the map picks it up; or the same again */
 	config_view_shades(view);
 	config_view_tiling(view);
+	view->all_desktops = config_view_all_desktops(view);
+	desktop_recheck(view);
 	view_theme_changed(view);
 	dock_view_changed(view);
 	tile_arrange(view->server);

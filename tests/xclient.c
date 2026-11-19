@@ -59,6 +59,8 @@
  *                         (rolled up); says "sent N" each time
  *     focus_main=1        once mapped, give the focus from the dialog to the main window
  *     focus_main_after=FILE  the same once FILE exists
+ *     class_later=NAME    once the file class_after=FILE exists, WM_CLASS becomes NAME;
+ *                         says "class set"
  *     motif_later=FUNCS   once mapped, _MOTIF_WM_HINTS with only the functions set
  *     popup=X,Y           once mapped, an override-redirect window of 120x100 at X,Y,
  *                         as a menu opened from the keyboard; says "popup shown",
@@ -130,6 +132,7 @@ struct options {
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
 	const char *dialog_after, *withdraw_after, *urgent_after, *spoof_after;
 	const char *normalize_after, *activate_after, *focus_main_after;
+	const char *class_later, *class_after;
 	bool nomap;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	int decor_later, decor_ms;
@@ -555,6 +558,10 @@ int main(int argc, char *argv[])
 			o.activate_after = v;
 		else if (!strcmp(k, "focus_main_after"))
 			o.focus_main_after = v;
+		else if (!strcmp(k, "class_later"))
+			o.class_later = v;
+		else if (!strcmp(k, "class_after"))
+			o.class_after = v;
 
 		else if (!strcmp(k, "ask_before"))
 			o.ask_before = v;
@@ -771,6 +778,15 @@ int main(int argc, char *argv[])
 		XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureNotifyMask, &e);
 		XSync(dpy, False);
 		printf("spoofed\n");
+		fflush(stdout);
+	}
+	if (o.class_later && o.class_after) {
+		XSync(dpy, False);
+		wait_for_file(o.class_after);
+		XClassHint ch = { (char *)o.class_later, (char *)o.class_later };
+		XSetClassHint(dpy, main_win, &ch);
+		XSync(dpy, False);
+		printf("class set\n");
 		fflush(stdout);
 	}
 	Window dialog_win = None;

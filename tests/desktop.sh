@@ -317,6 +317,32 @@ on "and is on that desktop only now" everywhere 2 0
 switch_to 2
 stop everywhere
 switch_to 1
+# The name that says so comes only after mapping (a late app_id): it counts all the same,
+# as for colours, dock and tiling.
+printf 'Mwm*outputManagement: true\nMwm*lateall*allDesktops: true\n' >"$RC"
+reload_mwc
+wayland latewin size=200x100 late_app=lateall late_ms=300
+wait_for "it takes its name" said latewin "late app"
+check "and is everywhere now" "[ \"\$(get lateall everywhere)\" = 1 ]"
+switch_to 2
+check "in sight on desktop 2 too" "[ \"\$(get lateall visible)\" = 1 ]"
+switch_to 1
+kill "$PID_latewin"
+wait "$PID_latewin" 2>/dev/null
+check "it is gone" "[ -z \"\$(get lateall x)\" ]"
+# The same for an X11 window whose WM_CLASS comes late.
+x11 xlate size=200x100 class_later=lateall class_after="$SMOKE_DIR/class"
+touch "$SMOKE_DIR/class"
+wait_for "it takes its class" said xlate "class set"
+check "X11: everywhere now" "[ \"\$(get lateall everywhere)\" = 1 ]"
+switch_to 2
+check "X11: in sight on desktop 2 too" "[ \"\$(get lateall visible)\" = 1 ]"
+switch_to 1
+kill "$PID_xlate"
+wait "$PID_xlate" 2>/dev/null
+check "it is gone" "[ -z \"\$(get lateall x)\" ]"
+echo 'Mwm*outputManagement: true' >"$RC"
+reload_mwc
 
 # ---- On All Desktops from the window menu -------------------------------------------------
 
