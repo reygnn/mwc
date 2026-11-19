@@ -425,10 +425,11 @@ snap-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 move-test: mwc build/vinput build/pngtool build/xclient build/xdgc
 	tests/move.sh
 
-window-test: mwc build/vinput build/pngtool build/xclient build/xdgc
+window-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/layerc
 	tests/window.sh
 
-iconbox-test: mwc build/vinput build/pngtool build/xdgc build/workspacec build/layerc
+iconbox-test: mwc build/vinput build/pngtool build/xdgc build/workspacec build/layerc \
+	build/xclient
 	tests/iconbox.sh
 
 dock-test: mwc build/vinput build/xclient build/xdgc build/pngtool build/workspacec

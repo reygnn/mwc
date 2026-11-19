@@ -40,6 +40,8 @@
  *     grow=WxH            1 s after mapping, XResizeWindow to that size; says "grown"
  *     iconic=1            WM_HINTS with the initial state iconic
  *     normalize=1         once mapped, WM_CHANGE_STATE to NormalState
+ *     normalize_after=FILE  the same once FILE exists; says "normalized"
+ *     activate_after=FILE once FILE exists, _NET_ACTIVE_WINDOW as below
  *     activate_ms=MS      that long after mapping, _NET_ACTIVE_WINDOW for itself, as a
  *                         program does that wants to be in front; says "activate asked"
  *     iconify_ms=MS       that long after mapping (and the dialog), WM_CHANGE_STATE to
@@ -123,6 +125,7 @@ struct options {
 	bool no_input, workarea, clipboard, move_press, pulldown;
 	int rehide, rehide_ms, dialog_ms, motif_later, later_w, later_h, hints_ms;
 	const char *dialog_after, *withdraw_after, *urgent_after, *spoof_after;
+	const char *normalize_after, *activate_after;
 	bool nomap;
 	bool rehide_drop, focus_main, has_motif_later, latin1_title;
 	int decor_later, decor_ms;
@@ -535,6 +538,10 @@ int main(int argc, char *argv[])
 			o.urgent_after = v;
 		else if (!strcmp(k, "spoof_after"))
 			o.spoof_after = v;
+		else if (!strcmp(k, "normalize_after"))
+			o.normalize_after = v;
+		else if (!strcmp(k, "activate_after"))
+			o.activate_after = v;
 
 		else if (!strcmp(k, "ask_before"))
 			o.ask_before = v;
@@ -666,9 +673,12 @@ int main(int argc, char *argv[])
 		printf("grown\n");
 		fflush(stdout);
 	}
-	if (o.normalize) {
+	if (o.normalize || o.normalize_after) {
 		XSync(dpy, False);
-		usleep(800000);
+		if (o.normalize_after)
+			wait_for_file(o.normalize_after);
+		else
+			usleep(800000);
 		XEvent e = { 0 };
 		e.xclient.type = ClientMessage;
 		e.xclient.window = main_win;
@@ -679,10 +689,14 @@ int main(int argc, char *argv[])
 			SubstructureRedirectMask | SubstructureNotifyMask, &e);
 		XSync(dpy, False);
 		printf("normalized\n");
+		fflush(stdout);
 	}
-	if (o.activate_ms > 0) {
+	if (o.activate_ms > 0 || o.activate_after) {
 		XSync(dpy, False);
-		usleep(o.activate_ms * 1000);
+		if (o.activate_after)
+			wait_for_file(o.activate_after);
+		else
+			usleep(o.activate_ms * 1000);
 		XEvent e = { 0 };
 		e.xclient.type = ClientMessage;
 		e.xclient.window = main_win;

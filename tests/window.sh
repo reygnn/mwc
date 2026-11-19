@@ -7,7 +7,7 @@ LOG=build/window.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xclient build/xdgc; do
+for tool in build/vinput build/pngtool build/xclient build/xdgc build/layerc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -926,6 +926,54 @@ saw "the X11 popup opens" orwin '^popup shown'
 check "the keyboard stays with the Wayland window" "[ \"\$(get wfront kbfocus)\" = 1 ]"
 stop orwin
 stop wfront
+# Back from an icon by WM_CHANGE_STATE (an X taskbar does it): from another X11 window,
+# as for activation, not from a Wayland one.
+x11 xhas size=300x200
+mapped xhas
+x11 xicon size=300x200 iconic=1 normalize_after="$SMOKE_DIR/norm1"
+check "an X11 window starts as an icon" "[ \"\$(get xicon min)\" = 1 ]"
+check "the other X11 window has the focus" "[ \"\$(get xhas active)\" = 1 ]"
+touch "$SMOKE_DIR/norm1"
+saw "the icon asks to be shown" xicon '^normalized'
+check "it comes back, with the focus" \
+	"[ \"\$(get xicon min)\" = 0 ] && [ \"\$(get xicon active)\" = 1 ]"
+stop xicon
+stop xhas
+wayland wfront2 size=300x200
+mapped wfront2
+x11 xicon2 size=300x200 iconic=1 normalize_after="$SMOKE_DIR/norm2"
+check "another X11 window starts as an icon" "[ \"\$(get xicon2 min)\" = 1 ]"
+check "a Wayland window has the focus" "[ \"\$(get wfront2 kbfocus)\" = 1 ]"
+touch "$SMOKE_DIR/norm2"
+saw "the icon asks to be shown" xicon2 '^normalized'
+sleep 0.3
+check "it stays an icon, the Wayland window keeps the focus" \
+	"[ \"\$(get xicon2 min)\" = 1 ] && [ \"\$(get wfront2 kbfocus)\" = 1 ]"
+stop xicon2
+stop wfront2
+# Nor from a panel or launcher that has the keyboard, with an X11 window focused below.
+x11 xbelow size=300x200
+mapped xbelow
+x11 xasks size=300x200 activate_after="$SMOKE_DIR/act"
+mapped xasks
+do_input move $(($(get xbelow x) + 100)) $(($(get xbelow y) + 100))
+do_input click left
+check "the X11 window below has the focus" "[ \"\$(get xbelow active)\" = 1 ]"
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=top size=200x100 keyboard=on-demand \
+	color=00ff00 >"$SMOKE_DIR/launcher.events" 2>&1 &
+PID_launcher=$!
+wait_for "a launcher has the keyboard" grep -q keyboard-enter "$SMOKE_DIR/launcher.events"
+touch "$SMOKE_DIR/act"
+saw "the X11 program asks to be activated" xasks '^activate asked'
+sleep 0.3
+check "it isn't, the launcher keeps the keyboard" \
+	"[ \"\$(get xasks active)\" = 0 ] && [ \"\$(global seat keyboard)\" != xasks ]"
+grep -q keyboard-leave "$SMOKE_DIR/launcher.events" &&
+	fail "the launcher lost the keyboard to the X11 program"
+kill "$PID_launcher"
+wait "$PID_launcher" 2>/dev/null
+stop xasks
+stop xbelow
 
 # ---- fullscreen that doesn't cover the output ---------------------------------------------
 

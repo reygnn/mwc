@@ -137,12 +137,15 @@ pixel_isnt() {
 	fail "$what: pixel $x,$y is ${got:-unreadable}, should not be $unwanted"
 }
 
-# reload_mwc: SIGHUP, and wait until mwc has read mwmrc again, by its log line.
+# reload_mwc: SIGHUP, and wait until mwc has read mwmrc again and applied it: the log
+# line says it began, and a state request (with MWC_TEST_STATE) that mwc's event loop
+# takes after it is answered only once the reload is done.
 reload_mwc() {
 	local n
 	n=$(grep -c 'reloading the configuration' "$LOG")
 	kill -HUP "$pid"
 	wait_for "the reload" eval "[ \$(grep -c 'reloading the configuration' \"$LOG\") -gt $n ]"
+	[ -z "$MWC_TEST_STATE" ] || refresh
 }
 
 # ---- simulated input and window state (needs MWC_TEST_STATE) -----------------
