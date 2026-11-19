@@ -12,6 +12,8 @@
  *                     "mapped": the test hides the window meanwhile
  *   FIFOC_SUB=1       for those three: the updates go to a desynchronized
  *                     subsurface, as a swapchain of its own may
+ *   FIFOC_POPUP=1     for those three: to a popup of a popup of the window, without
+ *                     a grab, so that it stays; says "popup gone" if it doesn't
  *   fifoc twice       a second wp_fifo_v1 for the same surface
  *   fifoc gone        set_barrier after the surface was destroyed
  *
@@ -188,10 +190,75 @@ static struct wl_buffer *make_buffer(void)
 	return buffer;
 }
 
+static bool popup_configured, popup_gone;
+
+static void popup_surface_configure(void *data, struct xdg_surface *xs, uint32_t serial)
+{
+	xdg_surface_ack_configure(xs, serial);
+	popup_configured = true;
+}
+
+static const struct xdg_surface_listener popup_surface_listener = { popup_surface_configure };
+
+static void popup_configure(void *data, struct xdg_popup *p, int32_t x, int32_t y,
+	int32_t w, int32_t h)
+{
+}
+
+static void popup_done(void *data, struct xdg_popup *p)
+{
+	popup_gone = true;
+}
+
+static const struct xdg_popup_listener popup_listener = {
+	.configure = popup_configure,
+	.popup_done = popup_done,
+};
+
+/* A popup of parent, shown until it has entered the output; its xdg_surface in *out. */
+static struct wl_surface *show_popup(struct wl_display *display, struct xdg_surface *parent,
+	struct xdg_surface **out)
+{
+	struct wl_buffer *buffer = make_buffer();
+	if (!buffer)
+		return NULL;
+	struct xdg_positioner *pos = xdg_wm_base_create_positioner(wm_base);
+	xdg_positioner_set_size(pos, SIZE, SIZE);
+	xdg_positioner_set_anchor_rect(pos, 0, 0, SIZE, SIZE);
+	struct wl_surface *s = wl_compositor_create_surface(compositor);
+	*out = xdg_wm_base_get_xdg_surface(wm_base, s);
+	xdg_surface_add_listener(*out, &popup_surface_listener, NULL);
+	struct xdg_popup *popup = xdg_surface_get_popup(*out, parent, pos);
+	xdg_popup_add_listener(popup, &popup_listener, NULL);
+	xdg_positioner_destroy(pos);
+	popup_configured = false;
+	wl_surface_commit(s);
+	while (!popup_configured)
+		if (wl_display_dispatch(display) < 0)
+			return NULL;
+	wl_surface_attach(s, buffer, 0, 0);
+	wl_surface_damage_buffer(s, 0, 0, SIZE, SIZE);
+	callbacks_done = 0;
+	wl_callback_add_listener(wl_surface_frame(s), &frame_listener, NULL);
+	wl_surface_commit(s);
+	while (callbacks_done < 1)
+		if (wl_display_dispatch(display) < 0)
+			return NULL;
+	callbacks_done = 0;
+	return s;
+}
+
 /* N updates with the barrier while nobody sees the window; see the top. */
 static int off_screen_updates(struct wl_display *display, struct wl_surface *surface,
-	struct xdg_toplevel *toplevel, bool minimize, int n)
+	struct xdg_surface *xs, struct xdg_toplevel *toplevel, bool minimize, int n)
 {
+	if (getenv("FIFOC_POPUP")) {
+		/* Two deep: the way up to the window takes more than one step. */
+		struct xdg_surface *outer, *inner;
+		if (!show_popup(display, xs, &outer) ||
+				!(surface = show_popup(display, outer, &inner)))
+			return 1;
+	}
 	if (getenv("FIFOC_SUB")) {
 		/* Shown first, so that it has entered the output, as a running game's has. */
 		struct wl_buffer *first = make_buffer();
@@ -226,6 +293,11 @@ static int off_screen_updates(struct wl_display *display, struct wl_surface *sur
 		wl_buffer_add_listener(buffers[i], &buffer_listener, &released[i]);
 	}
 	struct wp_fifo_v1 *fifo = wp_fifo_manager_v1_get_fifo(fifo_manager, surface);
+	wl_display_roundtrip(display);
+	if (popup_gone) {
+		printf("popup gone\n");
+		return 1;
+	}
 	double start = now_ms();
 	for (int i = 0; i < n; i++) {
 		wp_fifo_v1_set_barrier(fifo);
@@ -356,8 +428,8 @@ int main(int argc, char *argv[])
 			usleep(50 * 1000);
 	}
 	if (off_screen)
-		return off_screen_updates(display, surface, toplevel, !strcmp(mode, "minimized"),
-			n);
+		return off_screen_updates(display, surface, xs, toplevel,
+			!strcmp(mode, "minimized"), n);
 
 	struct wp_fifo_v1 *fifo = NULL;
 	if (strcmp(mode, "plain"))

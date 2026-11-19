@@ -61,6 +61,10 @@ seconds_between "a minimized window gets about one update a second" 2.5 6 minimi
 export FIFOC_SUB=1
 seconds_between "so does one with its updates on a subsurface" 2.5 6 minimized 5
 unset FIFOC_SUB
+# On a popup of a popup of the window (no grab, so it stays when the window goes).
+export FIFOC_POPUP=1
+seconds_between "so does one with its updates on a popup of a popup" 2.5 6 minimized 5
+unset FIFOC_POPUP
 # On another desktop: the window is mapped here, then the desktop goes.
 rm -f "$SMOKE_DIR/go"
 FIFOC_GO=$SMOKE_DIR/go WAYLAND_DISPLAY=wayland-0 timeout 15 build/fifoc cued 5 \
