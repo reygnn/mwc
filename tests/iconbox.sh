@@ -366,6 +366,15 @@ check "a double click on an icon restores its window" \
 
 click_at $(title_bar)
 check "the box has the keyboard" "[ \"\$(box focused)\" = 1 ] && [ \"\$(global focus any)\" = 0 ]"
+# A prompt takes the keyboard and goes again: it comes back to the box, as to a window.
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=top size=200x100 keyboard=exclusive \
+	color=00ff00 >"$SMOKE_DIR/prompt.events" 2>&1 &
+PID_prompt=$!
+wait_for "a prompt has the keyboard" grep -q keyboard-enter "$SMOKE_DIR/prompt.events"
+check "the box doesn't" "[ \"\$(box focused)\" = 0 ]"
+kill "$PID_prompt"
+wait "$PID_prompt" 2>/dev/null
+check "the prompt gone, the box has it again" "[ \"\$(box focused)\" = 1 ]"
 for app in one two three four; do
 	[ "$(get $app min)" = 1 ] || continue
 	var="PID_$app"

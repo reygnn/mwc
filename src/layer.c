@@ -239,8 +239,13 @@ void layer_raise_keyboard(struct server *server)
 	wlr_scene_node_place_below(&ls->scene->tree->node, &ls->popups->node);
 }
 
+/* The icon box had the keys when a surface took them: it gets them back, as a window. */
+static bool box_had_keys;
+
 static void give_keyboard(struct layer_surface *ls)
 {
+	if (iconbox_has_focus())
+		box_had_keys = true;
 	ls->server->focused_layer = ls->wlr;
 	/* A window's open menu would keep the keys, a password typed here among them. */
 	input_end_client_grab(ls->server);
@@ -284,6 +289,8 @@ static void take_keyboard_back(struct server *server)
 	server->focused_layer = NULL;
 	server->exclusive_layer = NULL;
 	views_update_layers(server);
+	bool box = box_had_keys;
+	box_had_keys = false;
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
 		if (v->activated && v->mapped) {
@@ -293,6 +300,9 @@ static void take_keyboard_back(struct server *server)
 	}
 	input_end_client_grab(server);
 	wlr_seat_keyboard_notify_clear_focus(server->seat);
+	/* Only with nothing activated: a window clicked meanwhile came after the box. */
+	if (box)
+		iconbox_focus(server);
 }
 
 /* Only the layers above the windows may take the keyboard on their own: an exclusive
