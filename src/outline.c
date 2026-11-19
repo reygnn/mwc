@@ -81,13 +81,9 @@ void outline_show(struct view *view, struct wlr_box b)
 		if (sep < t || sep + t > b.height - t)
 			sep = 0;
 	}
-	const struct wlr_box rel[N_STRIPS] = {
-		[STRIP_TOP] = { 0, 0, b.width, t },
-		[STRIP_BOTTOM] = { 0, b.height - t, b.width, t },
-		[STRIP_LEFT] = { 0, t, t, b.height - 2 * t },
-		[STRIP_RIGHT] = { b.width - t, t, t, b.height - 2 * t },
-		[STRIP_SEP] = { t, sep, sep ? b.width - 2 * t : 0, t },
-	};
+	struct wlr_box rel[N_STRIPS];
+	ring_strips(rel, b.width, b.height, t, t); /* STRIP_TOP to STRIP_RIGHT */
+	rel[STRIP_SEP] = (struct wlr_box){ t, sep, sep ? b.width - 2 * t : 0, t };
 	for (int i = 0; i < N_STRIPS; i++) {
 		struct wlr_box s = rel[i];
 		if (!strip[i]) {

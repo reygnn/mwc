@@ -166,7 +166,6 @@ static void xw_map(struct wl_listener *listener, void *data)
 	view->height = xs->surface->current.height ?
 		xs->surface->current.height : xs->height;
 	view->ssd = true;
-	view->decorated = !view->fullscreen;
 	xwayland_read_motif_hints(view);
 	view_update_properties(view);
 
@@ -601,7 +600,6 @@ static struct view *new_managed(struct server *server, struct wlr_xwayland_surfa
 	view->xsurface = xs;
 	xs->data = view; /* for view_parent() */
 	view->ssd = true;
-	view->decorated = true;
 	view_init_common(view);
 
 #define LISTEN(sig, field, fn) \

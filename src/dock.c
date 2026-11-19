@@ -57,6 +57,14 @@ static int by_dock_order(const void *a, const void *b)
 	return (x->tile_seq < y->tile_seq) - (x->tile_seq > y->tile_seq); /* older first */
 }
 
+static void draw_frame(cairo_t *cr, int w, int h, void *data)
+{
+	const struct mwc_shade *s = &theme.inactive;
+	set_source(cr, s->bg);
+	cairo_paint(cr);
+	draw_bevel(cr, 0, 0, w, h, theme.bevel, s, false);
+}
+
 static void render_frame(int w, int h)
 {
 	if (w == dk.drawn_w && h == dk.drawn_h)
@@ -65,28 +73,9 @@ static void render_frame(int w, int h)
 	const float c[4] = { s->bg.r, s->bg.g, s->bg.b, 1 };
 	wlr_scene_rect_set_color(dk.fill, c);
 	wlr_scene_rect_set_size(dk.fill, w, h);
+	/* Too small for a bevel: none at all. */
 	const int t = theme.bevel < w / 2 && theme.bevel < h / 2 ? theme.bevel : 0;
-	const struct wlr_box strips[4] = {
-		{ 0, 0, w, t }, { 0, h - t, w, t }, { 0, t, t, h - 2 * t },
-		{ w - t, t, t, h - 2 * t },
-	};
-	for (int i = 0; i < 4; i++) {
-		const struct wlr_box *b = &strips[i];
-		struct cairo_buffer *buf = t > 0 ? cairo_buffer_create(b->width, b->height) :
-			NULL;
-		if (buf) {
-			/* The whole bevel, of which the strip shows its part: the corners
-			 * join diagonally as Motif's do. */
-			set_source(buf->cr, s->bg);
-			cairo_paint(buf->cr);
-			cairo_translate(buf->cr, -b->x, -b->y);
-			draw_bevel(buf->cr, 0, 0, w, h, t, s, false);
-			wlr_scene_node_set_position(&dk.strip[i]->node, b->x, b->y);
-		}
-		wlr_scene_buffer_set_buffer(dk.strip[i], buf ? &buf->base : NULL);
-		if (buf)
-			cairo_buffer_drop(buf);
-	}
+	ring_render(dk.strip, w, h, t, t, draw_frame, NULL);
 	dk.drawn_w = w;
 	dk.drawn_h = h;
 }

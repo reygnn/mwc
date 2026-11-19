@@ -17,7 +17,6 @@
 #include <wlr/util/box.h>
 #include <wlr/util/edges.h>
 
-struct wlr_input_device;
 struct wlr_layer_surface_v1;
 struct wlr_surface;
 struct wlr_xdg_surface;
@@ -69,9 +68,6 @@ void draw_groove_h(cairo_t *cr, double x, double y, double w,
 	const struct mwc_shade *s);
 void draw_groove_v(cairo_t *cr, double x, double y, double h,
 	const struct mwc_shade *s);
-void draw_text(cairo_t *cr, const char *text, const char *font,
-	struct mwc_color color, double x, double y, double w, double h,
-	bool center);
 void text_extent(const char *font, const char *text, int *w, int *h);
 /* Cached per name; not to be freed. */
 const PangoFontDescription *font_description(const char *font);
@@ -87,6 +83,13 @@ struct cairo_buffer {
 struct cairo_buffer *cairo_buffer_create(int width, int height);
 /* The scene keeps it while shown. */
 void cairo_buffer_drop(struct cairo_buffer *buf);
+/* Top, bottom, left, right of a w x h ring, th and tw thick; the corners go with top
+ * and bottom. */
+void ring_strips(struct wlr_box out[4], int w, int h, int th, int tw);
+/* Each strip node gets its part of the ring draw paints over the whole w x h box,
+ * placed relative to the box; an empty strip shows nothing. */
+void ring_render(struct wlr_scene_buffer *node[4], int w, int h, int th, int tw,
+	void (*draw)(cairo_t *cr, int w, int h, void *data), void *data);
 
 /* ---- throttle, in main.c ------------------------------------------------- */
 
@@ -205,7 +208,6 @@ struct view {
 	bool mapped;
 	bool placed;    /* by the client: no cascading */
 	bool ssd;
-	bool decorated; /* ssd && !fullscreen */
 	enum window_type wtype;
 	unsigned decor, funcs; /* see view_update_properties() */
 	unsigned base_funcs;   /* before tiling takes some away */
@@ -313,6 +315,12 @@ static inline bool view_docked(const struct view *view)
 static inline bool view_hidden(const struct view *view)
 {
 	return view_hidden_by_state(view) || view->off_desktop;
+}
+
+/* Fullscreen windows lose their frame for the duration. */
+static inline bool view_decorated(const struct view *view)
+{
+	return view->ssd && !view->fullscreen;
 }
 
 /* Override-redirect X11 windows: menus, tooltips, drag icons. */
@@ -616,12 +624,24 @@ struct wlr_box output_usable_area(struct server *server, double lx, double ly);
 bool output_dock_in_the_way(struct output *o, struct wlr_box b);
 struct wlr_box output_full_area(struct server *server, double lx, double ly);
 void views_usable_area_changed(struct server *server);
-/* Only the dock's box changed on output: snapped windows refit, and free ones it
- * would cover move out of its strip. */
+/* Only the dock's box changed: snapped windows refit. */
 void views_refit_snapped(struct server *server);
+/* Free windows the dock on output now covers move out of its strip. */
 void views_clear_dock(struct output *output);
 void views_layout_changed(struct server *server);
 void views_output_gone(struct output *output);
+/* wm_capabilities from funcs, sent on a change. */
+void xdg_publish_caps(struct view *view);
+/* The managed window a surface, a subsurface or a popup belongs to, or NULL. */
+struct view *view_from_surface(struct wlr_surface *surface);
+/* Nothing else follows from it. */
+void view_show(struct view *view, bool show);
+void view_show_content(struct view *view);
+void view_publish_state(struct view *view);
+void view_refit(struct view *view);
+void view_refit_at(struct view *view, double px, double py);
+void view_place(struct view *view);
+void view_parent_changed(struct view *view);
 
 /* ---- sizehints.c -------------------------------------------------------- */
 
@@ -647,20 +667,8 @@ void view_gravity_to_frame(struct view *view, struct frame_size f, int x, int y,
 
 /* Type and size limits from the client; decor and funcs from them. */
 void view_update_properties(struct view *view);
-/* wm_capabilities from funcs, sent on a change. */
-void xdg_publish_caps(struct view *view);
 void view_update_decorations(struct view *view);
 struct view *view_parent(struct view *view);
-/* The managed window a surface, a subsurface or a popup belongs to, or NULL. */
-struct view *view_from_surface(struct wlr_surface *surface);
-/* Nothing else follows from it. */
-void view_show(struct view *view, bool show);
-void view_show_content(struct view *view);
-void view_publish_state(struct view *view);
-void view_refit(struct view *view);
-void view_refit_at(struct view *view, double px, double py);
-void view_place(struct view *view);
-void view_parent_changed(struct view *view);
 bool view_is_transient_of(struct view *view, struct view *ancestor);
 struct view *view_transient_root(struct view *view);
 bool view_focusable(struct view *view);
@@ -668,6 +676,9 @@ bool view_focusable(struct view *view);
 /* ---- main.c ------------------------------------------------------------- */
 
 void outputs_config_changed(struct server *server);
+const char *terminal_command(struct server *server);
+/* The clock input events are stamped with, in ms. */
+uint32_t now_msec(void);
 
 /* ---- xwayland.c --------------------------------------------------------- */
 
@@ -701,6 +712,9 @@ void icon_render(struct view *view);
 void icons_arrange(struct server *server);
 /* The current desktop's, by icon_seq; NULL with *n = 0 for none. Caller frees. */
 struct view **icons_in_order(struct server *server, int *n);
+void draw_text(cairo_t *cr, const char *text, const char *font,
+	struct mwc_color color, double x, double y, double w, double h,
+	bool center);
 /* toggled: the maximize glyph sunken. */
 void draw_title_button(cairo_t *cr, enum frame_part part, int x, int y, int size,
 	const struct mwc_shade *s, bool down, bool toggled);
@@ -711,7 +725,6 @@ int icon_gap(void); /* 0 with "tight" */
 
 /* ---- tabs.c ------------------------------------------------------------- */
 
-bool tabs_can_join(struct view *view);
 bool tabs_fit_together(struct view *view, struct view *target);
 /* What Super+G joins, or NULL. */
 struct view *tabs_previous(struct view *view);
@@ -757,12 +770,10 @@ void grab_started(struct server *server);
 void grab_forget(struct server *server);
 /* Its state changes under a move or resize: the grab ends, the window stays. */
 void grab_give_way(struct view *view);
-void input_add_device(struct server *server, struct wlr_input_device *dev);
 /* Clients type and click as the user: wayrdp, the tests. */
 void input_virtual_init(struct server *server);
 void input_virtual_fini(void);
 void cursor_set_name(struct server *server, const char *name);
-void process_cursor_motion(struct server *server, uint32_t time);
 /* What is under it changed without motion. */
 void input_pointer_changed(struct server *server);
 /* The same once wlroots is through: a surface going may still be in the scene. */
@@ -909,7 +920,6 @@ bool outputrc_position(const char *value, int *x, int *y);
 
 void config_load(void);
 const char *config_get(const char *resource);
-const char *terminal_command(struct server *server);
 /* Mwm*client*resource, or NULL. */
 const char *config_get_for(const char *client, const char *resource);
 /* Mwm*rootMenuItem, in file order. */

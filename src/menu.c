@@ -8,7 +8,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include <math.h>
 #include <string.h>
-#include <time.h>
 #include <pango/pangocairo.h>
 #include <xkbcommon/xkbcommon.h>
 #include <wlr/types/wlr_cursor.h>
@@ -194,13 +193,6 @@ static void add_desktops(struct menu *m, struct view *view)
 	bool sticky = view_transient_root(view)->sticky;
 	add(m, sticky ? "Only This Desktop" : "On All Desktops", 'O', NULL,
 		ACT_TOGGLE_STICKY, !view_sticky_by_rule(view) && !view->minimized);
-}
-
-static uint32_t now_msec(void)
-{
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
 static void open_at(struct server *server, int x, int y)

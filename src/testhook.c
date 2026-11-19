@@ -104,7 +104,7 @@ static int dump_state(int signal, void *data)
 			"icon_shown=%d everywhere=%d rseq=%ld tlen=%zu\n",
 			view_app_id(v), v->x, v->y, v->width, v->height,
 			v->activated, kb_focus && kb_focus == view_surface(v),
-			v->maximized, v->minimized, v->fullscreen, v->decorated,
+			v->maximized, v->minimized, v->fullscreen, view_decorated(v),
 			v->icon_x, v->icon_y, v->hidden_with_parent,
 			frame_border(v), frame_title(v),
 			v->type == VIEW_XWAYLAND && v->xsurface->above,

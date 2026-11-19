@@ -8,7 +8,6 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <linux/input-event-codes.h>
@@ -118,16 +117,6 @@ static const char *edge_cursor(uint32_t edges)
 	case WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT: return "se-resize";
 	default: return "default";
 	}
-}
-
-static struct view *focused_view(struct server *server)
-{
-	struct view *v;
-	wl_list_for_each(v, &server->views, link) {
-		if (v->activated && v->mapped)
-			return v;
-	}
-	return NULL;
 }
 
 /* ---- interactive move / resize ---------------------------------------- */
@@ -493,12 +482,7 @@ void grab_resize_caught_up(struct view *view)
 
 /* ---- pointer ------------------------------------------------------------ */
 
-static uint32_t now_msec(void)
-{
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-}
+static void process_cursor_motion(struct server *server, uint32_t time);
 
 void input_pointer_changed(struct server *server)
 {
@@ -531,7 +515,7 @@ bool input_button_held(struct server *server)
 	return server->n_forwarded > 0;
 }
 
-void process_cursor_motion(struct server *server, uint32_t time)
+static void process_cursor_motion(struct server *server, uint32_t time)
 {
 	/* Only while a drag runs: wlroots walks the whole scene for each move of a
 	 * node, even of an empty tree. */
@@ -1076,7 +1060,7 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	if (iconbox_key(server, mods, sym))
 		return true;
 
-	struct view *view = focused_view(server);
+	struct view *view = view_focused(server);
 	bool alt = mods & WLR_MODIFIER_ALT;
 	bool ctrl = mods & WLR_MODIFIER_CTRL;
 	bool shift = mods & WLR_MODIFIER_SHIFT;
@@ -1505,7 +1489,7 @@ static void keyboard_grab_end(struct wl_listener *listener, void *data)
 	if (!server->refocus_after_grab)
 		return;
 	server->refocus_after_grab = false;
-	struct view *view = focused_view(server);
+	struct view *view = view_focused(server);
 	if (server->focused_layer)
 		input_keyboard_enter(server, server->focused_layer->surface);
 	else if (view && view_surface(view))
@@ -1537,7 +1521,7 @@ static void new_keyboard(struct server *server, struct wlr_input_device *dev)
 	wl_list_insert(&server->keyboards, &kb->link);
 }
 
-void input_add_device(struct server *server, struct wlr_input_device *dev)
+static void input_add_device(struct server *server, struct wlr_input_device *dev)
 {
 	switch (dev->type) {
 	case WLR_INPUT_DEVICE_KEYBOARD:

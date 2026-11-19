@@ -49,11 +49,21 @@ bool scene_buffer_no_input(struct wlr_scene_buffer *buffer, double *sx, double *
 	return false;
 }
 
+static void draw_preview(cairo_t *cr, int w, int h, void *data)
+{
+	const struct view *view = data;
+	const struct mwc_shade *sh = &view->shade_active;
+	const int t = PREVIEW_W;
+	set_source(cr, sh->bg);
+	cairo_paint(cr);
+	draw_bevel(cr, 0, 0, w, h, theme.bevel, sh, false);
+	draw_bevel(cr, t - 2, t - 2, w - 2 * (t - 2), h - 2 * (t - 2), 2, sh, true);
+}
+
 void snap_preview_box(struct view *view, struct wlr_box r)
 {
 	struct server *server = view->server;
 	const int t = PREVIEW_W;
-	const struct mwc_shade *sh = &view->shade_active;
 
 	if (!preview) {
 		preview = wlr_scene_tree_create(server->layer_feedback);
@@ -65,33 +75,10 @@ void snap_preview_box(struct view *view, struct wlr_box r)
 				preview_strip[i]->point_accepts_input = scene_buffer_no_input;
 		}
 	}
+	/* Each side at most half of the box across it. */
 	const int st = t < r.height / 2 ? t : r.height / 2;
 	const int sl = t < r.width / 2 ? t : r.width / 2;
-	const struct wlr_box strips[4] = {
-		{ 0, 0, r.width, st }, { 0, r.height - st, r.width, st },
-		{ 0, st, sl, r.height - 2 * st }, { r.width - sl, st, sl, r.height - 2 * st },
-	};
-	for (int i = 0; i < 4; i++) {
-		const struct wlr_box *b = &strips[i];
-		if (!preview_strip[i])
-			continue;
-		struct cairo_buffer *buf = b->width > 0 && b->height > 0 ?
-			cairo_buffer_create(b->width, b->height) : NULL;
-		if (buf) {
-			/* The whole ring, of which the strip shows its part. */
-			cairo_t *cr = buf->cr;
-			set_source(cr, sh->bg);
-			cairo_paint(cr);
-			cairo_translate(cr, -b->x, -b->y);
-			draw_bevel(cr, 0, 0, r.width, r.height, theme.bevel, sh, false);
-			draw_bevel(cr, t - 2, t - 2, r.width - 2 * (t - 2),
-				r.height - 2 * (t - 2), 2, sh, true);
-		}
-		wlr_scene_buffer_set_buffer(preview_strip[i], buf ? &buf->base : NULL);
-		if (buf)
-			cairo_buffer_drop(buf);
-		wlr_scene_node_set_position(&preview_strip[i]->node, b->x, b->y);
-	}
+	ring_render(preview_strip, r.width, r.height, st, sl, draw_preview, view);
 	/* Where the window goes stays visible over the target. */
 	wlr_scene_node_lower_to_bottom(&preview->node);
 	wlr_scene_node_set_position(&preview->node, r.x, r.y);

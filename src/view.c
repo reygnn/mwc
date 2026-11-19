@@ -368,7 +368,7 @@ static void view_raise(struct view *view)
 	free(kids);
 }
 
-static struct view *focused_view(struct server *server)
+struct view *view_focused(struct server *server)
 {
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
@@ -411,7 +411,7 @@ void view_focus(struct view *view)
 	bool from_layer = server->focused_layer && !server->exclusive_layer;
 	if (from_layer)
 		server->focused_layer = NULL;
-	struct view *prev = focused_view(server);
+	struct view *prev = view_focused(server);
 	if (prev && prev != view)
 		view_set_activated(prev, false);
 	if (!view->activated)
@@ -446,8 +446,6 @@ static bool cyclable(struct view *view)
 	return view_focusable(view) && !view_docked(view);
 }
 
-/* Give the focus to the topmost remaining window, or to nobody. A shaded window
- * only gets it when asked for by name. */
 /* A window went away and v takes its place. An on-demand layer surface with the
  * keyboard keeps it, and its popup stays open: the user types there. v gets the keys
  * when the surface lets go (take_keyboard_back()). */
@@ -460,7 +458,7 @@ void view_focus_instead(struct view *v)
 		view_focus(v);
 		return;
 	}
-	struct view *prev = focused_view(server);
+	struct view *prev = view_focused(server);
 	if (prev && prev != v)
 		view_set_activated(prev, false);
 	if (!v->activated)
@@ -469,7 +467,9 @@ void view_focus_instead(struct view *v)
 	input_pointer_changed(server);
 }
 
-/* gone: except went away by itself, not by the user's doing here. */
+/* Give the focus to the topmost remaining window, or to nobody. A shaded window
+ * only gets it when asked for by name. gone: except went away by itself, not by the
+ * user's doing here. */
 static void focus_next_after(struct server *server, struct view *except, bool gone)
 {
 	/* Prefer the window a dialog belongs to. */
@@ -497,11 +497,6 @@ static void focus_next_after(struct server *server, struct view *except, bool go
 		input_end_client_grab(server);
 		wlr_seat_keyboard_notify_clear_focus(server->seat);
 	}
-}
-
-static void focus_next(struct server *server, struct view *except)
-{
-	focus_next_after(server, except, false);
 }
 
 static void view_maximize_at(struct view *view, bool maximized, double px,
@@ -655,17 +650,12 @@ void view_snap(struct view *view, enum snap s, double px, double py)
 
 void view_focus_next(struct view *except)
 {
-	focus_next(except->server, except);
+	focus_next_after(except->server, except, false);
 }
 
 void view_focus_top(struct server *server)
 {
-	focus_next(server, NULL);
-}
-
-struct view *view_focused(struct server *server)
-{
-	return focused_view(server);
+	focus_next_after(server, NULL, false);
 }
 
 void view_close(struct view *view)
@@ -705,7 +695,7 @@ void view_lower(struct view *view)
 	struct server *server = view->server;
 	view_lower_one(view);
 	if (view->activated && view_has_successor(view)) {
-		focus_next(server, view);
+		focus_next_after(server, view, false);
 		/* Losing the focus may have moved it to another scene layer. */
 		wlr_scene_node_lower_to_bottom(&view->tree->node);
 	}
@@ -869,7 +859,6 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 		fullscreen = false; /* its place is the dock */
 	if (!view_configurable(view)) {
 		view->fullscreen = fullscreen;
-		view->decorated = view->ssd && !fullscreen;
 		return;
 	}
 	if (view->tab_hidden)
@@ -894,8 +883,6 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 			view->fit_output = output_at(view->server, px, py);
 			view->fullscreen = true;
 			views_update_layers(view->server);
-			/* Fullscreen windows lose their frame for the duration. */
-			view->decorated = false;
 			xwayland_publish_frame_extents(view);
 			frame_render(view);
 			view_set_geometry(view, a.x, a.y, a.width, a.height);
@@ -906,7 +893,6 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 		} else {
 			view->fullscreen = false;
 			views_update_layers(view->server);
-			view->decorated = view->ssd;
 			view_update_content_pos(view);
 			xwayland_publish_frame_extents(view);
 			if (view->tile_back && view->server->tiling)
@@ -1254,12 +1240,12 @@ void view_cycle(struct server *server, bool backwards)
 		/* The icon box goes to the back as a window does. */
 		if (iconbox_has_focus()) {
 			iconbox_lowered(server);
-			focus_next(server, NULL);
+			focus_next_after(server, NULL, false);
 			return;
 		}
 		/* Push the current window to the back, with what belongs to it, and focus
 		 * the next one. */
-		struct view *active = focused_view(server);
+		struct view *active = view_focused(server);
 		struct view *root = view_transient_root(active ? active : top);
 		bool had_successor = view_has_successor(root);
 		int count = wl_list_length(&server->views), n = 0;
@@ -1282,7 +1268,7 @@ void view_cycle(struct server *server, bool backwards)
 		if (iconbox_cycle_takes(next, true))
 			iconbox_focus(server);
 		else if (had_successor)
-			focus_next(server, root);
+			focus_next_after(server, root, false);
 		input_pointer_changed(server);
 		return;
 	}
@@ -1639,7 +1625,7 @@ void view_handle_unmap(struct view *view)
 			shown = v;
 		}
 	}
-	if (shown && !focused_view(server))
+	if (shown && !view_focused(server))
 		view_focus(shown);
 	bool was_active = view->activated, was_icon = view->minimized;
 	view->mapped = false;
@@ -1848,7 +1834,6 @@ static void xdg_unmap(struct wl_listener *listener, void *data)
 	view->maximized = false;
 	view->fullscreen = false;
 	view->snap = SNAP_NONE;
-	view->decorated = view->ssd;
 }
 
 static void xdg_destroy(struct wl_listener *listener, void *data)
@@ -1979,10 +1964,8 @@ static void new_xdg_toplevel(struct wl_listener *listener, void *data)
 	/* KDE's protocol goes by the surface, which may ask before it has this role. */
 	struct wlr_server_decoration *kde;
 	wl_list_for_each(kde, &server->kde_decorations->decorations, link) {
-		if (kde->surface == toplevel->base->surface) {
+		if (kde->surface == toplevel->base->surface)
 			view->ssd = kde->mode == WLR_SERVER_DECORATION_MANAGER_MODE_SERVER;
-			view->decorated = view->ssd;
-		}
 	}
 	view->content_tree = wlr_scene_xdg_surface_create(view->tree,
 		toplevel->base);
@@ -2215,7 +2198,6 @@ static void new_xdg_popup(struct wl_listener *listener, void *data)
  * configure: what fills an area has to make room for the frame or take the room back. */
 static void view_decoration_changed(struct view *view)
 {
-	view->decorated = view->ssd && !view->fullscreen;
 	if (view->mapped) {
 		view_update_properties(view);
 		view_frame_changed(view);

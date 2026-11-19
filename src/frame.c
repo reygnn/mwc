@@ -18,7 +18,7 @@
 
 static unsigned frame_decor(struct view *view)
 {
-	return view->decorated ? view->decor : 0;
+	return view_decorated(view) ? view->decor : 0;
 }
 
 int frame_thin_border(void)

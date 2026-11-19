@@ -356,6 +356,13 @@ void throttle_cancel(struct throttle *t)
 	t->resting = t->due = false;
 }
 
+uint32_t now_msec(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
 static void output_destroy(struct wl_listener *listener, void *data)
 {
 	struct output *output = wl_container_of(listener, output, destroy);

@@ -118,7 +118,7 @@ static void apply_struts(struct output *output, struct wlr_box *usable)
 
 /* _NET_WORKAREA, for X11 programs placing their own windows. There is one per
  * desktop rather than per output, so the first output's has to do. */
-static void publish_workarea(struct server *server)
+void layer_publish_workarea(struct server *server)
 {
 	/* Xwayland exits by itself when idle, and may not have started yet. */
 	if (!server->xwayland || !wlr_xwayland_get_xwm_connection(server->xwayland) ||
@@ -131,11 +131,6 @@ static void publish_workarea(struct server *server)
 	wlr_xwayland_set_workareas(server->xwayland, &first->usable, 1);
 	/* wlroots leaves it in the queue, and idle clients would never hear of it. */
 	xcb_flush(wlr_xwayland_get_xwm_connection(server->xwayland));
-}
-
-void layer_publish_workarea(struct server *server)
-{
-	publish_workarea(server);
 }
 
 void layer_arrange(struct output *output)
@@ -169,7 +164,7 @@ void layer_arrange(struct output *output)
 	output->dock = dock;
 	if (areas) {
 		views_usable_area_changed(output->server);
-		publish_workarea(output->server);
+		layer_publish_workarea(output->server);
 	} else if (moved) {
 		/* A tool changing its width moves the dock within its strip: only which
 		 * windows are beside it changes, not the areas, the icons or the tiling. */

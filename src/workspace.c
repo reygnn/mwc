@@ -178,19 +178,17 @@ static void send_output(struct ws_client *c, struct wlr_output *output, bool ent
  * SWITCH_MS, the last asked for. */
 #define SWITCH_MS 50
 
-static struct server *switch_server;
 static int switch_to; /* the last asked for */
 
 static void switch_now(void *data)
 {
-	desktop_switch(switch_server, switch_to);
+	desktop_switch(ws_server, switch_to);
 }
 
 static struct throttle switch_throttle = { .ms = SWITCH_MS, .run = switch_now };
 
 static void request_switch(struct server *server, int n)
 {
-	switch_server = server;
 	switch_to = n;
 	throttle_call(&switch_throttle, server->event_loop);
 }

@@ -329,3 +329,37 @@ void cairo_buffer_drop(struct cairo_buffer *buf)
 {
 	wlr_buffer_drop(&buf->base);
 }
+
+/* ---- bevelled rings --------------------------------------------------------- */
+
+void ring_strips(struct wlr_box out[4], int w, int h, int th, int tw)
+{
+	out[0] = (struct wlr_box){ 0, 0, w, th };
+	out[1] = (struct wlr_box){ 0, h - th, w, th };
+	out[2] = (struct wlr_box){ 0, th, tw, h - 2 * th };
+	out[3] = (struct wlr_box){ w - tw, th, tw, h - 2 * th };
+}
+
+void ring_render(struct wlr_scene_buffer *node[4], int w, int h, int th, int tw,
+	void (*draw)(cairo_t *cr, int w, int h, void *data), void *data)
+{
+	struct wlr_box strips[4];
+	ring_strips(strips, w, h, th, tw);
+	for (int i = 0; i < 4; i++) {
+		const struct wlr_box *b = &strips[i];
+		if (!node[i])
+			continue;
+		struct cairo_buffer *buf = b->width > 0 && b->height > 0 ?
+			cairo_buffer_create(b->width, b->height) : NULL;
+		if (buf) {
+			/* The whole ring, of which the strip shows its part: the corners
+			 * join diagonally as Motif's do. */
+			cairo_translate(buf->cr, -b->x, -b->y);
+			draw(buf->cr, w, h, data);
+		}
+		wlr_scene_buffer_set_buffer(node[i], buf ? &buf->base : NULL);
+		if (buf)
+			cairo_buffer_drop(buf);
+		wlr_scene_node_set_position(&node[i]->node, b->x, b->y);
+	}
+}

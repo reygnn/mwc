@@ -21,7 +21,7 @@ static bool tab_material(struct view *view)
 		(view->decor & DECOR_TITLE) && !view_docked(view);
 }
 
-bool tabs_can_join(struct view *view)
+static bool tabs_can_join(struct view *view)
 {
 	/* A group is on one desktop: a window elsewhere can't be part of it. */
 	return view->mapped && !view->minimized && !view->hidden_with_parent &&
