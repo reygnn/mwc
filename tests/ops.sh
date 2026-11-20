@@ -134,10 +134,12 @@ op_close() {
 	prune
 }
 
-# Whether a window in sight covers the point x y, as a fullscreen one does the icons.
+# Whether a window in sight covers the point x y, as a fullscreen one does the icons:
+# all of its output, with the black behind a smaller buffer. One output here.
 covered() {
 	awk -v px="$1" -v py="$2" '$1 == "view" && / visible=1 / {
 		for (i = 2; i <= NF; i++) { split($i, kv, "="); f[kv[1]] = kv[2] }
+		if (f["full"]) { found = 1; exit }
 		if (px >= f["x"] && px < f["x"] + f["w"] + 2 * f["bw"] &&
 				py >= f["y"] && py < f["y"] + f["fh"]) { found = 1; exit }
 	} END { exit !found }' "$MWC_TEST_STATE"
