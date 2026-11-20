@@ -230,8 +230,16 @@ switch_to 1
 RC=$XDG_CONFIG_HOME/mwc/mwmrc
 printf 'Mwm*outputManagement: true\nMwm*everywhere*allDesktops: true\n' >"$RC"
 reload_mwc
-wayland everywhere size=200x100
+wayland everywhere size=200x100 dialog=everydlg dialog_after="$SMOKE_DIR/every.open"
 switch_to 2
+# A dialog it opens later is where it is, here too.
+touch "$SMOKE_DIR/every.open"
+wait_for "it opens a dialog" said everywhere 'dialog opened'
+on "its dialog is in sight on desktop 2" everydlg 2 1
+check "and has the keys" "[ \"\$(get everydlg kbfocus)\" = 1 ]"
+urgent_is "nothing is marked" ""
+do_input key alt+F4
+check "the dialog is closed" "[ -z \"\$(get everydlg x)\" ]"
 check "with allDesktops it stays in sight on desktop 2" "[ \"\$(get everywhere visible)\" = 1 ]"
 do_input move $(($(get everywhere x) + 30)) $(($(get everywhere y) + $(get everywhere th) + 30))
 do_input click left
@@ -265,6 +273,19 @@ switch_to 1
 kill "$PID_latewin"
 wait "$PID_latewin" 2>/dev/null
 check "it is gone" "[ -z \"\$(get lateall x)\" ]"
+# Shown again under its first name, the rules are those for that one: on this desktop
+# only.
+wayland relabel size=200x100 late_app=lateall late_after="$SMOKE_DIR/relabel" \
+	rehide_after="$SMOKE_DIR/relabel.hide" reshow_after="$SMOKE_DIR/relabel.show"
+touch "$SMOKE_DIR/relabel"
+wait_for "it takes the name" said relabel "late app"
+check "and is everywhere" "[ \"\$(get lateall everywhere)\" = 1 ]"
+touch "$SMOKE_DIR/relabel.hide"
+check "it is withdrawn" "[ -z \"\$(get lateall x)\" ]"
+touch "$SMOKE_DIR/relabel.show"
+check "shown again as relabel, it is on this desktop only" \
+	"[ \"\$(get relabel everywhere)\" = 0 ] && [ \"\$(get relabel desktop)\" = 1 ]"
+stop relabel
 # Its dialog with it: from desktop 2, where both are out of sight, they come into it.
 wayland fam size=200x100 late_app=lateall late_after="$SMOKE_DIR/fam" dialog=famdlg
 check "its dialog is mapped" "[ -n \"\$(get famdlg x)\" ]"

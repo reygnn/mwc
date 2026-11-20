@@ -7,12 +7,6 @@
 #include <wlr/util/log.h>
 #include "mwc.h"
 
-/* The app_id is both the name and the class mwmrc's rules go by. */
-static void view_names(struct view *view, const char **name, const char **class)
-{
-	*name = *class = view_app_id(view);
-}
-
 /* Dialogs belong with their window, not in the program's corner or the dock. */
 static bool toplevel(struct view *view)
 {
@@ -23,40 +17,30 @@ int config_view_dock(struct view *view)
 {
 	if (!toplevel(view))
 		return -1;
-	const char *name, *class;
-	view_names(view, &name, &class);
-	return config_client_dock(name, class);
+	return config_client_dock(view_app_id(view));
 }
 
 bool config_view_all_desktops(struct view *view)
 {
-	const char *name, *class;
-	view_names(view, &name, &class);
-	return config_client_all_desktops(name, class);
+	return config_client_all_desktops(view_app_id(view));
 }
 
 bool config_view_position(struct view *view, struct config_position *out)
 {
 	if (!toplevel(view))
 		return false;
-	const char *name, *class;
-	view_names(view, &name, &class);
-	return config_client_position(name, class, out);
+	return config_client_position(view_app_id(view), out);
 }
 
 void config_view_tiling(struct view *view)
 {
-	const char *name, *class;
-	view_names(view, &name, &class);
-	view->no_tile = view_docked(view) || !config_client_tiles(name, class);
+	view->no_tile = view_docked(view) || !config_client_tiles(view_app_id(view));
 }
 
 /* Pick the frame colours for a window from its app_id. */
 void config_view_shades(struct view *view)
 {
-	const char *name, *class;
-	view_names(view, &name, &class);
-	config_client_shades(name, class, &view->shade_active, &view->shade_inactive);
+	config_client_shades(view_app_id(view), &view->shade_active, &view->shade_inactive);
 }
 
 void config_reload(struct server *server)

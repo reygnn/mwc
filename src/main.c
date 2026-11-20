@@ -766,8 +766,7 @@ static bool in_path(const char *prog)
 static const char *pick_terminal(void)
 {
 	static const char *candidates[] = {
-		"foot", "alacritty", "konsole", "kitty",
-		"x-terminal-emulator", "ptyxis", "gnome-terminal",
+		"foot", "alacritty", "konsole", "kitty", "ptyxis", "gnome-terminal",
 	};
 	for (size_t i = 0; i < sizeof(candidates) / sizeof(*candidates); i++) {
 		if (in_path(candidates[i]))

@@ -28,22 +28,14 @@ int frame_thin_border(void)
 
 int frame_border(struct view *view)
 {
-	unsigned d = frame_decor(view);
-	if (d & DECOR_RESIZEH)
-		return theme.border;
-	if (d & DECOR_BORDER)
-		return frame_thin_border();
-	return 0;
+	if (!view_decorated(view))
+		return 0;
+	return (view->decor & DECOR_RESIZEH) ? theme.border : frame_thin_border();
 }
 
 int frame_title(struct view *view)
 {
-	return (frame_decor(view) & DECOR_TITLE) ? theme.title_height : 0;
-}
-
-int frame_left(struct view *view)
-{
-	return frame_border(view);
+	return view_decorated(view) ? theme.title_height : 0;
 }
 
 int frame_top(struct view *view)
@@ -80,18 +72,19 @@ static void title_layout(struct view *view, struct title_layout *tl)
 
 	/* Drop the buttons a narrow window has no room for, minimize first, so
 	 * drawing and hit testing never see them overlap. */
-	static const unsigned order[] = {
-		DECOR_MINIMIZE, DECOR_MAXIMIZE, DECOR_MENU,
-	};
-	int n = !!(d & DECOR_MENU) + !!(d & DECOR_MINIMIZE) +
-		!!(d & DECOR_MAXIMIZE);
-	for (int i = 0; i < 3 && n * T > view->width; i++) {
-		if (d & order[i]) {
-			d &= ~order[i];
-			n--;
-		}
+	bool menu = view_decorated(view);
+	int n = menu + !!(d & DECOR_MINIMIZE) + !!(d & DECOR_MAXIMIZE);
+	if (n * T > view->width && (d & DECOR_MINIMIZE)) {
+		d &= ~DECOR_MINIMIZE;
+		n--;
 	}
-	if (d & DECOR_MENU) {
+	if (n * T > view->width && (d & DECOR_MAXIMIZE)) {
+		d &= ~DECOR_MAXIMIZE;
+		n--;
+	}
+	if (n * T > view->width)
+		menu = false;
+	if (menu) {
 		tl->menu_x = left;
 		left += T;
 	}

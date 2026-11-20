@@ -54,7 +54,7 @@ TEST(no_file)
 	CHECK(config_icon_placement()->horizontal && config_icon_placement()->from_bottom);
 	CHECK(!config_icon_placement()->from_right);
 	CHECK(config_dock_placement()->from_right && config_dock_placement()->from_bottom);
-	CHECK(config_client_tiles("foot", "foot"));
+	CHECK(config_client_tiles("foot"));
 	CHECK_INT(log_lines(""), 0);
 }
 
@@ -66,7 +66,7 @@ TEST(lines_and_lookups)
 		"   Mwm*fontList: Sans Bold 10\t\n"
 		"mwm.moveOpaque: true\n"
 		"Mwm*terminal: foot\n"
-		"Mwm*XTerm*activeBackground: #8a0303\n"
+		"Mwm*MWT*activeBackground: #8a0303\n"
 		"Mwm*org.gnome.Terminal*geometry: +10+20\n"
 		"Mwm*runDialog: sh -c 'x: y'\n");
 	CHECK(is(config_get("terminal"), "foot")); /* the later line wins */
@@ -75,7 +75,7 @@ TEST(lines_and_lookups)
 	CHECK(is(config_get("moveOpaque"), "true")); /* '.' separates as '*' does */
 	CHECK(is(config_get("runDialog"), "sh -c 'x: y'")); /* split at the first ':' */
 	CHECK(config_get("activeBackground") == NULL); /* a client's isn't global */
-	CHECK(is(config_get_for("xterm", "activeBackground"), "#8a0303"));
+	CHECK(is(config_get_for("mwt", "activeBackground"), "#8a0303"));
 	CHECK(is(config_get_for("org.gnome.Terminal", "geometry"), "+10+20"));
 	CHECK(config_get_for("foot", "terminal") == NULL);
 	CHECK_INT(log_lines(""), 0);
@@ -90,8 +90,8 @@ TEST(lines_malformed)
 		"Mwm**fontList: Sans 9\n"   /* an empty client names nothing */
 		"Mwmx*fontList: Sans 9\n"
 		"*fontList: Sans 9\n"
-		"Mwm*XTerm**background: red\n"             /* a client never matches */
-		"Mwm*XTerm*vt100*activeBackground: red\n"  /* as an X resource names it */
+		"Mwm*mwt**background: red\n"             /* a client never matches */
+		"Mwm*mwt*vt100*activeBackground: red\n"  /* as an X resource names it */
 		"Mwm*terminal: mwt\n");
 	CHECK(is(config_get("terminal"), "mwt"));
 	CHECK(config_get("fontList") == NULL);
@@ -256,7 +256,7 @@ TEST(home)
 static bool position_is(const char *name, int x, int y, bool right, bool bottom)
 {
 	struct config_position p;
-	return config_client_position(name, name, &p) && p.x == x && p.y == y &&
+	return config_client_position(name, &p) && p.x == x && p.y == y &&
 		p.from_right == right && p.from_bottom == bottom && !p.at_pointer;
 }
 
@@ -276,28 +276,30 @@ TEST(positions)
 	CHECK(position_is("b", 0, 0, true, true));
 	CHECK(position_is("c", 99999, 5, false, true));
 	struct config_position p;
-	CHECK(config_client_position("D", "D", &p) && p.at_pointer); /* ignoring case */
+	CHECK(config_client_position("D", &p) && p.at_pointer); /* ignoring case */
 	for (const char *c = "efghij"; *c; c++) {
 		char name[2] = { *c, 0 };
-		CHECK(!config_client_position(name, name, &p));
+		CHECK(!config_client_position(name, &p));
 	}
-	CHECK(!config_client_position("nobody", "nobody", &p));
+	CHECK(!config_client_position("nobody", &p));
 	CHECK_INT(log_lines("expected a position like"), 6); /* once, when loaded */
 }
 
-/* X11 windows go by instance or class; the last line for either wins. */
-TEST(instance_or_class)
+/* The app_id ignoring case, the last line for it winning; no app_id matches nothing. */
+TEST(by_app_id)
 {
-	load("Mwm*XTerm*geometry: +1+1\n"
-		"Mwm*login*geometry: +2+2\n"
-		"Mwm*XTerm*allDesktops: true\n");
+	load("Mwm*Foot*geometry: +1+1\n"
+		"Mwm*org.gnome.Nautilus*geometry: +2+2\n"
+		"Mwm*foot*geometry: +3+3\n"
+		"Mwm*foot*allDesktops: true\n");
 	struct config_position p;
-	CHECK(config_client_position("login", "XTerm", &p) && p.x == 2);
-	CHECK(config_client_position("other", "XTerm", &p) && p.x == 1);
-	CHECK(config_client_position("login", NULL, &p) && p.x == 2);
-	CHECK(config_client_position(NULL, "xterm", &p) && p.x == 1);
-	CHECK(config_client_all_desktops("x", "XTerm"));
-	CHECK(!config_client_all_desktops("login", "UXTerm"));
+	CHECK(config_client_position("foot", &p) && p.x == 3);
+	CHECK(config_client_position("ORG.GNOME.NAUTILUS", &p) && p.x == 2);
+	CHECK(!config_client_position("footclient", &p));
+	CHECK(!config_client_position(NULL, &p));
+	CHECK(config_client_all_desktops("FOOT"));
+	CHECK(!config_client_all_desktops(NULL));
+	CHECK(!config_client_all_desktops("org.gnome.Nautilus"));
 }
 
 TEST(dock_order)
@@ -307,32 +309,31 @@ TEST(dock_order)
 		"Mwm*mixer*dock: off\n"
 		"Mwm*term*geometry: +0+0\n"
 		"Mwm*clock*dock: true\n");
-	int clock = config_client_dock("clock", "clock");
-	int pulse = config_client_dock("pulse", "pulse");
+	int clock = config_client_dock("clock");
+	int pulse = config_client_dock("pulse");
 	CHECK(pulse >= 0 && clock > pulse); /* the line that counts decides the order */
-	CHECK_INT(config_client_dock("mixer", "mixer"), -1);
-	CHECK_INT(config_client_dock("term", "term"), -1);
+	CHECK_INT(config_client_dock("mixer"), -1);
+	CHECK_INT(config_client_dock("term"), -1);
 }
 
 static bool tiles(const char *name)
 {
-	return config_client_tiles(name, name);
+	return config_client_tiles(name);
 }
 
 TEST(tile_filter)
 {
-	load("Mwm*DoNotTile: Navigator, Gimp Image Window ,,mpv\n");
-	CHECK(!tiles("navigator"));
+	load("Mwm*DoNotTile: Firefox, Gimp Image Window ,,mpv\n");
+	CHECK(!tiles("firefox"));
 	CHECK(!tiles("Gimp Image Window")); /* spaces belong to the name */
 	CHECK(!tiles("MPV"));
 	CHECK(tiles("foot"));
-	CHECK(config_client_tiles("firefox", "foot"));
-	CHECK(!config_client_tiles("Navigator", "firefox")); /* either name */
-	load("Mwm*DoNotTile: foot\nMwm*TileOnly: XTerm, mfm\n"); /* the last one counts */
-	CHECK(tiles("xterm"));
+	CHECK(tiles(NULL)); /* no app_id: not listed */
+	load("Mwm*DoNotTile: foot\nMwm*TileOnly: mwt, mfm\n"); /* the last one counts */
+	CHECK(tiles("MWT"));
 	CHECK(tiles("mfm"));
 	CHECK(!tiles("foot"));
-	load("Mwm*TileOnly: XTerm\nMwm*TileOnly:\n"); /* empty: off again */
+	load("Mwm*TileOnly: mwt\nMwm*TileOnly:\n"); /* empty: off again */
 	CHECK(tiles("foot"));
 	load("Mwm*foot*DoNotTile: x\n"); /* a client's line isn't the filter */
 	CHECK(tiles("x"));
@@ -421,10 +422,10 @@ TEST(shades_from_the_theme)
 	theme = (struct mwc_theme){ .active = shade(0.5f, 0), .inactive = shade(0.7f, 0) };
 	load("");
 	struct mwc_shade a, in;
-	config_client_shades("foot", "foot", &a, &in);
+	config_client_shades("foot", &a, &in);
 	CHECK(same(a.bg, theme.active.bg) && same(in.bg, theme.inactive.bg));
 	load("Mwm*terminal: mwt\n");
-	config_client_shades("foot", "foot", &a, &in);
+	config_client_shades("foot", &a, &in);
 	CHECK(same(a.bg, theme.active.bg) && same(in.bg, theme.inactive.bg));
 }
 
@@ -434,8 +435,8 @@ TEST(shades_of_a_client)
 	struct mwc_color red = { 1, 0, 0 }, white = { 1, 1, 1 }, black = { 0, 0, 0 };
 	struct mwc_shade a, in;
 	/* Its own active colour: text by contrast, a paler one when unfocused. */
-	load("Mwm*XTerm*activeBackground: #ff0000\n");
-	config_client_shades("xterm", "XTerm", &a, &in);
+	load("Mwm*MWT*activeBackground: #ff0000\n");
+	config_client_shades("mwt", &a, &in);
 	CHECK(same(a.bg, red));
 	CHECK(same(a.fg, color_contrast(red)));
 	CHECK(same(in.bg, color_mix(red, theme.inactive.bg, 0.55f)));
@@ -443,21 +444,21 @@ TEST(shades_of_a_client)
 	/* The global foreground goes before contrast. */
 	theme.has_active_fg = true;
 	theme.active_fg = white;
-	config_client_shades("xterm", "XTerm", &a, &in);
+	config_client_shades("mwt", &a, &in);
 	CHECK(same(a.fg, white));
 	/* Only an inactive colour: the active frame stays the theme's. */
 	theme.has_active_fg = false;
-	load("Mwm*XTerm*background: black\n");
-	config_client_shades("xterm", "XTerm", &a, &in);
+	load("Mwm*mwt*background: black\n");
+	config_client_shades("mwt", &a, &in);
 	CHECK(same(a.bg, theme.active.bg));
 	CHECK(same(in.bg, black));
 	CHECK(same(in.fg, color_contrast(black)));
 	/* A bad colour is said, with its line, and left out: once when mwmrc is read,
 	 * not each time a window maps (Review 2026-11-18 #12). */
-	load("! x\nMwm*XTerm*activeBackground: reddish\n");
+	load("! x\nMwm*mwt*activeBackground: reddish\n");
 	CHECK_INT(log_lines("mwmrc:2: unknown colour \"reddish\""), 1);
 	for (int i = 0; i < 3; i++)
-		config_client_shades("xterm", "XTerm", &a, &in);
+		config_client_shades("mwt", &a, &in);
 	CHECK(same(a.bg, theme.active.bg));
 	CHECK_INT(log_lines("unknown colour"), 1);
 }
@@ -477,7 +478,7 @@ int main(void)
 	RUN(colours);
 	RUN(home);
 	RUN(positions);
-	RUN(instance_or_class);
+	RUN(by_app_id);
 	RUN(dock_order);
 	RUN(tile_filter);
 	RUN(placements);

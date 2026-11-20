@@ -447,7 +447,7 @@ do_input move 2000 360
 check "the pointer on HEADLESS-1" "[ \"\$(global cursor x)\" -ge 2560 ]"
 WAYLAND_DISPLAY=wayland-0 build/xdgc app=there size=300x200 >/dev/null 2>&1 &
 PID_there=$!
-check "a window where it is now" "[ \"\$(get there x)\" -ge 2560 ]"
+check "a window where it is now" "[ -n \"\$(get there x)\" ] && [ \"\$(get there x)\" -ge 2560 ]"
 sleep 0.3
 capturec frame HEADLESS-1 "$SMOKE_DIR/back.png" || fail "capturing it"
 [ "$(build/pngtool pixel "$SMOKE_DIR/back.png" 1000 600)" = 204060 ] ||

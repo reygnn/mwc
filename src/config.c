@@ -38,10 +38,10 @@
  *   Mwm*useIconBox:                true       icons in a box, see iconbox.c
  *   Mwm*iconBoxSize:               10         its length at most, in icons
  *
- * The client part matches a client's app_id, ignoring case; it stands for both the
- * instance and the class name of mwm-x11's rules. Colours are #rrggbb, colour names
- * or rgb:rr/gg/bb. Lines starting with ! are comments; there are no comments after a
- * value. Later lines win.
+ * The client part matches a client's app_id, ignoring case, where mwm-x11's matched
+ * the instance or the class name. Colours are #rrggbb, colour names or rgb:rr/gg/bb.
+ * Lines starting with ! are comments; there are no comments after a value. Later
+ * lines win.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <ctype.h>
@@ -577,15 +577,13 @@ int config_bool(const char *name, const char *s)
 	return -1;
 }
 
-static const struct rule *client_rule(const char *name, const char *class,
-	const char *resource)
+static const struct rule *client_rule(const char *app_id, const char *resource)
 {
 	const struct rule *r = NULL;
 	for (int i = 0; i < n_rules; i++) {
 		const char *c = rules[i].client;
-		if (c && strcasecmp(rules[i].resource, resource) == 0 &&
-				((name && strcasecmp(c, name) == 0) ||
-				(class && strcasecmp(c, class) == 0)))
+		if (c && app_id && strcasecmp(rules[i].resource, resource) == 0 &&
+				strcasecmp(c, app_id) == 0)
 			r = &rules[i];
 	}
 	return r;
@@ -597,38 +595,36 @@ static bool rule_color(const struct rule *r, struct mwc_color *out)
 	return r && config_color(r->value, out);
 }
 
-int config_client_dock(const char *name, const char *class)
+int config_client_dock(const char *app_id)
 {
-	const struct rule *r = client_rule(name, class, "dock");
+	const struct rule *r = client_rule(app_id, "dock");
 	return r && config_bool("dock", r->value) == 1 ? (int)(r - rules) : -1;
 }
 
-bool config_client_all_desktops(const char *name, const char *class)
+bool config_client_all_desktops(const char *app_id)
 {
-	const struct rule *r = client_rule(name, class, "allDesktops");
+	const struct rule *r = client_rule(app_id, "allDesktops");
 	return r && config_bool("allDesktops", r->value) == 1;
 }
 
-bool config_client_position(const char *name, const char *class,
-	struct config_position *out)
+bool config_client_position(const char *app_id, struct config_position *out)
 {
-	const struct rule *r = client_rule(name, class, "geometry");
+	const struct rule *r = client_rule(app_id, "geometry");
 	return r && parse_position(r->value, out);
 }
 
-bool config_client_tiles(const char *name, const char *class)
+bool config_client_tiles(const char *app_id)
 {
 	if (tile_filter == FILTER_NONE)
 		return true;
 	bool listed = false;
 	for (int i = 0; i < n_tile_names && !listed; i++)
-		listed = !strcasecmp(tile_names[i], name) ||
-			!strcasecmp(tile_names[i], class);
+		listed = app_id && !strcasecmp(tile_names[i], app_id);
 	return tile_filter == FILTER_DENY ? !listed : listed;
 }
 
-void config_client_shades(const char *name, const char *class,
-	struct mwc_shade *active, struct mwc_shade *inactive)
+void config_client_shades(const char *app_id, struct mwc_shade *active,
+	struct mwc_shade *inactive)
 {
 	*active = theme.active;
 	*inactive = theme.inactive;
@@ -636,10 +632,10 @@ void config_client_shades(const char *name, const char *class,
 		return;
 
 	struct mwc_color abg, afg, ibg, ifg;
-	bool has_abg = rule_color(client_rule(name, class, "activeBackground"), &abg);
-	bool has_afg = rule_color(client_rule(name, class, "activeForeground"), &afg);
-	bool has_ibg = rule_color(client_rule(name, class, "background"), &ibg);
-	bool has_ifg = rule_color(client_rule(name, class, "foreground"), &ifg);
+	bool has_abg = rule_color(client_rule(app_id, "activeBackground"), &abg);
+	bool has_afg = rule_color(client_rule(app_id, "activeForeground"), &afg);
+	bool has_ibg = rule_color(client_rule(app_id, "background"), &ibg);
+	bool has_ifg = rule_color(client_rule(app_id, "foreground"), &ifg);
 
 	if (has_abg || has_afg) {
 		if (!has_abg)

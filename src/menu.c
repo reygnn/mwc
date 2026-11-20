@@ -285,7 +285,7 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 		add(m, NULL, 0, NULL, ACT_NONE, false);
 		add_desktops(m, view);
 		add(m, NULL, 0, NULL, ACT_NONE, false);
-		add(m, "Close", 'C', "Alt+F4", ACT_CLOSE, f & FUNC_CLOSE);
+		add(m, "Close", 'C', "Alt+F4", ACT_CLOSE, true);
 		open_at(server, x, y);
 		return;
 	}
@@ -303,7 +303,7 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 	add(m, NULL, 0, NULL, ACT_NONE, false);
 	add_desktops(m, view);
 	add(m, NULL, 0, NULL, ACT_NONE, false);
-	add(m, "Close", 'C', "Alt+F4", ACT_CLOSE, f & FUNC_CLOSE);
+	add(m, "Close", 'C', "Alt+F4", ACT_CLOSE, true);
 	open_at(server, x, y);
 }
 
@@ -459,8 +459,7 @@ bool menu_button(struct server *server, double lx, double ly, bool pressed,
 		/* mwm: double-clicking the menu button closes the window. */
 		struct view *t = m->target;
 		uint32_t edges;
-		bool close = m->from_button && t && age < 400 &&
-			(t->funcs & FUNC_CLOSE) && frame_hit(t, (int)lx - t->x,
+		bool close = m->from_button && t && age < 400 && frame_hit(t, (int)lx - t->x,
 			(int)ly - t->y, &edges) == PART_MENU_BUTTON;
 		menu_close(server);
 		if (close)
@@ -617,7 +616,7 @@ void run_action(struct server *server, enum menu_action action,
 			view_lower(view);
 		break;
 	case ACT_CLOSE:
-		if (view && (view->funcs & FUNC_CLOSE))
+		if (view)
 			view_close(view);
 		break;
 	case ACT_NEW_WINDOW:

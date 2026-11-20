@@ -22,7 +22,10 @@
  *     grow=WxH     after mapping, take that size of its own accord; says "grown"
  *     grow_ms=MS   wait that long before, default 1000
  *     dialog=NAME  also open a child toplevel with this app_id
- *     dialog_after=FILE  open it only once FILE exists; says "dialog opened"
+ *     dialog_after=FILE  open it only once FILE exists, after all else below, while
+ *                  hidden if rehide_after is given; says "dialog opened"
+ *     dialog_minimize_after=FILE  then, once FILE exists, the dialog asks to be
+ *                  minimized; says "dialog minimize asked"
  *     minimize_after=FILE  once FILE exists, ask to be minimized; says "minimize asked"
  *     rehide_after=FILE  once FILE exists, unmap (a null buffer); says "hidden"; map
  *                  again once reshow_after=FILE exists, or 500 ms later; says "shown"
@@ -99,7 +102,9 @@ static int32_t geom_x, geom_y;
 static int popup_x, popup_y, popup_w, popup_h;
 static const char *popup_after, *fixed_after;
 static const char *dialog_after, *minimize_after, *rehide_after, *reshow_after;
-static const char *unframe_after;
+static const char *unframe_after, *dialog_minimize_after;
+static const char *dialog;
+static struct window *main_win, *dialog_win;
 static int sub_x, sub_y, sub_w, sub_h;
 static struct wl_subcompositor *subcompositor;
 
@@ -361,10 +366,14 @@ static void toplevel_close(void *data, struct xdg_toplevel *t)
 	if (win->deco)
 		zxdg_toplevel_decoration_v1_destroy(win->deco);
 	win->deco = NULL;
+	if (win->toplevel == menu_toplevel)
+		menu_toplevel = NULL;
 	xdg_toplevel_destroy(win->toplevel);
 	xdg_surface_destroy(win->xdg);
 	wl_surface_destroy(win->surface);
-	open_windows--;
+	win->toplevel = NULL; /* closed: what waits for a file leaves it alone */
+	if (--open_windows == 0)
+		exit(0);
 }
 
 static void toplevel_bounds(void *data, struct xdg_toplevel *t, int32_t w, int32_t h)
@@ -551,6 +560,19 @@ static void open_popup(struct window *parent)
 	wl_surface_commit(win->surface);
 }
 
+/* dialog_after's dialog, once its file exists. */
+static void open_late_dialog(struct wl_display *display)
+{
+	if (!dialog || !dialog_after || dialog_win || !main_win->toplevel)
+		return;
+	while (access(dialog_after, F_OK) != 0)
+		wait_dispatching(display, 50);
+	dialog_win = open_window(dialog, main_win, 120, 80, false);
+	wl_display_flush(display);
+	printf("dialog opened\n");
+	fflush(stdout);
+}
+
 static void add_subsurface(struct window *parent)
 {
 	struct wl_surface *s = wl_compositor_create_surface(compositor);
@@ -581,7 +603,7 @@ static void add_subsurface(struct window *parent)
 
 int main(int argc, char *argv[])
 {
-	const char *app = NULL, *dialog = NULL;
+	const char *app = NULL;
 	for (int i = 1; i < argc; i++) {
 		char *v = strchr(argv[i], '=');
 		if (!v) {
@@ -659,6 +681,8 @@ int main(int argc, char *argv[])
 			reshow_after = v;
 		else if (!strcmp(argv[i], "unframe_after"))
 			unframe_after = v;
+		else if (!strcmp(argv[i], "dialog_minimize_after"))
+			dialog_minimize_after = v;
 		else if (!strcmp(argv[i], "sub"))
 			sscanf(v, "%d,%d,%d,%d", &sub_x, &sub_y, &sub_w, &sub_h);
 	}
@@ -679,25 +703,18 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "xdgc: the compositor lacks a needed global\n");
 		return 1;
 	}
-	struct window *main_win = open_window(app, NULL, default_w, default_h, true);
+	main_win = open_window(app, NULL, default_w, default_h, true);
 	menu_toplevel = main_win->toplevel;
-	if (dialog) {
+	if (dialog && !dialog_after) {
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
-		while (dialog_after && access(dialog_after, F_OK) != 0)
-			wait_dispatching(display, 50);
-		struct window *dialog_win = open_window(dialog, main_win, 120, 80, false);
+		dialog_win = open_window(dialog, main_win, 120, 80, false);
 		if (unparent) {
 			wl_display_roundtrip(display);
 			wl_display_roundtrip(display);
 			usleep(1500000);
 			xdg_toplevel_set_parent(dialog_win->toplevel, NULL);
 			wl_display_flush(display);
-		}
-		if (dialog_after) {
-			wl_display_flush(display);
-			printf("dialog opened\n");
-			fflush(stdout);
 		}
 	}
 	if (late_frame && !strcmp(late_frame, "kde")) {
@@ -776,9 +793,11 @@ int main(int argc, char *argv[])
 	if (fixed_after) {
 		while (access(fixed_after, F_OK) != 0)
 			wait_dispatching(display, 50);
-		xdg_toplevel_set_min_size(main_win->toplevel, main_win->w, main_win->h);
-		xdg_toplevel_set_max_size(main_win->toplevel, main_win->w, main_win->h);
-		wl_surface_commit(main_win->surface);
+		if (main_win->toplevel) {
+			xdg_toplevel_set_min_size(main_win->toplevel, main_win->w, main_win->h);
+			xdg_toplevel_set_max_size(main_win->toplevel, main_win->w, main_win->h);
+			wl_surface_commit(main_win->surface);
+		}
 		wl_display_flush(display);
 		printf("fixed\n");
 		fflush(stdout);
@@ -786,12 +805,13 @@ int main(int argc, char *argv[])
 	if (minimize_after) {
 		while (access(minimize_after, F_OK) != 0)
 			wait_dispatching(display, 50);
-		xdg_toplevel_set_minimized(main_win->toplevel);
+		if (main_win->toplevel)
+			xdg_toplevel_set_minimized(main_win->toplevel);
 		wl_display_flush(display);
 		printf("minimize asked\n");
 		fflush(stdout);
 	}
-	if (rehide_after) {
+	if (rehide_after && main_win->toplevel) {
 		while (access(rehide_after, F_OK) != 0)
 			wait_dispatching(display, 50);
 		main_win->hidden = true;
@@ -800,6 +820,8 @@ int main(int argc, char *argv[])
 		wl_display_roundtrip(display);
 		printf("hidden\n");
 		fflush(stdout);
+		/* A dialog of a window that isn't there. */
+		open_late_dialog(display);
 		if (reshow_after) {
 			while (access(reshow_after, F_OK) != 0)
 				wait_dispatching(display, 50);
@@ -823,9 +845,19 @@ int main(int argc, char *argv[])
 		if (main_win->deco)
 			zxdg_toplevel_decoration_v1_destroy(main_win->deco);
 		main_win->deco = NULL;
-		wl_surface_commit(main_win->surface);
+		if (main_win->toplevel)
+			wl_surface_commit(main_win->surface);
 		wl_display_flush(display);
 		printf("unframed\n");
+		fflush(stdout);
+	}
+	open_late_dialog(display);
+	if (dialog_minimize_after && dialog_win && dialog_win->toplevel) {
+		while (access(dialog_minimize_after, F_OK) != 0)
+			wait_dispatching(display, 50);
+		xdg_toplevel_set_minimized(dialog_win->toplevel);
+		wl_display_flush(display);
+		printf("dialog minimize asked\n");
 		fflush(stdout);
 	}
 	while (open_windows > 0 && wl_display_dispatch(display) != -1) {

@@ -79,8 +79,8 @@ void view_update_decorations(struct view *view)
 		f &= ~(FUNC_MOVE | FUNC_RESIZE | FUNC_MINIMIZE | FUNC_MAXIMIZE);
 
 	/* Decorations follow the functions they trigger. */
-	if (!(f & FUNC_RESIZE) && (d & DECOR_RESIZEH))
-		d = (d & ~DECOR_RESIZEH) | DECOR_BORDER;
+	if (!(f & FUNC_RESIZE))
+		d &= ~DECOR_RESIZEH;
 	if (!(f & FUNC_MINIMIZE))
 		d &= ~DECOR_MINIMIZE;
 	if (!(f & FUNC_MAXIMIZE))

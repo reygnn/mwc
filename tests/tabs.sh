@@ -346,13 +346,14 @@ stop a
 
 # ---- requests from behind ------------------------------------------------------------------
 
-wayland asks late_app=asks late_after="$SMOKE_DIR/asks" fs_output=0 size=300x200
+# The title it sets after the request tells that mwc has had it.
+wayland asks late_app=asks late_after="$SMOKE_DIR/asks" fs_output=0 titles=1 size=300x200
 wayland front size=400x300
 do_input key super+g
 shown "the other tab in front" front
 touch "$SMOKE_DIR/asks"
-wait_for "the hidden tab asks for fullscreen" said asks 'fullscreen asked'
-sleep 0.3
+wait_for "the hidden tab asks for fullscreen" said asks 'titles sent'
+check "mwc has had the request" "[ \"\$(get asks tlen)\" = 4 ]"
 check "it stays behind" "[ \"\$(get asks tab_hidden)\" = 1 ] && [ \"\$(get asks full)\" = 0 ] && [ \"\$(get front full)\" = 0 ]"
 stop asks
 stop front
@@ -372,6 +373,29 @@ shown "the other tab" pa
 check "and comes back with it" "[ \"\$(get dk hidden)\" = 0 ]"
 stop pa
 stop qa
+# A dialog its program minimized stays an icon when its window's tab goes and comes.
+wayland tq size=300x200
+wayland tp size=300x200 dialog=td dialog_after="$SMOKE_DIR/td.open" \
+	dialog_minimize_after="$SMOKE_DIR/td.min"
+touch "$SMOKE_DIR/td.open"
+wait_for "the dialog opens" said tp 'dialog opened'
+check "the dialog has the focus" "[ \"\$(get td active)\" = 1 ]"
+touch "$SMOKE_DIR/td.min"
+wait_for "the dialog asks to be an icon" said tp 'dialog minimize asked'
+check "the dialog is an icon" "[ \"\$(get td min)\" = 1 ] && [ \"\$(get td visible)\" = 0 ]"
+do_input move $(($(get tp x) + 100)) $(($(get tp y) + $(get tp th) + 50))
+do_input click left
+check "its window has the focus" "[ \"\$(get tp active)\" = 1 ]"
+do_input key super+g
+shown "its window joins the other" tp
+do_input key super+Tab
+shown "the other tab" tq
+do_input key super+Tab
+shown "and back" tp
+check "the dialog is still an icon, not on the screen" \
+	"[ \"\$(get td min)\" = 1 ] && [ \"\$(get td visible)\" = 0 ]"
+stop tp
+stop tq
 # A dialog of the hidden tab brings it to the front.
 wayland pb dialog=db dialog_after="$SMOKE_DIR/db" size=300x200
 wayland qb size=400x300
@@ -437,7 +461,7 @@ do_input move 300 250
 do_input click left
 wait_for "the shown one gets the click" said over 'menu asked'
 do_input key Escape
-sleep 0.3
+# A press goes to one surface only, and the shown one had it.
 said under 'menu asked' && fail "a hidden window caught a click"
 echo "ok: the hidden window didn't"
 stop under

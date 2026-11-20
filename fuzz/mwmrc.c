@@ -88,11 +88,11 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 		if (r->client) {
 			struct mwc_shade a, in;
 			config_get_for(r->client, r->resource);
-			config_client_dock(r->client, r->value);
-			config_client_all_desktops(r->value, r->client);
-			config_client_position(r->client, r->client, &pos);
-			config_client_tiles(r->client, r->value);
-			config_client_shades(r->client, r->client, &a, &in);
+			config_client_dock(r->client);
+			config_client_all_desktops(r->value);
+			config_client_position(r->client, &pos);
+			config_client_tiles(r->value);
+			config_client_shades(r->client, &a, &in);
 		}
 	}
 	for (int i = 0; i < config_root_items(); i++) {

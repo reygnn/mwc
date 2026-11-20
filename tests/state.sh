@@ -79,6 +79,8 @@ check "back" "[ \"\$(get fs full)\" = 0 ]"
 refresh
 pixel_is "and the client is inside the frame again" \
 	$(($(get fs x) + $(get fs bw) + 1)) $(($(get fs y) + $(get fs bw) + $(get fs th) + 1)) 808080
+pixel_isnt "with the frame around it, not the client" \
+	$(($(get fs x) + $(get fs bw) - 1)) $(($(get fs y) + $(get fs bw) + $(get fs th) + 1)) 808080
 stop fs
 
 # ---- a state change under a grab ends the grab ------------------------------------

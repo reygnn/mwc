@@ -105,24 +105,22 @@ void throttle_cancel(struct throttle *t);
 
 /* ---- views -------------------------------------------------------------- */
 
-/* Motif's clientDecoration and clientFunctions, bits as in _MOTIF_WM_HINTS. */
+/* After mwm's clientDecoration: what a frame may lack. It always has a title, the menu
+ * button and a border. */
 enum {
-	DECOR_BORDER = 1 << 1,
-	DECOR_RESIZEH = 1 << 2,
-	DECOR_TITLE = 1 << 3,
-	DECOR_MENU = 1 << 4,
-	DECOR_MINIMIZE = 1 << 5,
-	DECOR_MAXIMIZE = 1 << 6,
-	DECOR_ALL = 0x7e,
+	DECOR_RESIZEH = 1 << 0,
+	DECOR_MINIMIZE = 1 << 1,
+	DECOR_MAXIMIZE = 1 << 2,
+	DECOR_ALL = 0x7,
 };
 
+/* After mwm's clientFunctions: what a window may be denied. Closing never is. */
 enum {
-	FUNC_RESIZE = 1 << 1,
-	FUNC_MOVE = 1 << 2,
-	FUNC_MINIMIZE = 1 << 3,
-	FUNC_MAXIMIZE = 1 << 4,
-	FUNC_CLOSE = 1 << 5,
-	FUNC_ALL = 0x3e,
+	FUNC_RESIZE = 1 << 0,
+	FUNC_MOVE = 1 << 1,
+	FUNC_MINIMIZE = 1 << 2,
+	FUNC_MAXIMIZE = 1 << 3,
+	FUNC_ALL = 0xf,
 };
 
 enum window_type {
@@ -512,9 +510,6 @@ void view_focus(struct view *view);
 void view_focus_instead(struct view *v);
 void view_set_position(struct view *view, int x, int y);
 void view_set_geometry(struct view *view, int x, int y, int w, int h);
-/* Where the frame goes when the client resizes itself, keeping gravity_edges. */
-void view_gravity_place(struct view *view, int ow, int oh, int w, int h,
-	int *x, int *y);
 void view_close(struct view *view);
 void view_lower(struct view *view);
 void view_set_maximized(struct view *view, bool maximized);
@@ -527,7 +522,6 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 void view_drag_free(struct view *view);
 /* On the output at px, py. SNAP_NONE: the geometry from before. */
 void view_snap(struct view *view, enum snap s, double px, double py);
-void view_update_title(struct view *view);
 void view_frame_changed(struct view *view);
 void view_theme_changed(struct view *view);
 const char *view_title(struct view *view);
@@ -536,11 +530,6 @@ const char *view_app_id(struct view *view);
 bool view_app_id_changed(struct view *view);
 struct wlr_surface *view_surface(struct view *view);
 void view_cycle(struct server *server, bool backwards);
-/* After the xdg part has set the client. */
-void view_init_common(struct view *view);
-void view_handle_map(struct view *view);
-void view_handle_unmap(struct view *view);
-void view_handle_destroy(struct view *view);
 void view_send_size(struct view *view, int w, int h);
 void view_set_activated(struct view *view, bool activated);
 struct view *view_at(struct server *server, double lx, double ly,
@@ -587,7 +576,6 @@ void view_publish_state(struct view *view);
 void view_refit(struct view *view);
 void view_refit_at(struct view *view, double px, double py);
 void view_place(struct view *view);
-void view_parent_changed(struct view *view);
 
 /* ---- sizehints.c -------------------------------------------------------- */
 
@@ -620,7 +608,6 @@ uint32_t now_msec(void);
 int frame_border(struct view *view);
 int frame_thin_border(void); /* without resize handles */
 int frame_title(struct view *view);
-int frame_left(struct view *view);
 int frame_top(struct view *view);
 int frame_extra_w(struct view *view);
 int frame_extra_h(struct view *view);
@@ -856,18 +843,16 @@ struct config_position {
 	bool from_right, from_bottom;
 	bool at_pointer;
 };
-/* By a client's name and class, both its app_id, as mwm-x11's rules go by them: */
-
+/* By a client's app_id, ignoring case: */
 /* Its dock line's place in mwmrc, the dock's order; -1: not docked. */
-int config_client_dock(const char *name, const char *class);
-bool config_client_all_desktops(const char *name, const char *class);
-bool config_client_position(const char *name, const char *class,
-	struct config_position *out);
+int config_client_dock(const char *app_id);
+bool config_client_all_desktops(const char *app_id);
+bool config_client_position(const char *app_id, struct config_position *out);
 /* Whether DoNotTile and TileOnly let it tile. */
-bool config_client_tiles(const char *name, const char *class);
+bool config_client_tiles(const char *app_id);
 /* Its frame colours: its own lines, the theme for the rest. */
-void config_client_shades(const char *name, const char *class,
-	struct mwc_shade *active, struct mwc_shade *inactive);
+void config_client_shades(const char *app_id, struct mwc_shade *active,
+	struct mwc_shade *inactive);
 /* A leading ~/ as $HOME. */
 void config_expand_home(const char *value, char *out, size_t size);
 /* Mwm*iconPlacement: "primary secondary [tight]", default "left bottom". */

@@ -133,7 +133,11 @@ check "a click on the main window focuses it, the dialog stays above" \
 wayland other size=300x200
 mapped other
 check "another window goes to the front" "[ \"\$(stack_pos other)\" = 0 ]"
-do_input move $(($(get parent x) + 100)) $(($(get parent y) + 12))
+# Where the cascade put it, it leaves the main window's title bar there to click.
+px=$(($(get parent x) + 100)) py=$(($(get parent y) + 12))
+[ "$py" -lt "$(get other y)" ] || [ "$px" -lt "$(get other x)" ] ||
+	fail "the other window covers the main window's title bar at $px,$py"
+do_input move $px $py
 settle
 do_input click left
 check "raising the main window brings its dialog along" \
@@ -247,7 +251,8 @@ touch "$SMOKE_DIR/gplain.hide"
 check "it is hidden" "[ -z \"\$(get gplain x)\" ]"
 touch "$SMOKE_DIR/gplain.show"
 check "shown again, it is in its corner again" \
-	"[ \"\$(right gplain)\" = 1280 ] && [ \"\$(bottom gplain)\" = 720 ]"
+	"[ -n \"\$(get gplain x)\" ] && [ \"\$(right gplain)\" = 1280 ] && \
+	 [ \"\$(bottom gplain)\" = 720 ]"
 stop gplain
 
 # Hidden as an icon or snapped, it comes back as a plain window, with its title drawn.

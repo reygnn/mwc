@@ -106,7 +106,7 @@ static struct wlr_box area_for(struct server *server, struct wlr_box b)
  * clicks. */
 static void view_update_content_pos(struct view *view)
 {
-	int x = frame_left(view), y = frame_top(view);
+	int x = frame_border(view), y = frame_top(view);
 	struct wlr_scene_rect *backdrop = view->backdrop;
 	if (view->fullscreen && view->mapped) {
 		struct wlr_box a = output_full_area(view->server, view->x + 1, view->y + 1);
@@ -136,6 +136,7 @@ static void view_update_content_pos(struct view *view)
 	wlr_scene_subsurface_tree_set_clip(surface, view->ssd && shadow ? g : NULL);
 }
 
+/* Without ending an anchor: a client growing by itself from an edge keeps it. */
 static void view_move_to(struct view *view, int x, int y)
 {
 	view->x = x;
@@ -173,7 +174,8 @@ static bool view_left_alone(struct view *view)
 		!view->tiled && !view->group && view->server->grabbed_view != view;
 }
 
-void view_gravity_place(struct view *view, int ow, int oh, int w, int h,
+/* Where the frame goes when the client resizes itself, keeping gravity_edges. */
+static void view_gravity_place(struct view *view, int ow, int oh, int w, int h,
 	int *x, int *y)
 {
 	*x = view->x;
@@ -509,8 +511,9 @@ void view_refit_at(struct view *view, double px, double py)
 	view_fit_state(view, px, py);
 }
 
-/* What the client should know about it: which of its edges touch something. */
-static void view_publish_snap(struct view *view)
+/* What the client should know about it: which of its edges touch something. A tab
+ * taking over a snapped place hears it too. */
+void view_publish_state(struct view *view)
 {
 	if (!view->xdg_toplevel->base->initialized)
 		return;
@@ -543,12 +546,6 @@ static void view_publish_snap(struct view *view)
 	/* From maximized straight to snapped, it must stop thinking it is. */
 	wlr_xdg_toplevel_set_maximized(view->xdg_toplevel,
 		view->maximized && !view->tiled);
-}
-
-/* A tab taking over a snapped place must hear it is, as it does when snapped itself. */
-void view_publish_state(struct view *view)
-{
-	view_publish_snap(view);
 }
 
 /* What it goes back to is only recorded while it is free. The size is the one last
@@ -591,7 +588,7 @@ void view_snap(struct view *view, enum snap s, double px, double py)
 		view->maximized = false;
 		view_fit_state(view, px, py);
 	}
-	view_publish_snap(view);
+	view_publish_state(view);
 	frame_render(view);
 }
 
@@ -692,7 +689,7 @@ static void view_maximize_at(struct view *view, bool maximized, double px,
 			view->saved.width, view->saved.height);
 	}
 	frame_render(view);
-	view_publish_snap(view);
+	view_publish_state(view);
 ack:
 	/* Maximized or snapped is kept while tiled, not shown. */
 	if (view->xdg_toplevel->base->initialized)
@@ -733,7 +730,7 @@ void view_set_tiled(struct view *view, bool on, bool apply)
 	view_update_decorations(view);
 	/* What it tells the client depends on being tiled. */
 	view_maximize_at(view, view->maximized, 0, 0);
-	view_publish_snap(view);
+	view_publish_state(view);
 	if (!on && apply)
 		view_apply_floating(view);
 	frame_render(view);
@@ -853,7 +850,7 @@ void view_show(struct view *view, bool show)
 	wlr_scene_node_set_enabled(&view->tree->node, show && !view->off_desktop);
 }
 
-void view_parent_changed(struct view *view)
+static void view_parent_changed(struct view *view)
 {
 	view_update_properties(view);
 	dock_view_changed(view); /* dialogs stay outside */
@@ -958,7 +955,7 @@ bool view_app_id_changed(struct view *view)
 	return true;
 }
 
-void view_update_title(struct view *view)
+static void view_update_title(struct view *view)
 {
 	/* Programs that set a progress or the current line as their title may set the
 	 * same one again and again. */
@@ -1359,9 +1356,9 @@ struct view *view_at(struct server *server, double lx, double ly,
 	return view;
 }
 
-/* ---- common view lifecycle -------------------------------------------- */
+/* ---- view lifecycle --------------------------------------------------- */
 
-void view_init_common(struct view *view)
+static void view_init_common(struct view *view)
 {
 	struct server *server = view->server;
 	view->title_redraw = (struct throttle){ .ms = 16, .run = title_redraw, .data = view };
@@ -1496,7 +1493,7 @@ static void view_place_mapped(struct view *view)
 		pos.from_bottom ? a.y + a.height - h - pos.y : a.y + pos.y);
 }
 
-void view_handle_map(struct view *view)
+static void view_handle_map(struct view *view)
 {
 	view->mapped = true;
 	/* view_place_mapped() sets it from the entry; until then a frame that changes
@@ -1553,7 +1550,7 @@ void view_handle_map(struct view *view)
 	}
 }
 
-void view_handle_unmap(struct view *view)
+static void view_handle_unmap(struct view *view)
 {
 	struct server *server = view->server;
 	if (server->grabbed_view == view || server->grab_take == view)
@@ -1609,7 +1606,7 @@ void view_handle_unmap(struct view *view)
 	input_pointer_changed(server);
 }
 
-void view_handle_destroy(struct view *view)
+static void view_handle_destroy(struct view *view)
 {
 	/* A window that was never mapped gets here without view_handle_unmap(). */
 	struct server *server = view->server;

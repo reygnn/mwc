@@ -17,7 +17,7 @@
 static bool tab_material(struct view *view)
 {
 	return view->wtype == WT_NORMAL && !view_parent(view) && !view_fixed(view) && view->ssd &&
-		(view->decor & DECOR_TITLE) && !view_docked(view);
+		!view_docked(view);
 }
 
 static bool tabs_can_join(struct view *view)
