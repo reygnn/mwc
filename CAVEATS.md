@@ -23,9 +23,6 @@ A program cannot lock the pointer in its window or get raw motion:
 * Games that turn the view with the mouse, and Blender's view rotation and sculpting,
   stop at the edge of the screen.
 
-This holds for X11 programs too, since Xwayland uses the same protocols for pointer
-grabs and warps.
-
 
 ## Shortcuts in VM and RDP viewers
 
@@ -77,25 +74,13 @@ such a client brings them back.
 
 ## Scaled monitors
 
-Frames, menus and icons are drawn at 1x. With `outputScale` above 1 they look soft, and
-X11 programs are not scaled at all.
+Frames, menus and icons are drawn at 1x. With `outputScale` above 1 they look soft.
 
 
 ## Programs that draw their own frame
 
 GTK4 and libadwaita programs (Nautilus, Ptyxis, GNOME Text Editor) always draw their own
 title bar and stay without a Motif frame.
-
-
-## X11 menus and launchers
-
-An X11 window that wants the keyboard as it appears (dmenu, rofi under X11, an X11
-program's own menus) gets it only while an X11 window or none has the focus, not from a
-Wayland window, a panel or the icon box. The same holds for an X11 program activating
-or restoring a window, showing one again, opening a dialog for a window that is there
-(unless that window is in the tab group with the keys), going fullscreen or moving the
-focus between its own windows. This keeps X11 programs from taking the keyboard from
-Wayland ones, but an X11 launcher started from a Wayland terminal gets no keys.
 
 
 ## Programs mwc starts
@@ -108,8 +93,8 @@ and only the shell's message ("not found") is in mwc's log.
 
 ## Desktops and what clients see
 
-Clients aren't told about desktops: an X11 window on another desktop is not iconified
-for X11, and a capture of a monitor sees the current desktop only.
+Clients aren't told about desktops, and a capture of a monitor sees the current desktop
+only.
 
 
 ## The first monitor
@@ -125,10 +110,9 @@ The dock sits at the monitor's edge, also where a panel is: the two overlap. A d
 tool larger than the monitor sticks out of it.
 
 Beside the dock only snapping, Super+Shift+arrows and placing use its strip. A
-maximized window, the tiling layout, the icon box and the work area X11 programs see
-keep to the area without the whole strip. Snapping uses it only beside a dock along
-the bottom or top: beside a column, a quarter in a row clear of it would overlap the
-half next to it.
+maximized window, the tiling layout and the icon box keep to the area without the whole
+strip. Snapping uses it only beside a dock along the bottom or top: beside a column, a
+quarter in a row clear of it would overlap the half next to it.
 
 
 ## Placement by geometry
@@ -144,18 +128,11 @@ others. With a few hundred icons, a change of the usable area (a panel coming or
 takes noticeably long. The icon box is not affected.
 
 
-## X11 details
+## X11 programs
 
-Only `_NET_WM_STRUT_PARTIAL` reserves space for X11 panels, not the older
-`_NET_WM_STRUT`, because that is what wlroots reads.
-
-Xwayland starts on the first X11 connection. A program asking for `_NET_FRAME_EXTENTS`,
-`_NET_WORKAREA` or `_MOTIF_WM_INFO` before its first window is mapped may miss them the
-first time.
-
-An icon stays mapped on the X server, so mapping it again, the ICCCM way back from
-`IconicState`, changes nothing. `WM_CHANGE_STATE` with `NormalState` and
-`_NET_ACTIVE_WINDOW` bring it back.
+There is no Xwayland: programs that speak only X11 (xterm, Motif programs, Wine, older
+Java) don't start. `DISPLAY` is unset for programs mwc starts, so that nested in an X
+session they don't open there.
 
 
 ## Files from mwm-x11

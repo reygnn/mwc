@@ -7,8 +7,8 @@
 LOG=build/iconbox.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xdgc build/workspacec build/layerc build/xclient; do
+require_tools grim
+for tool in build/vinput build/pngtool build/xdgc build/workspacec build/layerc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -20,9 +20,7 @@ Mwm*iconBoxSize: 3
 EOF
 
 export MWC_TEST_STATE=$SMOKE_DIR/state
-start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-X_DISPLAY=$(cat "$SMOKE_DIR/display")
+start_mwc 'exec sleep 300'
 start_vinput
 refresh
 T=$(global theme title)
@@ -479,31 +477,6 @@ for app in one two three four; do
 done
 check "its programs quit: the logo, and a window has the keyboard" \
 	"[ \"\$(box logo)\" = 1 ] && [ \"\$(box focused)\" = 0 ] && [ \"\$(global focus any)\" = 1 ]"
-
-# ---- an X11 program asking for the focus while the box has it ------------------------
-
-# Refused, as from a Wayland window: the box is no X11 window. Nor does an icon come
-# back by WM_CHANGE_STATE.
-DISPLAY=$X_DISPLAY build/xclient class=xasks size=300x200 activate_after="$SMOKE_DIR/act" \
-	>"$SMOKE_DIR/xasks.events" 2>&1 &
-PID_xasks=$!
-mapped xasks
-DISPLAY=$X_DISPLAY build/xclient class=xicon size=300x200 normalize_after="$SMOKE_DIR/norm" \
-	>"$SMOKE_DIR/xicon.events" 2>&1 &
-PID_xicon=$!
-mapped xicon
-minimize xicon
-click_at $(title_bar)
-check "the box has the keyboard" "[ \"\$(box focused)\" = 1 ]"
-touch "$SMOKE_DIR/act" "$SMOKE_DIR/norm"
-# Retitled after each request (xclient's usage): by then mwc has handled it.
-check "mwc has had both requests" \
-	"[ \"\$(get xasks tlen)\" = 12 ] && [ \"\$(get xicon tlen)\" = 12 ]"
-check "neither is granted, the box keeps the keyboard" \
-	"[ \"\$(box focused)\" = 1 ] && [ \"\$(get xasks active)\" = 0 ] && \
-	 [ \"\$(get xicon min)\" = 1 ]"
-kill "$PID_xasks" "$PID_xicon"
-wait "$PID_xasks" "$PID_xicon" 2>/dev/null
 
 stop_vinput
 stop_mwc

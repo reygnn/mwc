@@ -5,7 +5,7 @@
 mwc is a small Wayland compositor with the look and behaviour of the Motif window
 manager. Frames are drawn server side: bevelled borders with corner grooves, a window
 menu button, minimize and maximize, desktop icons, and mwm's menus and key bindings.
-X11 programs, Motif ones included, run through Xwayland and get the same frame. It is
+It runs Wayland programs only: there is no Xwayland, so X11 programs don't start. It is
 built on wlroots 0.19.
 
 
@@ -15,7 +15,7 @@ On Ubuntu 26.04:
 
     sudo apt install build-essential pkg-config libwlroots-0.19-dev \
         wayland-protocols libwayland-dev libxkbcommon-dev libpixman-1-dev \
-        libcairo2-dev libpango1.0-dev libxcb1-dev libxcb-icccm4-dev xwayland
+        libcairo2-dev libpango1.0-dev
     make
     sudo make install
 
@@ -26,7 +26,7 @@ On Ubuntu 26.04:
 
 Nested in a running session, as a window:
 
-    ./mwc -s xterm
+    ./mwc -s foot
 
 As a session: choose "Mwc (Motif)" in GDM, or start `mwc` from a TTY.
 `~/.config/mwc/autostart`, if executable, runs at startup unless `-s` is given.
@@ -95,14 +95,13 @@ cannot restart and keep its windows, so a reload applies the file to what is run
     Mwm*fontList:                Sans Bold 10
     Mwm*wallpaper:               ~/pictures/desk.png
 
-    ! per program, by WM_CLASS or app_id
-    Mwm*XTerm*activeBackground:  #8a0303
-    Mwm*foot*activeBackground:   gold
+    ! per program, by app_id
+    Mwm*firefox*activeBackground:  #8a0303
+    Mwm*foot*activeBackground:     gold
 
 Lines starting with `!` are comments; a `!` after a value belongs to the value. Later
 lines win. Colours are `#rrggbb`, names such as `gold`, or `rgb:rr/gg/bb`. Programs are
-matched by an X11 window's `WM_CLASS` instance or class, or a Wayland `app_id`,
-ignoring case; an `app_id` may contain dots. Unknown resources are logged and ignored.
+matched by their `app_id`, ignoring case; it may contain dots. Unknown resources are logged and ignored.
 
 Global resources:
 
@@ -115,7 +114,7 @@ Global resources:
 | `rootBackground` | desktop colour, or `none` for a wallpaper tool such as swaybg |
 | `wallpaper` | PNG on the desktop, see below |
 | `moveOpaque` | `true`: move and resize the window itself instead of an outline |
-| `terminal` | for "New Window" and Super+Return; default the first of xterm, foot, alacritty and others found |
+| `terminal` | for "New Window" and Super+Return; default the first of foot, alacritty and others found |
 | `rootMenuItem` | a program in the root menu, see Root menu |
 | `runDialog` | button 2 on the desktop; default `mrun` |
 | `screenSaver` | Super+Esc; default `displayOff --stars` |
@@ -166,28 +165,28 @@ cannot be read, the log says why and the desktop keeps its colour.
 
 ### Placement
 
-`geometry` puts a program's windows in a fixed place when they appear, Wayland ones
-included. The value is a position as in X11's `-geometry`, without a size: `+` counts
-from the left or top edge of the usable area, `-` from the right or bottom one, to the
-frame. The monitor is the one under the pointer. `pointer` puts the middle of the title
-bar under the pointer instead, as far as the monitor allows.
+`geometry` puts a program's windows in a fixed place when they appear. The value is a
+position as in X11's `-geometry`, without a size: `+` counts from the left or top edge
+of the usable area, `-` from the right or bottom one, to the frame. The monitor is the
+one under the pointer. `pointer` puts the middle of the title bar under the pointer
+instead, as far as the monitor allows.
 
     Mwm*pulseControl*geometry:  -0-0
-    Mwm*XTerm*geometry:         +20-40
+    Mwm*foot*geometry:          +20-40
     Mwm*mrun*geometry:          pointer
 
 The entry wins over a position the program asks for, but not for dialogs. In tiling
 mode the layout decides, unless the program is in `DoNotTile`. A window placed from the
 right or bottom edge keeps that edge when it changes its size by itself, until it is
 moved or resized by hand. Hidden and shown again, a window returns to its entry's
-place, unless it is an X11 program with a position of its own.
+place.
 
 
 ## Moving and resizing
 
 As in mwm, a window being moved or resized is shown as an outline, and changes once
-when the button is released. A box in the middle of the monitor shows the position, or
-the size in the program's units, such as 80 x 24 for a terminal. `moveOpaque` drags the
+when the button is released. A box in the middle of the monitor shows the position or
+the size. `moveOpaque` drags the
 window itself. Escape during a drag also restores a window that was dragged out of its
 maximized state.
 
@@ -233,7 +232,7 @@ windows float. The layout leaves the icons' strip free.
 separated by commas; the later line wins, and an empty value switches the filter off.
 
     Mwm*DoNotTile:  firefox
-    Mwm*TileOnly:   XTerm, foot
+    Mwm*TileOnly:   foot, firefox
 
 While tiling is on, the root menu offers "Raise Tiled Windows" or "Lower Tiled
 Windows", which put all tiled windows above or below all floating ones. Switching
@@ -325,7 +324,7 @@ order of the file, up to 20. The label ends at the first colon; the rest is a sh
 command.
 
     Mwm*rootMenuItem:  Firefox: firefox
-    Mwm*rootMenuItem:  Notes: xterm -e sh -c "vi ~/notes.txt"
+    Mwm*rootMenuItem:  Notes: foot vi ~/notes.txt
 
 
 ## Screenshots
@@ -353,9 +352,6 @@ asking for the keyboard exclusively gets it, the one in the highest layer first;
 asking on demand gets it when it appears or is clicked. While a surface holds the
 keyboard exclusively, the window bindings are off, except VT switching and
 Ctrl+Alt+Backspace.
-
-X11 panels work as well: a dock window with `_NET_WM_STRUT_PARTIAL` reserves space, and
-`_NET_WORKAREA` tells X11 programs what is free.
 
 ext-idle-notify-v1, idle-inhibit-unstable-v1 and wlr-output-power-management-unstable-v1
 are there for tools such as [displayOff](https://github.com/reygnn/displayOff). A
@@ -394,26 +390,15 @@ switched off leaves the layout and stays off until such a client switches it on.
 
 ## Window behaviour
 
-Dialogs stay above their window, open centred over it and minimize with it. Size limits
-hold while resizing: minimum and maximum for all windows, steps, base size and aspect
-ratio from `WM_NORMAL_HINTS`. A window of a fixed size gets a thin border and no Size or
-Maximize. `_MOTIF_WM_HINTS` decide an X11 window's decorations and functions; functions
-it lacks are grey in its menu. `_NET_WM_WINDOW_TYPE` dialog, utility, splash, dock,
-desktop and notification are honoured, as are `_NET_WM_STATE` above, below, sticky,
-maximized and fullscreen; shaded is left to the tiling layout. X11 placement follows
-`USPosition`, `PPosition` and `win_gravity`.
+Dialogs stay above their window, open centred over it and minimize with it. A window's
+minimum and maximum size hold while resizing. A window of a fixed size gets a thin border
+and no Size or Maximize; functions a window lacks are grey in its menu.
 
 A fullscreen window smaller than the monitor sits in its middle, on black.
-
-An X11 program can activate or restore a window only while an X11 window or none has
-the focus, not a Wayland window, a panel or the icon box. Override-redirect windows that
-want the keyboard follow the same rule.
 
 Programs that wait for the refresh through wp_fifo_v1, as SDL 3 and Mesa's Vulkan FIFO
 mode do, get one update per refresh; when nobody sees them (minimized, on another
 desktop, under opaque windows, on a monitor that is off), about one a second.
-
-X11 programs find `_NET_FRAME_EXTENTS`, `_NET_WORKAREA` and `_MOTIF_WM_INFO`.
 
 Clients that speak xdg-decoration (foot, Qt, alacritty, kitty, mpv) or KDE's server
 decoration protocol (GTK3) get a Motif frame.
@@ -425,8 +410,8 @@ mwc is developed with Claude (Anthropic) as a coding assistant. I set the scope 
 architecture and review the changes; Claude writes most of the code and the tests. The
 checks:
 
-* `make test` runs headless tests; `make smoke` starts mwc and checks that a Wayland
-  and an X11 client connect, with a screenshot.
+* `make test` runs headless tests; `make smoke` starts mwc and checks that a client
+  connects, with a screenshot.
 * `make input-test` drives real clients with a simulated mouse and keyboard and checks
   geometry and focus after every move, resize, maximize, minimize, menu and key binding.
 * What is open, and which protocols any client can use, is written down rather than
@@ -443,8 +428,7 @@ Podman and Distrobox:
     distrobox enter mwc-dev
     make test
 
-`tests/Containerfile` does the same in a plain Podman container. Inside the box the
-host's X server is not reachable; X11 programs run inside mwc only.
+`tests/Containerfile` does the same in a plain Podman container.
 
 `make test` runs every script in `tests/`, each also on its own as `make NAME-test`
 (`make smoke` for the first): smoke, input, wallpaper, config, layer, window, move,

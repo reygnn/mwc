@@ -7,18 +7,16 @@
 LOG=build/crash.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools Xwayland
-for tool in build/vinput build/xclient build/xdgc build/badclient build/layerc; do
+for tool in build/vinput build/xdgc build/badclient build/layerc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
 export MWC_TEST_STATE=$SMOKE_DIR/state
 
 begin() {
-	rm -f "$SMOKE_DIR/display"
-	start_mwc 'grep SigIgn /proc/self/status > "$SMOKE_DIR/sigign"; echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-	wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-	X_DISPLAY=$(cat "$SMOKE_DIR/display")
+	rm -f "$SMOKE_DIR/sigign"
+	start_mwc 'grep SigIgn /proc/self/status > "$SMOKE_DIR/sigign"; exec sleep 300'
+	wait_for "the startup command ran" test -s "$SMOKE_DIR/sigign"
 	start_vinput
 	refresh
 	B=$(global theme border)
@@ -29,12 +27,6 @@ finish() {
 	stop_mwc
 }
 alive() { kill -0 "$pid" 2>/dev/null || fail "mwc died: $1"; echo "ok: mwc survives: $1"; }
-x11() {
-	local name=$1
-	shift
-	DISPLAY=$X_DISPLAY build/xclient class="$name" "$@" >"$SMOKE_DIR/$name.events" 2>&1 &
-	eval "PID_$name=$!"
-}
 wayland() {
 	local name=$1
 	shift
@@ -112,39 +104,6 @@ echo "ok: the new first configure has the size"
 stop remap
 check "the window is gone" "[ -z \"\$(get bad x)\" ]"
 
-# ---- X windows asking for states before they are mapped ------------------------------
-
-for when in before after; do
-	x11 xfull$when ask_$when=fullscreen size=300x200
-	check "fullscreen asked for $when mapping: it maps fullscreen" \
-		"[ \"\$(get xfull$when full)\" = 1 ] && [ \"\$(get xfull$when frame)\" = 0 ] && \
-		[ \"\$(get xfull$when w)\" = 1280 ] && [ \"\$(get xfull$when h)\" = 720 ]"
-	do_input key alt+F11
-	check "leaving fullscreen: its own size, with a frame" \
-		"[ \"\$(get xfull$when full)\" = 0 ] && [ \"\$(get xfull$when frame)\" = 1 ] && \
-		[ \"\$(get xfull$when w)\" = 300 ] && [ \"\$(get xfull$when h)\" = 200 ]"
-	stop xfull$when
-	check "the window is gone" "[ -z \"\$(get xfull$when x)\" ]"
-
-	x11 xmax$when ask_$when=maximized size=300x200
-	check "maximized asked for $when mapping: it maps maximized" \
-		"[ \"\$(get xmax$when max)\" = 1 ] && [ \$((\$(get xmax$when w) + 2 * B)) = 1280 ] && \
-		[ \$((\$(get xmax$when h) + 2 * B + T)) = 720 ]"
-	do_input key alt+F10
-	check "un-maximized: its own size, not nothing" \
-		"[ \"\$(get xmax$when max)\" = 0 ] && [ \"\$(get xmax$when w)\" = 300 ] && \
-		[ \"\$(get xmax$when h)\" = 200 ]"
-	stop xmax$when
-	check "the window is gone" "[ -z \"\$(get xmax$when x)\" ]"
-done
-if command -v xterm >/dev/null; then
-	DISPLAY=$X_DISPLAY xterm -fullscreen -class XTermFull >/dev/null 2>&1 &
-	PID_xtermfull=$!
-	check "a real xterm -fullscreen" "[ \"\$(get XTermFull full)\" = 1 ] && [ \"\$(get XTermFull w)\" = 1280 ]"
-	stop xtermfull
-	check "the window is gone" "[ -z \"\$(get XTermFull x)\" ]"
-fi
-
 # Maximized before a null buffer, and the next life starts without it. wlroots keeps what
 # was last scheduled, which the client must not be told.
 bad remapplain remap-plain
@@ -189,14 +148,6 @@ do_input key l
 alive "a menu request from a toplevel that was never mapped"
 stop nomenu
 
-x11 xnomove moveresize=1
-wait_for "the X client asked to move and left" grep -q '^done' "$SMOKE_DIR/xnomove.events"
-check "no grab starts for X11" "[ \"\$(global cursor mode)\" = 0 ]"
-do_input move 420 420
-do_input move 430 430
-alive "_NET_WM_MOVERESIZE on an unmapped window"
-stop xnomove
-
 # ---- popups of toplevels that are gone ---------------------------------------------------
 
 bad orphan popup
@@ -211,44 +162,7 @@ do_input move 450 450
 alive "a popup of a popup whose toplevel is gone"
 stop orphan2
 
-# ---- X windows changing their mind about override-redirect --------------------------------
-
-x11 lateor override=late pos=100,100 size=120x80
-check "an X window that turns override-redirect before map isn't managed" \
-	"[ \"\$(global unmanaged count)\" = 1 ] && [ -z \"\$(get lateor x)\" ]"
-do_input key alt+Tab
-alive "a late override-redirect window"
-stop lateor
-check "and is gone again" "[ \"\$(global unmanaged count)\" = 0 ]"
-
-x11 latemgd override=clear pos=100,100 size=120x80
-check "an X window that stops being override-redirect is managed" \
-	"[ -n \"\$(get latemgd x)\" ] && [ \"\$(get latemgd frame)\" = 1 ] && [ \"\$(global unmanaged count)\" = 0 ]"
-stop latemgd
-check "and is gone again" "[ -z \"\$(get latemgd x)\" ]"
-
-x11 mappedor override=mapped pos=100,100 size=120x80
-check "a mapped X window that turns override-redirect stops being managed" \
-	"[ -z \"\$(get mappedor x)\" ] && [ \"\$(global unmanaged count)\" = 1 ]"
-stop mappedor
-check "and is gone again" "[ \"\$(global unmanaged count)\" = 0 ]"
-
-# Mapped override-redirect, then managed: mwc takes it apart as an unmanaged window and
-# builds a managed one around the same surface, mapped at once (Review 2026-11-18 #35).
-x11 ormgd override=unset_mapped override_after="$SMOKE_DIR/ormgd" pos=100,100 size=120x80
-check "a mapped override-redirect window isn't managed" \
-	"[ \"\$(global unmanaged count)\" = 1 ] && [ -z \"\$(get ormgd x)\" ]"
-touch "$SMOKE_DIR/ormgd"
-wait_for "it stops being override-redirect" grep -q '^override cleared' "$SMOKE_DIR/ormgd.events"
-check "and is managed, with a frame" \
-	"[ -n \"\$(get ormgd x)\" ] && [ \"\$(get ormgd frame)\" = 1 ] && \
-	 [ \"\$(global unmanaged count)\" = 0 ]"
-do_input key alt+Tab
-alive "a mapped override-redirect window that became managed"
-stop ormgd
-check "and is gone again" "[ -z \"\$(get ormgd x)\" ] && [ \"\$(global unmanaged count)\" = 0 ]"
-
-# ---- a paste that goes wrong ----------------------------------------------------------------
+# ---- programs mwc starts ------------------------------------------------------------------
 
 # SIGPIPE stays ignored in mwc, but programs it starts must not inherit that, or
 # pipelines in them would change behaviour. Bit 13 is SIGPIPE.
@@ -257,54 +171,6 @@ ign=$(awk '{ print $2 }' "$SMOKE_DIR/sigign")
 [ $(((16#$ign >> 12) & 1)) = 0 ] || fail "started programs ignore SIGPIPE"
 echo "ok: started programs don't ignore SIGPIPE"
 
-bad paster paste-close
-check "the pasting client is mapped" "[ -n \"\$(get bad x)\" ]"
-x11 owner clipboard=1 pos=700,100
-check "the clipboard owner is mapped" "[ -n \"\$(get owner x)\" ]"
-wait_for "the X client owns the clipboard" grep -q '^owner' "$SMOKE_DIR/owner.events"
-do_input key alt+Tab
-check "the Wayland client has the focus" "[ \"\$(get bad active)\" = 1 ]"
-wait_for "the client took the selection and closed its end" done_said paster
-sleep 0.5
-alive "a client closing its end of a paste"
-stop owner
-stop paster
-check "both are gone" "[ -z \"\$(get bad x)\" ] && [ -z \"\$(get owner x)\" ]"
-
-# ---- Xwayland going away by itself ----------------------------------------------------------
-
-# It is started with -terminate 10: 10 s after the last X client it exits. wlroots
-# only restarts it lazily when it had run for more than 5 s, which it has by now.
-# Ours is the one with this test's SMOKE_DIR in its environment.
-xwayland_running() {
-	local p
-	for p in /proc/[0-9]*; do
-		[ "$(cat "$p/comm" 2>/dev/null)" = Xwayland ] || continue
-		tr '\0' '\n' <"$p/environ" 2>/dev/null | grep -qx "SMOKE_DIR=$SMOKE_DIR" &&
-			return 0
-	done
-	return 1
-}
-for ((i = 0; i < 125; i++)); do
-	xwayland_running || break
-	sleep 0.2
-done
-xwayland_running && fail "Xwayland didn't exit 10 s after the last X client"
-echo "ok: Xwayland exited by itself"
-WAYLAND_DISPLAY=wayland-0 build/layerc layer=top anchor=top,left,right size=0x30 exclusive=30 \
-	>"$SMOKE_DIR/panel.events" 2>&1 &
-PID_panel=$!
-wait_for "the panel is configured" grep -q configured "$SMOKE_DIR/panel.events"
-check "the panel reserves its space" "[ \"\$(global output uy)\" = 30 ]"
-alive "a panel changing the usable area while Xwayland is gone"
-stop panel
-check "the space is free again" "[ \"\$(global output uy)\" = 0 ]"
-
-# And it comes back for the next client, with _NET_WORKAREA set.
-x11 again workarea=1 pos=100,100
-check "the next X client gets a new Xwayland" "[ -n \"\$(get again x)\" ]"
-wait_for "with the work area" grep -q 'workarea 0 0 1280 720' "$SMOKE_DIR/again.events"
-stop again
 finish
 
 # ---- a huge window ----------------------------------------------------------------------------
@@ -339,19 +205,10 @@ stop wmax
 finish
 
 # ---- client numbers past any screen ---------------------------------------------------------
-# Struts, size hints and a window menu position at the ends of their types: mwc must not
-# do signed arithmetic that overflows on them, which make check's UBSan aborts on.
+# A window menu, window geometry and popup anchor at the ends of their types: mwc must
+# not do signed arithmetic that overflows on them, which make check's UBSan aborts on.
 
 begin
-x11 strutmax type=dock pos=0,0 size=100x30 strut=0,4294967295,0,2147483648
-check "a panel with absurd struts is mapped" "[ -n \"\$(get strutmax x)\" ]"
-check "they are not believed" "[ \"\$(global output uw)\" = 1280 ] && [ \"\$(global output uh)\" = 720 ]"
-x11 basemin pos=200,200 size=300x200 base=-2147483648x-2147483648 min=10x10
-check "a window with a base size of INT_MIN is mapped" "[ -n \"\$(get basemin x)\" ]"
-do_input key alt+F8
-do_input key Right
-do_input key Return
-alive "resizing it"
 wayland menuat menu_at=2147483647,2147483647
 check "a window asking for a menu far away is mapped" "[ -n \"\$(get menuat x)\" ]"
 do_input move $(($(get menuat x) + 50)) $(($(get menuat y) + 80))

@@ -2,7 +2,7 @@
  * mwc - a Motif-style Wayland compositor
  *
  * Server setup and output handling. Run it from a TTY for a real session,
- * or inside an existing Wayland/X11 session where wlroots opens a window.
+ * or inside an existing Wayland or X11 session where wlroots opens a window.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <getopt.h>
@@ -38,7 +38,6 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/util/log.h>
-#include <wlr/xwayland.h>
 #include "mwc.h"
 #include "version.h"
 
@@ -375,9 +374,6 @@ static void output_destroy(struct wl_listener *listener, void *data)
 	output_manager_update(output->server);
 	layer_output_gone(output);
 	views_output_gone(output);
-	/* The workarea is the oldest output's. If that one went, the next oldest may keep
-	 * its place and its area, and nothing else would tell X11 programs. */
-	layer_publish_workarea(output->server);
 	wlr_scene_node_destroy(&output->background->node);
 	if (output->wallpaper)
 		wlr_scene_node_destroy(&output->wallpaper->node);
@@ -770,14 +766,14 @@ static bool in_path(const char *prog)
 static const char *pick_terminal(void)
 {
 	static const char *candidates[] = {
-		"xterm", "foot", "alacritty", "konsole", "kitty",
+		"foot", "alacritty", "konsole", "kitty",
 		"x-terminal-emulator", "ptyxis", "gnome-terminal",
 	};
 	for (size_t i = 0; i < sizeof(candidates) / sizeof(*candidates); i++) {
 		if (in_path(candidates[i]))
 			return candidates[i];
 	}
-	return "xterm";
+	return "foot";
 }
 
 /* Asked each time: a reload may have brought another one. */
@@ -799,7 +795,7 @@ static void export_activation_environment(struct server *server)
 	setenv("XDG_SESSION_TYPE", "wayland", true);
 	if (in_path("dbus-update-activation-environment"))
 		spawn("dbus-update-activation-environment --systemd WAYLAND_DISPLAY "
-			"DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE");
+			"XDG_CURRENT_DESKTOP XDG_SESSION_TYPE");
 }
 
 static void run_autostart(const char *startup_cmd)
@@ -873,8 +869,8 @@ int main(int argc, char *argv[])
 		}
 	}
 	wlr_log_init(log_level, NULL);
-	/* wlroots writes to pipes that clients hand it, for instance when pasting from
-	 * X11, and a client may close its end at any time. */
+	/* wlroots writes to pipes that clients hand it, for instance when pasting, and a
+	 * client may close its end at any time. */
 	signal(SIGPIPE, SIG_IGN);
 
 	struct server server = { 0 };
@@ -992,12 +988,10 @@ int main(int argc, char *argv[])
 	server.layer_shell[1] = wlr_scene_tree_create(root);
 	server.layer_icons = wlr_scene_tree_create(root);
 	iconbox_init(&server);
-	server.layer_below = wlr_scene_tree_create(root);
 	server.layer_views = wlr_scene_tree_create(root);
 	dock_init(&server);
 	server.layer_shell[2] = wlr_scene_tree_create(root);
 	server.layer_fullscreen = wlr_scene_tree_create(root);
-	server.layer_unmanaged = wlr_scene_tree_create(root);
 	server.layer_shell[3] = wlr_scene_tree_create(root);
 	server.layer_menu = wlr_scene_tree_create(root);
 	server.layer_feedback = wlr_scene_tree_create(root);
@@ -1007,7 +1001,6 @@ int main(int argc, char *argv[])
 	xdg_init(&server);
 	input_init(&server);
 	layer_init(&server);
-	xwayland_init(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);
 	if (!socket) {
@@ -1020,9 +1013,8 @@ int main(int argc, char *argv[])
 	}
 	setenv("WAYLAND_DISPLAY", socket, true);
 	setenv("XDG_CURRENT_DESKTOP", "mwc", true);
-	/* Java under Xwayland draws grey windows and misplaces popups on a window
-	 * manager that doesn't reparent, unless told. Not forced on anyone who set it. */
-	setenv("_JAVA_AWT_WM_NONREPARENTING", "1", false);
+	/* Nested in an X session, its programs would open there instead. */
+	unsetenv("DISPLAY");
 	export_activation_environment(&server);
 	wlr_log(WLR_INFO, "mwc " MWC_VERSION " running on WAYLAND_DISPLAY=%s, terminal: %s",
 		socket, terminal_command(&server));
@@ -1036,12 +1028,6 @@ int main(int argc, char *argv[])
 	if (server.pointer_refresh)
 		wl_event_source_remove(server.pointer_refresh);
 	input_virtual_fini();
-	if (server.xwayland) {
-		wl_list_remove(&server.xwayland_ready.link);
-		wl_list_remove(&server.new_xwayland_surface.link);
-		wlr_xwayland_destroy(server.xwayland);
-		server.xwayland = NULL;
-	}
 	wl_list_remove(&server.new_idle_inhibitor.link);
 	wl_list_remove(&server.output_power_set_mode.link);
 	if (server.output_manager) {

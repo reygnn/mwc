@@ -5,8 +5,8 @@
 LOG=build/tile.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xclient build/xdgc build/outputc build/fifoc; do
+require_tools grim
+for tool in build/vinput build/pngtool build/xdgc build/layerc build/outputc build/fifoc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -15,10 +15,7 @@ RC=$XDG_CONFIG_HOME/mwc/mwmrc
 mkdir -p "$(dirname "$RC")"
 
 begin() { # [startup env is already set]
-	rm -f "$SMOKE_DIR/display"
-	start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-	wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-	X_DISPLAY=$(cat "$SMOKE_DIR/display")
+	start_mwc 'exec sleep 300'
 	start_vinput
 	refresh
 	B=$(global theme border)
@@ -27,13 +24,6 @@ begin() { # [startup env is already set]
 finish() {
 	stop_vinput
 	stop_mwc
-}
-x11() {
-	local name=$1
-	shift
-	DISPLAY=$X_DISPLAY build/xclient class="$name" "$@" >"$SMOKE_DIR/$name.events" 2>&1 &
-	eval "PID_$name=$!"
-	check "$name is mapped" "[ -n \"\$(get $name x)\" ]"
 }
 wayland() {
 	local name=$1
@@ -100,10 +90,16 @@ MAIN_X=582 MAIN_W=690 STACK_W=566 FULL_H=704
 
 # ---- the layout ------------------------------------------------------------------
 
+# Windows that start at a known place.
+PLACES='Mwm*a*geometry: +40+40
+Mwm*b*geometry: +200+200
+Mwm*c*geometry: +400+350
+Mwm*fixed*geometry: +800+300'
+echo "$PLACES" >"$RC"
 begin
-x11 a pos=40,40 size=300x200
-x11 b pos=200,200 size=300x200
-x11 c pos=400,350 size=300x200
+wayland a size=300x200
+wayland b size=300x200
+wayland c size=300x200
 root_menu_is "the root menu offers tiling" NUDTRQ
 
 do_input key super+t
@@ -185,7 +181,7 @@ check "the first stack window takes its place" "[ \"\$(get b tile_main)\" = 0 ] 
 
 # ---- windows coming and going -------------------------------------------------------
 
-x11 d pos=600,100 size=300x200
+wayland d size=300x200
 cell_is "a new window becomes the main one" d "$MAIN_X" 8 "$MAIN_W" "$FULL_H"
 check "with the focus" "[ \"\$(get d active)\" = 1 ]"
 stop d
@@ -229,7 +225,9 @@ floats_at "and knows its place" c 400 350 300 200
 # ---- windows that stay out -----------------------------------------------------------
 
 do_input key super+t
-x11 dlgmain size=300x200 dialog=dlg
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=dlgmain size=300x200 dialog=dlg \
+	>"$SMOKE_DIR/dlgmain.events" 2>&1 &
+PID_dlgmain=$!
 check "a dialog floats" "[ \"\$(get dlg tiled)\" = 0 ] && [ \"\$(get dlgmain tiled)\" = 1 ]"
 check "over its window" "[ \"\$(stack_pos dlg)\" = 0 ]"
 cell_is "its window is the main one" dlgmain "$MAIN_X" 8 "$MAIN_W" "$FULL_H"
@@ -237,12 +235,12 @@ do_input key alt+F4
 check "the dialog is gone" "[ -z \"\$(get dlg x)\" ]"
 stop dlgmain
 
-x11 fixed pos=800,300 size=200x100 min=200x100 max=200x100
+wayland fixed size=200x100 min=200x100 max=200x100
 floats_at "a fixed size floats" fixed 800 300 200 100
 cell_is "and the layout ignores it" c 8 8 1264 "$FULL_H"
 stop fixed
 
-x11 toowide pos=100,100 size=900x200 min=900x100
+wayland toowide size=900x200 min=900x100
 check "too wide for the stack, it floats" "[ \"\$(get toowide tiled)\" = 0 ]"
 cell_is "and the other keeps the room" c 8 8 1264 "$FULL_H"
 # Being moved, it stays floating through the next layout round: trying it in the layout
@@ -253,7 +251,7 @@ do_input move $tx $ty
 do_input down left
 do_input move $((tx + 40)) $((ty + 30))
 check "the one that floats is being moved" "[ \"\$(global cursor mode)\" = 1 ]"
-x11 newcomer size=200x150
+wayland newcomer size=200x150
 check "a new window starts a layout round" "[ \"\$(get newcomer tiled)\" = 1 ]"
 sleep 0.2
 refresh
@@ -265,36 +263,31 @@ do_input release alt
 check "dropped, it still floats" "[ \"\$(get toowide tiled)\" = 0 ] && [ \"\$(global cursor mode)\" = 0 ]"
 stop newcomer
 stop toowide
-x11 splashy type=splash
-check "a splash screen floats" "[ \"\$(get splashy tiled)\" = 0 ]"
-stop splashy
 
 # Panels: the layout stays inside the usable area.
-x11 panel type=dock pos=0,0 size=1280x40 strut=0,0,40,0
+WAYLAND_DISPLAY=wayland-0 build/layerc anchor=top,left,right size=0x40 exclusive=40 \
+	>"$SMOKE_DIR/panel.events" 2>&1 &
+PID_panel=$!
 cell_is "below a panel" c 8 48 1264 664
-stop panel
+kill "$PID_panel"
+wait "$PID_panel" 2>/dev/null
 cell_is "and back when it goes" c 8 8 1264 "$FULL_H"
 do_input key super+t
 
 # ---- limits ---------------------------------------------------------------------------
 
 do_input key super+t
-x11 stepped size=300x200 inc=30x40
-refresh
-check "resize steps: the main window keeps to the right edge" \
-	"[ \$((\$(get stepped x) + \$(frame_w stepped))) = $((MAIN_X + MAIN_W)) ] && [ \$(((\$(get stepped w)) % 30)) = 0 ]"
-stop stepped
 
 # Too many for the column: lower ones roll up, then the oldest become icons.
-x11 w1 size=200x200 min=100x280
-x11 w2 size=200x200 min=100x280
-x11 w3 size=200x200 min=100x280
-x11 w4 size=200x200 min=100x280
+wayland w1 size=200x200 min=100x280
+wayland w2 size=200x200 min=100x280
+wayland w3 size=200x200 min=100x280
+wayland w4 size=200x200 min=100x280
 check "lower windows roll up to make room" \
 	"[ \"\$(get w1 shaded)\" = 1 ] || [ \"\$(get c shaded)\" = 1 ]"
 check "the main window never does" "[ \"\$(get w4 shaded)\" = 0 ] && [ \"\$(get w4 tile_main)\" = 1 ]"
 for n in 5 6 7 8 9 10 11 12 13 14 15 16 17; do
-	x11 "w$n" size=200x200 min=100x280
+	wayland "w$n" size=200x200 min=100x280
 done
 check "when even that isn't enough, the oldest becomes an icon" "[ \"\$(get c min)\" = 1 ]"
 check "the layout ends above the icons" \
@@ -314,27 +307,30 @@ do_input key super+t
 
 do_input key super+t
 stop c
-echo 'Mwm*DoNotTile: floaty' >"$RC"
+# The floating window's title bar in green tells which one is in front.
+printf 'Mwm*DoNotTile: floaty\nMwm*floaty*geometry: +600+100\n%s\n%s\n' \
+	'Mwm*floaty*activeBackground: #00ff00' 'Mwm*floaty*background: #00ff00' >"$RC"
 reload_mwc
-x11 tiled1 size=300x200 color=0000ff
-x11 floaty pos=600,100 size=300x200 color=00ff00
+wayland tiled1 size=300x200
+wayland floaty size=300x200
 check "DoNotTile floats" "[ \"\$(get floaty tiled)\" = 0 ] && [ \"\$(get tiled1 tiled)\" = 1 ]"
 root_menu_is "a floating window on top: Raise Tiled Windows" NUDtaRQ
-pixel_is "it lies above the layout" 700 200 00ff00
+PX=$((600 + B + T + 6)) PY=$((100 + B + T / 2))
+pixel_is "it lies above the layout" $PX $PY 00ff00
 settle
 do_input move 1279 719
 do_input click right
 do_input key a
 check "the layout comes to the front, with the focus" \
 	"[ \"\$(stack_pos tiled1)\" = 0 ] && [ \"\$(get tiled1 active)\" = 1 ]"
-pixel_is "above the floating window" 700 200 0000ff
+pixel_isnt "above the floating window" $PX $PY 00ff00
 root_menu_is "now: Lower Tiled Windows" NUDtLRQ
 settle
 do_input move 1279 719
 do_input click right
 do_input key l
 check "and goes below again" "[ \"\$(stack_pos floaty)\" = 0 ] && [ \"\$(get floaty active)\" = 1 ]"
-pixel_is "behind the floating window" 700 200 00ff00
+pixel_is "behind the floating window" $PX $PY 00ff00
 stop floaty
 stop tiled1
 
@@ -392,8 +388,8 @@ Mwm*tiling: true
 Mwm*tileMainWidth: 70%
 EOF
 begin
-x11 a size=300x200
-x11 b size=300x200
+wayland a size=300x200
+wayland b size=300x200
 check "Mwm*tiling: true starts with tiling on" "[ \"\$(global tiling on)\" = 1 ]"
 # inner 1256: 70 % is 879, leaving 377
 cell_is "tileMainWidth: main" b $((2 * 8 + 377)) 8 879 "$FULL_H"
@@ -429,8 +425,8 @@ export MWC_TILING=0 MWC_TILE_MAIN_WIDTH=30
 begin
 check "MWC_TILING=0 beats the file" "[ \"\$(global tiling on)\" = 0 ]"
 do_input key super+t
-x11 a size=300x200
-x11 b size=300x200
+wayland a size=300x200
+wayland b size=300x200
 # 30 % of 1256 is 376, leaving 880
 cell_is "MWC_TILE_MAIN_WIDTH beats the file" b $((2 * 8 + 880)) 8 376 "$FULL_H"
 stop a
@@ -469,8 +465,8 @@ finish
 export WLR_HEADLESS_OUTPUTS=2
 printf 'Mwm*outputManagement: true\nMwm*tiling: true\nMwm*HEADLESS-1*outputPosition: 0,0\nMwm*HEADLESS-2*outputPosition: 1280,0\n' >"$RC"
 begin
-x11 a size=300x200
-x11 b size=300x200
+wayland a size=300x200
+wayland b size=300x200
 check "both tiled" "[ \"\$(get a tiled)\" = 1 ] && [ \"\$(get b tiled)\" = 1 ]"
 if [ "$(get a x)" -lt 1280 ]; then
 	tiled_on=HEADLESS-1 lo=1280 hi=2560
@@ -489,34 +485,27 @@ stop b
 finish
 unset WLR_HEADLESS_OUTPUTS
 
-# A shaded stack window that loses its title bar has nothing left to roll up to,
-# nor a button to unroll it: it opens again. One keeps a border, one has no frame.
+# A shaded stack window that loses its frame has nothing left to roll up to, nor a
+# button to unroll it: it opens again. (A border without a title bar is X11 only.)
 printf 'Mwm*tiling: true\n' >"$RC"
 begin
-x11 nb size=300x200 decor_later=2 decor_ms=5000
-x11 nf size=300x200 decor_later=0 decor_ms=5000
-x11 nm size=300x200
+wayland nf size=300x200 unframe_after="$SMOKE_DIR/nf"
+wayland nb size=300x200
+wayland nm size=300x200
 check "nm is the main window" "[ \"\$(get nm tile_main)\" = 1 ]"
-button nb min
 button nf min
-check "both stack windows are shaded" \
-	"[ \"\$(get nb shaded)\" = 1 ] && [ \"\$(get nf shaded)\" = 1 ] && \
-	 [ \"\$(get nb th)\" -gt 0 ] && [ \"\$(get nf th)\" -gt 0 ]"
-wait_for "nb dropped its title bar" grep -q "decor set" "$SMOKE_DIR/nb.events"
-wait_for "nf dropped its frame" grep -q "decor set" "$SMOKE_DIR/nf.events"
-check "with only a border left, it is open again" \
-	"[ \"\$(get nb th)\" = 0 ] && [ \"\$(get nb bw)\" -gt 0 ] && [ \"\$(get nb shaded)\" = 0 ]"
-check "without any frame too" \
+check "the stack window nf is shaded" \
+	"[ \"\$(get nf shaded)\" = 1 ] && [ \"\$(get nf th)\" -gt 0 ]"
+touch "$SMOKE_DIR/nf"
+wait_for "nf dropped its frame" grep -q unframed "$SMOKE_DIR/nf.events"
+check "without any frame, it is open again" \
 	"[ \"\$(get nf th)\" = 0 ] && [ \"\$(get nf bw)\" = 0 ] && [ \"\$(get nf shaded)\" = 0 ]"
-check "and they share the column" \
+check "and shares the column, its frame its cell" \
 	"[ \$((\$(frame_h nb) + \$(frame_h nf) + 8)) = $FULL_H ] && \
-	 [ \"\$(frame_h nb)\" -gt 100 ] && [ \"\$(frame_h nf)\" -gt 100 ]"
-check "each frame is its cell, not more" \
-	"[ \$((\$(get nb h) + 2 * \$(get nb bw))) = \$(frame_h nb) ] && \
-	 [ \"\$(get nf h)\" = \$(frame_h nf) ]"
+	 [ \"\$(frame_h nf)\" -gt 100 ] && [ \"\$(get nf h)\" = \$(frame_h nf) ]"
 stop nm
-stop nf
 stop nb
+stop nf
 finish
 
 echo "PASS: tile"

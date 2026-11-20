@@ -1,6 +1,6 @@
 /*
- * Window management: xdg-shell toplevels and popups, plus the operations
- * shared with XWayland windows (focus, stacking, maximize, iconify).
+ * Window management: xdg-shell toplevels and popups, focus, stacking, maximize,
+ * iconify.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <limits.h>
@@ -14,27 +14,22 @@
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
-#include <wlr/xwayland.h>
 #include "mwc.h"
 
 struct wlr_surface *view_surface(struct view *view)
 {
-	if (view->type == VIEW_XDG)
-		return view->xdg_toplevel->base->surface;
-	return view->xsurface->surface;
+	return view->xdg_toplevel->base->surface;
 }
 
 const char *view_title(struct view *view)
 {
-	const char *t = view->type == VIEW_XDG ?
-		view->xdg_toplevel->title : view->xsurface->title;
+	const char *t = view->xdg_toplevel->title;
 	return t ? t : "";
 }
 
 const char *view_app_id(struct view *view)
 {
-	const char *t = view->type == VIEW_XDG ?
-		view->xdg_toplevel->app_id : view->xsurface->class;
+	const char *t = view->xdg_toplevel->app_id;
 	return t ? t : "";
 }
 
@@ -116,122 +111,54 @@ static void view_update_content_pos(struct view *view)
 	if (view->fullscreen && view->mapped) {
 		struct wlr_box a = output_full_area(view->server, view->x + 1, view->y + 1);
 		wlr_scene_rect_set_size(backdrop, a.width, a.height);
-		/* view->x: on a map the node gets there only after this. Fullscreen, an
-		 * X11 frame is at view->x too. */
 		wlr_scene_node_set_position(&backdrop->node, a.x - view->x, a.y - view->y);
 		wlr_scene_node_set_enabled(&backdrop->node, true);
-		/* Smaller than the output: in its middle (xdg-shell). An X11 window is where
-		 * its configure put it, which has to agree with this. */
-		if (view->type == VIEW_XDG) {
-			if (view->width < a.width)
-				x += a.x - view->x + (a.width - view->width) / 2;
-			if (view->height < a.height)
-				y += a.y - view->y + (a.height - view->height) / 2;
-		}
+		/* Smaller than the output: in its middle (xdg-shell). */
+		if (view->width < a.width)
+			x += a.x - view->x + (a.width - view->width) / 2;
+		if (view->height < a.height)
+			y += a.y - view->y + (a.height - view->height) / 2;
 	} else {
 		wlr_scene_node_set_enabled(&backdrop->node, false);
 	}
 	wlr_scene_node_set_position(&view->content_tree->node, x, y);
-	if (view->type == VIEW_XDG) {
-		/* Only a surface larger than its geometry draws a shadow: subsurfaces past
-		 * it, as GTK's tooltips, are drawn whole. */
-		struct wlr_xdg_surface *base = view->xdg_toplevel->base;
-		const struct wlr_box *g = &base->geometry;
-		const struct wlr_surface_state *s = &base->surface->current;
-		bool shadow = g->x > 0 || g->y > 0 ||
-			s->width > (long long)g->x + g->width ||
-			s->height > (long long)g->y + g->height;
-		/* The surface's own tree comes first; the popups after it stay whole. */
-		struct wlr_scene_node *surface = wl_container_of(
-			view->content_tree->children.next, surface, link);
-		wlr_scene_subsurface_tree_set_clip(surface, view->ssd && shadow ? g : NULL);
-	}
+	/* Only a surface larger than its geometry draws a shadow: subsurfaces past it,
+	 * as GTK's tooltips, are drawn whole. */
+	struct wlr_xdg_surface *base = view->xdg_toplevel->base;
+	const struct wlr_box *g = &base->geometry;
+	const struct wlr_surface_state *s = &base->surface->current;
+	bool shadow = g->x > 0 || g->y > 0 ||
+		s->width > (long long)g->x + g->width ||
+		s->height > (long long)g->y + g->height;
+	/* The surface's own tree comes first; the popups after it stay whole. */
+	struct wlr_scene_node *surface = wl_container_of(
+		view->content_tree->children.next, surface, link);
+	wlr_scene_subsurface_tree_set_clip(surface, view->ssd && shadow ? g : NULL);
 }
 
-static void xwayland_configure(struct view *view)
-{
-	if (view->type != VIEW_XWAYLAND)
-		return;
-	/* The size last requested, not view->width: a new size may not have
-	 * been committed yet, and this configure must not take it back. */
-	wlr_xwayland_surface_configure(view->xsurface,
-		view->x + frame_left(view), view->y + frame_top(view),
-		view->requested_w, view->requested_h);
-}
-
-/* An X11 frame keeps its distance to view->x while a size is on its way. */
 static void view_move_to(struct view *view, int x, int y)
 {
-	if (view->type == VIEW_XWAYLAND)
-		sent_places_move(&view->sent, x - view->x, y - view->y);
 	view->x = x;
 	view->y = y;
-	if (view->type == VIEW_XWAYLAND)
-		view_place_x11_frame(view);
-	else
-		wlr_scene_node_set_position(&view->tree->node, x, y);
+	wlr_scene_node_set_position(&view->tree->node, x, y);
 }
 
 void view_set_position(struct view *view, int x, int y)
 {
 	view->anchor_edges = 0;
 	view_move_to(view, x, y);
-	xwayland_configure(view);
 }
 
 void view_send_size(struct view *view, int w, int h)
 {
-	if (view->type == VIEW_XDG) {
-		view->anchor_serial = wlr_xdg_toplevel_set_size(
-			view->xdg_toplevel, w, h);
-		view->requested_w = w;
-		view->requested_h = h;
-	} else {
-		view_send_geometry(view, view->x, view->y, w, h);
-	}
-}
-
-/* view->x and y are where the size last sent goes, as X is told. Until the window has
- * it, its frame stays where the size it has was sent to: a resize from the left keeps
- * the right edge. */
-void view_place_x11_frame(struct view *view)
-{
-	int x = view->x, y = view->y;
-	sent_places_find(&view->sent, view->width, view->height, &x, &y);
-	wlr_scene_node_set_position(&view->tree->node, x, y);
-}
-
-int view_drawn_x(const struct view *view)
-{
-	return view->tree->node.x;
-}
-
-int view_drawn_y(const struct view *view)
-{
-	return view->tree->node.y;
-}
-
-void view_send_geometry(struct view *view, int x, int y, int w, int h)
-{
-	view->x = x;
-	view->y = y;
-	wlr_xwayland_surface_configure(view->xsurface, x + frame_left(view),
-		y + frame_top(view), w, h);
-	/* Not xsurface->width: every ConfigureNotify sets that, an old one or one
-	 * another client sends. */
+	view->anchor_serial = wlr_xdg_toplevel_set_size(view->xdg_toplevel, w, h);
 	view->requested_w = w;
 	view->requested_h = h;
-	sent_places_add(&view->sent, x, y, w, h);
-	/* Only a new size brings a commit: at the old one X changes nothing. */
-	view->configure_pending |= w != view->width || h != view->height;
-	view_place_x11_frame(view);
 }
 
 void view_set_geometry(struct view *view, int x, int y, int w, int h)
 {
 	view->anchor_edges = 0;
-	/* Here, whatever size it draws until it has this one. */
-	sent_places_clear(&view->sent);
 	view->x = x;
 	view->y = y;
 	wlr_scene_node_set_position(&view->tree->node, x, y);
@@ -308,8 +235,6 @@ static void view_apply_size(struct view *view, int w, int h, bool own)
 
 /* Scene layers windows can be in, bottom to top. */
 enum view_layer {
-	VL_DESKTOP,
-	VL_BELOW,
 	VL_NORMAL,
 	VL_ABOVE,
 	VL_FULLSCREEN,
@@ -317,21 +242,13 @@ enum view_layer {
 
 static enum view_layer own_layer(struct view *view, struct view *focus)
 {
-	if (view->wtype == WT_DESKTOP)
-		return VL_DESKTOP;
 	if (view_docked(view))
-		return VL_ABOVE; /* whatever X11 says */
+		return VL_ABOVE;
 	/* A fullscreen window covers top-layer panels only while it or one of
 	 * its dialogs has the focus. Otherwise a window focused beside it, or a
 	 * panel, would come up in the wrong place. */
 	if (view->fullscreen && focus && view_transient_root(focus) == view)
 		return VL_FULLSCREEN;
-	bool x11 = view->type == VIEW_XWAYLAND;
-	if (x11 && view->xsurface->below)
-		return VL_BELOW;
-	if ((x11 && view->xsurface->above) || view->wtype == WT_DOCK ||
-			view->wtype == WT_NOTIFICATION)
-		return VL_ABOVE;
 	return VL_NORMAL;
 }
 
@@ -349,8 +266,8 @@ void views_update_layers(struct server *server)
 	struct output *keys = layer_keyboard_output(server);
 	if (keys && focus) {
 		struct view *root = view_transient_root(focus);
-		if (output_at(server, view_drawn_x(root) + root->width / 2.0,
-				view_drawn_y(root) + root->height / 2.0) == keys)
+		if (output_at(server, root->x + root->width / 2.0,
+				root->y + root->height / 2.0) == keys)
 			focus = NULL;
 	}
 	/* Bottom first: a node goes on top of its new layer, so windows moving together,
@@ -368,8 +285,6 @@ void views_update_layers(struct server *server)
 				layer = r;
 		}
 		struct wlr_scene_tree *tree[] = {
-			[VL_DESKTOP] = server->layer_shell[1],
-			[VL_BELOW] = server->layer_below,
 			[VL_NORMAL] = server->layer_views,
 			[VL_ABOVE] = server->layer_shell[2],
 			[VL_FULLSCREEN] = server->layer_fullscreen,
@@ -387,9 +302,6 @@ void view_raise_one(struct view *view)
 	wl_list_remove(&view->link);
 	wl_list_insert(&view->server->views, &view->link);
 	view->raise_seq = ++view->server->raise_hi;
-	if (view->type == VIEW_XWAYLAND)
-		wlr_xwayland_surface_restack(view->xsurface, NULL,
-			XCB_STACK_MODE_ABOVE);
 }
 
 void view_set_activated(struct view *view, bool activated)
@@ -398,14 +310,7 @@ void view_set_activated(struct view *view, bool activated)
 	if (activated)
 		iconbox_blur();
 	view->activated = activated;
-	if (view->type == VIEW_XDG) {
-		wlr_xdg_toplevel_set_activated(view->xdg_toplevel, activated);
-	} else {
-		wlr_xwayland_surface_activate(view->xsurface, activated);
-		/* It has what it wanted the user's attention for. */
-		if (activated && view->xsurface->demands_attention)
-			wlr_xwayland_surface_set_demands_attention(view->xsurface, false);
-	}
+	wlr_xdg_toplevel_set_activated(view->xdg_toplevel, activated);
 	views_update_layers(view->server);
 	frame_render(view);
 }
@@ -450,7 +355,6 @@ void view_focus(struct view *view)
 	}
 	struct server *server = view->server;
 	struct wlr_seat *seat = server->seat;
-	server->x11_refocused = NULL;
 
 	/* Asked for by name, a hidden tab comes to the front. */
 	if (view->tab_hidden)
@@ -476,18 +380,12 @@ void view_focus(struct view *view)
 	struct view *prev = view_focused(server);
 	if (prev && prev != view)
 		view_set_activated(prev, false);
-	if (!view->activated) {
+	if (!view->activated)
 		view_set_activated(view, true);
-	} else {
+	else if (from_layer)
 		/* Already activated, it stayed below the top layer while the keys were
-		 * there. An X11 program may have moved the X focus meanwhile, to a window
-		 * mwc hadn't mapped yet or one it refused: wlroots does nothing when it
-		 * has it already. */
-		if (from_layer)
-			views_update_layers(server);
-		if (view->type == VIEW_XWAYLAND)
-			wlr_xwayland_surface_activate(view->xsurface, true);
-	}
+		 * there. */
+		views_update_layers(server);
 	view_raise(view);
 
 	/* An exclusive layer surface keeps the keyboard until it goes away. */
@@ -583,7 +481,7 @@ static void view_fit_state(struct view *view, double px, double py)
 	if (view->snap != SNAP_NONE)
 		a = snap_rect(view->snap, a);
 	int w = a.width - frame_extra_w(view), h = a.height - frame_extra_h(view);
-	view_apply_size_hints(view, &w, &h, false);
+	view_apply_size_hints(view, &w, &h);
 	view_set_geometry(view, a.x, a.y, w, h);
 }
 
@@ -591,8 +489,8 @@ static void view_fit_state(struct view *view, double px, double py)
  * a scale or a mode moves its neighbours under windows that stay on it. */
 static void view_state_point(struct view *view, double *px, double *py)
 {
-	*px = view_drawn_x(view) + view->width / 2.0;
-	*py = view_drawn_y(view) + view->height / 2.0;
+	*px = view->x + view->width / 2.0;
+	*py = view->y + view->height / 2.0;
 	struct output *o = view->fit_output;
 	if (!o || !output_in_layout(o) || output_at(view->server, *px, *py) == o)
 		return;
@@ -614,19 +512,9 @@ void view_refit_at(struct view *view, double px, double py)
 	view_fit_state(view, px, py);
 }
 
-/* What the client should know about it. Snapped halves count as maximized
- * vertically for X11 programs, as in mwm-x11; xdg clients hear which of their
- * edges touch something. */
+/* What the client should know about it: which of its edges touch something. */
 static void view_publish_snap(struct view *view)
 {
-	bool half = view->snap == SNAP_LEFT || view->snap == SNAP_RIGHT;
-	if (view->type == VIEW_XWAYLAND) {
-		/* Maximized or snapped is kept while tiled, not shown. */
-		bool shown = !view->tiled;
-		wlr_xwayland_surface_set_maximized(view->xsurface,
-			shown && view->maximized, shown && (view->maximized || half));
-		return;
-	}
 	if (!view->xdg_toplevel->base->initialized)
 		return;
 	uint32_t edges = WLR_EDGE_NONE;
@@ -660,8 +548,7 @@ static void view_publish_snap(struct view *view)
 		view->maximized && !view->tiled);
 }
 
-/* Snapped halves included: an X11 window taking over a half as a tab must hear it is
- * maximized vertically, as it does when snapped itself. */
+/* A tab taking over a snapped place must hear it is, as it does when snapped itself. */
 void view_publish_state(struct view *view)
 {
 	view_publish_snap(view);
@@ -728,10 +615,7 @@ void view_focus_top_instead(struct server *server)
 
 void view_close(struct view *view)
 {
-	if (view->type == VIEW_XDG)
-		wlr_xdg_toplevel_send_close(view->xdg_toplevel);
-	else
-		wlr_xwayland_surface_close(view->xsurface);
+	wlr_xdg_toplevel_send_close(view->xdg_toplevel);
 }
 
 static void view_lower_one(struct view *view)
@@ -741,8 +625,6 @@ static void view_lower_one(struct view *view)
 	wl_list_remove(&view->link);
 	wl_list_insert(server->views.prev, &view->link);
 	view->raise_seq = --server->raise_lo;
-	if (view->type == VIEW_XWAYLAND)
-		wlr_xwayland_surface_restack(view->xsurface, NULL, XCB_STACK_MODE_BELOW);
 }
 
 /* Whether anything could take the focus from it. If not it keeps it, even when it
@@ -775,8 +657,8 @@ void view_set_maximized(struct view *view, bool maximized)
 	/* Not on any output yet, it goes where the pointer is, as a new window does. */
 	struct wlr_cursor *c = view->server->cursor;
 	view_maximize_at(view, maximized,
-		view->mapped ? view_drawn_x(view) + view->width / 2.0 : c->x,
-		view->mapped ? view_drawn_y(view) + view->height / 2.0 : c->y);
+		view->mapped ? view->x + view->width / 2.0 : c->x,
+		view->mapped ? view->y + view->height / 2.0 : c->y);
 }
 
 /* An xdg surface takes no configures before its first commit, or after a null
@@ -784,7 +666,7 @@ void view_set_maximized(struct view *view, bool maximized)
  * the first configure, see xdg_send_first_configure(). */
 static bool view_configurable(struct view *view)
 {
-	return view->type != VIEW_XDG || view->xdg_toplevel->base->initialized;
+	return view->xdg_toplevel->base->initialized;
 }
 
 static void view_maximize_at(struct view *view, bool maximized, double px,
@@ -813,17 +695,12 @@ static void view_maximize_at(struct view *view, bool maximized, double px,
 			view->saved.width, view->saved.height);
 	}
 	frame_render(view);
-	if (view->type == VIEW_XDG)
-		view_publish_snap(view);
+	view_publish_snap(view);
 ack:
 	/* Maximized or snapped is kept while tiled, not shown. */
-	bool shown = view->maximized && !view->tiled;
-	if (view->type == VIEW_XDG) {
-		if (view->xdg_toplevel->base->initialized)
-			wlr_xdg_toplevel_set_maximized(view->xdg_toplevel, shown);
-	} else {
-		wlr_xwayland_surface_set_maximized(view->xsurface, shown, shown);
-	}
+	if (view->xdg_toplevel->base->initialized)
+		wlr_xdg_toplevel_set_maximized(view->xdg_toplevel,
+			view->maximized && !view->tiled);
 }
 
 /* Back to the geometry or state it floated in, on the output it came from. */
@@ -862,7 +739,6 @@ void view_set_tiled(struct view *view, bool on, bool apply)
 	view_publish_snap(view);
 	if (!on && apply)
 		view_apply_floating(view);
-	xwayland_publish_state(view);
 	frame_render(view);
 }
 
@@ -874,7 +750,7 @@ void view_apply_tile(struct view *view)
 		/* It keeps its client height for when it unrolls. */
 		h = view->requested_h;
 	}
-	view_apply_size_hints(view, &w, &h, true);
+	view_apply_size_hints(view, &w, &h);
 	/* The main window keeps to the right edge, the stack to the left. */
 	int x = view->tile_main ? r.x + r.width - (w + frame_extra_w(view)) : r.x;
 	/* Every layout round comes here for every tiled window: one already where it
@@ -883,24 +759,21 @@ void view_apply_tile(struct view *view)
 	bool in_place = asked && view->x == x && view->y == r.y;
 	if (!in_place)
 		view_set_geometry(view, x, r.y, w, h);
-	if (view->tile_main && view->type == VIEW_XDG) {
+	if (view->tile_main) {
 		/* Also if the client decides on a size of its own. */
 		view->anchor_edges = WLR_EDGE_LEFT;
 		view->anchor_right = r.x + r.width;
 	}
 	view_show_content(view);
-	xwayland_publish_state(view);
 	/* Rolled up or out, the frame changes height with the client's size the same. */
 	if (!in_place || view->drawn_h != frame_height(view))
 		frame_render(view);
 }
 
-/* The middle of the output an xdg client asked to be fullscreen on, if it can have it.
+/* The middle of the output a client asked to be fullscreen on, if it can have it.
  * xdg-shell: a preference, which mwc follows when that output is in the layout. */
 static bool fullscreen_output_point(struct view *view, double *px, double *py)
 {
-	if (view->type != VIEW_XDG)
-		return false;
 	struct wlr_output *o = view->xdg_toplevel->requested.fullscreen_output;
 	struct output *output = o ? o->data : NULL;
 	if (!output || !output_in_layout(output))
@@ -949,19 +822,17 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 				view_save_free(view);
 			}
 			struct wlr_cursor *c = view->server->cursor;
-			double px = view->mapped ? view_drawn_x(view) + view->width / 2.0 : c->x;
-			double py = view->mapped ? view_drawn_y(view) + view->height / 2.0 : c->y;
+			double px = view->mapped ? view->x + view->width / 2.0 : c->x;
+			double py = view->mapped ? view->y + view->height / 2.0 : c->y;
 			if (asked_output)
 				fullscreen_output_point(view, &px, &py);
 			struct wlr_box a = output_full_area(view->server, px, py);
 			view->fit_output = output_at(view->server, px, py);
 			view->fullscreen = true;
 			views_update_layers(view->server);
-			xwayland_publish_frame_extents(view);
 			frame_render(view);
 			view_set_geometry(view, a.x, a.y, a.width, a.height);
-			/* At its new place: the backdrop is placed relative to it, and an X11
-			 * commit of the new size doesn't do it again. */
+			/* At its new place: the backdrop is placed relative to it. */
 			view_update_content_pos(view);
 			if (focus)
 				view_focus(view);
@@ -969,7 +840,6 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 			view->fullscreen = false;
 			views_update_layers(view->server);
 			view_update_content_pos(view);
-			xwayland_publish_frame_extents(view);
 			if (view->tile_back && view->server->tiling)
 				tile_arrange(view->server); /* places it, saved untouched */
 			if (!view->tiled) {
@@ -984,29 +854,14 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 		tile_arrange(view->server);
 		input_pointer_changed(view->server);
 	}
-	if (view->type == VIEW_XDG) {
-		if (view->xdg_toplevel->base->initialized)
-			wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel,
-				view->fullscreen);
-	} else {
-		wlr_xwayland_surface_set_fullscreen(view->xsurface,
-			view->fullscreen);
-	}
-}
-
-/* Only X11 panels reserve space through their window. */
-static void struts_changed(struct view *view)
-{
-	if (view->type == VIEW_XWAYLAND && view->xsurface->strut_partial)
-		layers_arrange_all_soon(view->server);
+	if (view->xdg_toplevel->base->initialized)
+		wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel, view->fullscreen);
 }
 
 void view_show(struct view *view, bool show)
 {
 	/* On another desktop it stays out of sight, whatever else it is. */
 	wlr_scene_node_set_enabled(&view->tree->node, show && !view->off_desktop);
-	if (view->type == VIEW_XWAYLAND)
-		wlr_xwayland_surface_set_minimized(view->xsurface, !show);
 }
 
 void view_parent_changed(struct view *view)
@@ -1051,7 +906,6 @@ void view_minimize(struct view *view)
 	icon_render(view);
 	wlr_scene_node_set_enabled(&view->icon_node->node, !view->off_desktop);
 	icons_arrange(server); /* the icon box decides which of its icons are in sight */
-	struts_changed(view);
 	/* The layout first: a shaded window may become the main one, and take the focus. */
 	tile_arrange(server);
 	if (had_focus)
@@ -1087,7 +941,6 @@ void view_restore(struct view *view)
 				view_show(v, true);
 			}
 		}
-		struts_changed(view);
 		/* Back from an icon it is the newest window of the layout. */
 		view->tile_seq = --view->server->tile_front;
 		tile_arrange(view->server);
@@ -1108,20 +961,11 @@ void view_restore(struct view *view)
 
 bool view_app_id_changed(struct view *view)
 {
-	/* An X11 program's rules may name its instance as well as its class. */
-	const char *id = view_app_id(view), *instance = view->type == VIEW_XWAYLAND &&
-		view->xsurface->instance ? view->xsurface->instance : "";
-	size_t n = strlen(instance) + strlen(id) + 2;
-	char *key = malloc(n);
-	if (!key)
-		return true;
-	snprintf(key, n, "%s\n%s", instance, id);
-	if (view->known_app_id && strcmp(view->known_app_id, key) == 0) {
-		free(key);
+	const char *id = view_app_id(view);
+	if (view->known_app_id && strcmp(view->known_app_id, id) == 0)
 		return false;
-	}
 	free(view->known_app_id);
-	view->known_app_id = key;
+	view->known_app_id = strdup(id);
 	return true;
 }
 
@@ -1182,7 +1026,7 @@ void views_clear_dock(struct output *output)
 	wl_list_for_each(v, &output->server->views, link) {
 		if (!v->mapped || v->minimized || view_docked(v) || !view_left_alone(v))
 			continue;
-		struct wlr_box b = { view_drawn_x(v), view_drawn_y(v),
+		struct wlr_box b = { v->x, v->y,
 			v->width + frame_extra_w(v), frame_height(v) };
 		if (output_dock_in_the_way(output, b))
 			view_place_within(v, output->usable, v->x, v->y);
@@ -1239,7 +1083,7 @@ void views_layout_changed(struct server *server)
 		v->icon_placed = false;
 		if (!v->mapped || v->tab_hidden)
 			continue;
-		struct wlr_box box = { view_drawn_x(v), view_drawn_y(v),
+		struct wlr_box box = { v->x, v->y,
 			v->width + frame_extra_w(v), frame_height(v) };
 		bool reachable = wlr_output_layout_intersects(server->output_layout, NULL,
 			&box);
@@ -1313,22 +1157,11 @@ void view_frame_changed(struct view *view)
 	/* The client keeps its size and the frame around it changes, except
 	 * where the frame's size is fixed. */
 	view_update_content_pos(view);
-	/* A resize goes on from the frame the size last sent will have: X is told
-	 * view->x. */
-	struct server *server = view->server;
-	if (view->type == VIEW_XWAYLAND && server->grabbed_view == view &&
-			server->cursor_mode == CURSOR_RESIZE)
-		server->grab_geobox = (struct wlr_box){ view->x, view->y,
-			view->requested_w + frame_extra_w(view),
-			view->requested_h + frame_extra_h(view) };
 	view_frame_gravity(view);
 	if ((view->maximized || view->snap != SNAP_NONE) && !view->fullscreen &&
 			!view->tiled)
 		view_refit(view);
-	else
-		xwayland_configure(view);
 	frame_render(view);
-	xwayland_publish_frame_extents(view);
 	/* In the layout, the cell stays and the client has to make room. */
 	if (view->tiled)
 		tile_arrange(view->server);
@@ -1421,7 +1254,6 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 	if (view->fullscreen)
 		return;
 	/* The client's limits may have changed since it was mapped. */
-	xwayland_read_motif_hints(view);
 	view_update_properties(view);
 	if (mode == CURSOR_RESIZE &&
 			(view->maximized || !(view->funcs & FUNC_RESIZE)))
@@ -1451,24 +1283,21 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 		server->grab_y = server->cursor->y - view->y;
 		cursor_set_name(server, "move");
 	} else {
-		/* The edge where it is drawn stays under the pointer, also while an X11
-		 * window has yet to get the size last sent. */
-		double bx = view_drawn_x(view) + ((edges & WLR_EDGE_RIGHT) ?
+		/* The edge where it is drawn stays under the pointer, also while the
+		 * client has yet to get the size last sent. */
+		double bx = view->x + ((edges & WLR_EDGE_RIGHT) ?
 			view->width + frame_extra_w(view) : 0);
-		double by = view_drawn_y(view) + ((edges & WLR_EDGE_BOTTOM) ?
+		double by = view->y + ((edges & WLR_EDGE_BOTTOM) ?
 			view->height + frame_extra_h(view) : 0);
 		server->grab_x = server->cursor->x - bx;
 		server->grab_y = server->cursor->y - by;
 		server->resize_edges = edges;
-		if (view->type == VIEW_XDG) {
-			view->anchor_edges = edges;
-			view->anchor_right = view->x + server->grab_geobox.width;
-			view->anchor_bottom = view->y + server->grab_geobox.height;
-			if (!server->grab_outline)
-				wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, true);
-			view->anchor_serial = view->xdg_toplevel->base->
-				scheduled_serial;
-		}
+		view->anchor_edges = edges;
+		view->anchor_right = view->x + server->grab_geobox.width;
+		view->anchor_bottom = view->y + server->grab_geobox.height;
+		if (!server->grab_outline)
+			wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, true);
+		view->anchor_serial = view->xdg_toplevel->base->scheduled_serial;
 	}
 	wlr_seat_pointer_notify_clear_focus(server->seat);
 	grab_started(server);
@@ -1477,7 +1306,7 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 void view_drag_free(struct view *view)
 {
 	struct server *server = view->server;
-	double frac = (server->cursor->x - view_drawn_x(view)) /
+	double frac = (server->cursor->x - view->x) /
 		(double)(view->width + frame_extra_w(view));
 	/* Maximized since its first commit, it has no size of its own yet, and will
 	 * choose one. Until then the outline needs something to show. */
@@ -1538,8 +1367,8 @@ struct view *view_at(struct server *server, double lx, double ly,
 	bool frame = node == &view->frame_fill->node;
 	for (int i = 0; i < 4; i++)
 		frame |= node == &view->frame_nodes[i]->node;
-	*part = frame ? frame_hit(view, (int)(lx - view_drawn_x(view)),
-		(int)(ly - view_drawn_y(view)), edges) : PART_CLIENT;
+	*part = frame ? frame_hit(view, (int)(lx - view->x),
+		(int)(ly - view->y), edges) : PART_CLIENT;
 	return view;
 }
 
@@ -1618,9 +1447,9 @@ void view_place(struct view *view)
 	int x, y;
 	struct view *parent = view_parent(view);
 	if (parent && parent->mapped && !parent->minimized) {
-		x = view_drawn_x(parent) + (parent->width + frame_extra_w(parent) - w) / 2;
-		y = view_drawn_y(parent) + (parent->height + frame_extra_h(parent) - h) / 2;
-	} else if (view->wtype == WT_DIALOG || view->wtype == WT_SPLASH) {
+		x = parent->x + (parent->width + frame_extra_w(parent) - w) / 2;
+		y = parent->y + (parent->height + frame_extra_h(parent) - h) / 2;
+	} else if (view->wtype == WT_DIALOG) {
 		x = a.x + (a.width - w) / 2;
 		y = a.y + (a.height - h) / 2;
 	} else {
@@ -1720,7 +1549,6 @@ void view_handle_map(struct view *view, bool focus)
 		view_place_mapped(view);
 	frame_render(view);
 	views_update_layers(view->server);
-	struts_changed(view);
 	if (hide) {
 		view->hidden_with_parent = true;
 		view_show(view, false);
@@ -1739,14 +1567,14 @@ void view_handle_map(struct view *view, bool focus)
 	if (!focus) {
 		struct view *focused = view_focused(view->server);
 		if (root != view && focused && view_transient_root(focused) == root &&
-				view->wtype != WT_SPLASH && !view_docked(view))
+				!view_docked(view))
 			view_focus_instead(view);
 		else
 			view_raise(view);
 		input_pointer_changed(view->server);
 		return;
 	}
-	if (view->wtype != WT_SPLASH && !view_docked(view)) {
+	if (!view_docked(view)) {
 		view_focus(view);
 	} else {
 		view_raise(view);
@@ -1763,8 +1591,6 @@ void view_handle_unmap(struct view *view)
 		menu_close(server);
 	if (server->last_click_view == view)
 		server->last_click_view = NULL;
-	if (server->x11_refocused == view)
-		server->x11_refocused = NULL;
 	/* The map draws the title there is then: whatever comes after it is news. */
 	free(view->known_title);
 	view->known_title = NULL;
@@ -1783,10 +1609,6 @@ void view_handle_unmap(struct view *view)
 			!iconbox_has_focus())
 		view_focus(shown);
 	bool was_active = view->activated, was_icon = view->minimized;
-	/* wlroots would keep the X focus on it, and let the program pass it on to its
-	 * other windows, under whatever has the keys next. */
-	if (was_active && view->type == VIEW_XWAYLAND)
-		wlr_xwayland_surface_activate(view->xsurface, false);
 	view->mapped = false;
 	view->activated = false;
 	view->minimized = false;
@@ -1807,7 +1629,6 @@ void view_handle_unmap(struct view *view)
 		view->dock_order = -1; /* decided anew at the next map */
 		dock_arrange(server); /* the others close up */
 	}
-	struts_changed(view);
 	/* The layout first: a shaded window may become the main one, and take the focus. */
 	tile_arrange(server);
 	if (was_active)
@@ -1850,7 +1671,7 @@ static struct view *view_from_xdg_toplevel(struct server *server,
 {
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
-		if (v->type == VIEW_XDG && v->xdg_toplevel == toplevel)
+		if (v->xdg_toplevel == toplevel)
 			return v;
 	}
 	return NULL;
@@ -1863,7 +1684,7 @@ static struct view *view_from_xdg_toplevel(struct server *server,
 void xdg_publish_caps(struct view *view)
 {
 	/* Before the first configure there is nothing to send them with: that one does. */
-	if (view->type != VIEW_XDG || !view->xdg_toplevel->base->initialized)
+	if (!view->xdg_toplevel->base->initialized)
 		return;
 	uint32_t caps = WLR_XDG_TOPLEVEL_WM_CAPABILITIES_WINDOW_MENU |
 		WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN;
@@ -1910,7 +1731,7 @@ static void xdg_send_first_configure(struct view *view)
 		struct wlr_box a = output_usable_area(server, server->cursor->x,
 			server->cursor->y);
 		int w = a.width - frame_extra_w(view), h = a.height - frame_extra_h(view);
-		view_apply_size_hints(view, &w, &h, false);
+		view_apply_size_hints(view, &w, &h);
 		view->x = a.x;
 		view->y = a.y;
 		view->placed = true;
@@ -2118,7 +1939,6 @@ static void new_xdg_toplevel(struct wl_listener *listener, void *data)
 		return;
 	}
 	view->server = server;
-	view->type = VIEW_XDG;
 	view->xdg_toplevel = toplevel;
 	view_init_common(view);
 	/* KDE's protocol goes by the surface, which may ask before it has this role. */
@@ -2194,9 +2014,7 @@ struct view *view_from_surface(struct wlr_surface *surface)
 				xdg->data : NULL;
 			return tree && tree->node.parent ? tree->node.parent->node.data : NULL;
 		}
-		struct wlr_xwayland_surface *xs =
-			wlr_xwayland_surface_try_from_wlr_surface(surface);
-		return xs ? xs->data : NULL;
+		return NULL;
 	}
 	return NULL;
 }
@@ -2243,7 +2061,7 @@ static void popup_unconstrain(struct popup *popup)
 {
 	struct wlr_scene_tree *tree = popup->xdg_popup->base->data;
 	struct view *view = tree ? view_from_tree(tree) : NULL;
-	if (view && view->type == VIEW_XDG) {
+	if (view) {
 		/* On the output where it opens from, its anchor: for a window across two
 		 * monitors, a menu opened on the right one stays there. */
 		struct wlr_xdg_popup *xp = popup->xdg_popup;
@@ -2373,7 +2191,7 @@ static void view_decoration_changed(struct view *view)
 	} else if (view->xdg_toplevel->base->initialized && view->maximized) {
 		struct wlr_box a = output_usable_area(view->server, view->x + 1, view->y + 1);
 		int w = a.width - frame_extra_w(view), h = a.height - frame_extra_h(view);
-		view_apply_size_hints(view, &w, &h, false);
+		view_apply_size_hints(view, &w, &h);
 		view_send_size(view, w, h);
 	}
 }

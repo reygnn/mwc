@@ -5,18 +5,35 @@
 LOG=build/tabs.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools Xwayland grim
-for tool in build/vinput build/xclient build/xdgc build/layerc; do
+require_tools grim
+for tool in build/vinput build/xdgc build/layerc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
 export MWC_TEST_STATE=$SMOKE_DIR/state
 
+# Windows that start at a known place.
+RC=$XDG_CONFIG_HOME/mwc/mwmrc
+mkdir -p "$(dirname "$RC")"
+PLACES='Mwm*under*geometry: +100+100
+Mwm*g1*geometry: +200+150
+Mwm*ta*geometry: +100+100
+Mwm*sa*geometry: +100+100
+Mwm*tn*geometry: +100+100
+Mwm*n1*geometry: +100+100
+Mwm*t1*geometry: +100+100
+Mwm*lone*geometry: +100+100
+Mwm*t2*geometry: +600+300
+Mwm*ob1*geometry: +500+20
+Mwm*t3*geometry: +500+50
+Mwm*fix*geometry: +700+400
+Mwm*aside*geometry: +800+450
+Mwm*elsewhere*geometry: +800+400
+Mwm*other*geometry: +900+400'
+echo "$PLACES" >"$RC"
+
 begin() {
-	rm -f "$SMOKE_DIR/display"
-	start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-	wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-	X_DISPLAY=$(cat "$SMOKE_DIR/display")
+	start_mwc 'exec sleep 300'
 	start_vinput
 	refresh
 	B=$(global theme border)
@@ -25,13 +42,6 @@ begin() {
 finish() {
 	stop_vinput
 	stop_mwc
-}
-x11() {
-	local name=$1
-	shift
-	DISPLAY=$X_DISPLAY build/xclient class="$name" "$@" >"$SMOKE_DIR/$name.log" 2>&1 &
-	eval "PID_$name=$!"
-	check "$name is mapped" "[ -n \"\$(get $name x)\" ] && [ \"\$(get $name active)\" = 1 ]"
 }
 wayland() {
 	local name=$1
@@ -64,7 +74,7 @@ begin
 wayland a size=400x300
 refresh
 AX=$(get a x) AY=$(get a y)
-x11 b size=300x200
+wayland b size=300x200
 do_input key super+g
 shown "Super+G: the window stays shown" b
 hidden "and the other is behind it" a
@@ -80,7 +90,7 @@ check "nothing moved" "[ \"\$(get a x)\" = $AX ] && [ \"\$(get a y)\" = $AY ] &&
 do_input key super+shift+Tab
 shown "Super+Shift+Tab: back again" b
 
-x11 c size=200x100
+wayland c size=200x100
 refresh
 [ "$(get c tab)" = -1 ] || fail "a new window joins by itself"
 do_input key alt+Tab
@@ -160,12 +170,12 @@ finish
 
 begin
 wayland a size=400x300
-x11 b size=300x200
+wayland b size=300x200
 do_input key super+g
-x11 c size=200x100
+wayland c size=200x100
 do_input key super+g
 shown "three, the last one shown" c
-x11 d size=200x100
+wayland d size=200x100
 do_input key super+g
 do_input key super+2
 shown "the second of four" b
@@ -181,8 +191,8 @@ do_input key alt+F4
 shown "one more" d
 alone "and it is alone" d
 stop d
-x11 b size=300x200
-x11 c size=200x100
+wayland b size=300x200
+wayland c size=200x100
 do_input key super+g
 do_input key super+2
 shown "the last of two" c
@@ -192,7 +202,7 @@ alone "and it is alone" b
 stop b
 
 wayland a size=400x300
-x11 b size=300x200
+wayland b size=300x200
 do_input key super+g
 stop a
 shown "a hidden one dies: nothing shows of it" b
@@ -200,7 +210,7 @@ alone "and the group is over" b
 stop b
 
 wayland nb size=300x200
-x11 b size=300x200
+wayland b size=300x200
 do_input key super+g
 do_input key super+Tab
 shown "the client on top" nb
@@ -212,8 +222,8 @@ stop b
 # ---- each to its own size again -----------------------------------------------------------
 
 size_is() { check "$1" "[ \"\$(get $2 w)\" = $3 ] && [ \"\$(get $2 h)\" = $4 ]"; }
-x11 own1 size=400x300
-x11 own2 size=300x200
+wayland own1 size=400x300
+wayland own2 size=300x200
 do_input key super+g
 size_is "in the group, the size of the group" own2 400 300
 do_input key super+shift+g
@@ -223,8 +233,8 @@ size_is "the other keeps its own" own1 400 300
 stop own1
 stop own2
 
-x11 keep1 size=400x300
-x11 keep2 size=300x200
+wayland keep1 size=400x300
+wayland keep2 size=300x200
 do_input key super+g
 do_input key super+Tab
 shown "the other tab" keep1
@@ -236,8 +246,8 @@ size_is "the one left over has its own size again as well" keep2 300 200
 stop keep1
 stop keep2
 
-x11 cl1 size=400x300
-x11 cl2 size=300x200
+wayland cl1 size=400x300
+wayland cl2 size=300x200
 do_input key super+g
 do_input key super+Tab
 shown "the first tab" cl1
@@ -256,10 +266,10 @@ stop w1
 stop w2
 
 # Whatever state it was in before: it is the floating size that counts.
-x11 mx1 size=300x200
+wayland mx1 size=300x200
 do_input key alt+F10
 check "maximized" "[ \"\$(get mx1 max)\" = 1 ]"
-x11 mx2 size=250x150
+wayland mx2 size=250x150
 do_input key super+g
 check "a group that fills the screen" "[ \"\$(get mx2 max)\" = 1 ]"
 do_input key super+shift+g
@@ -272,8 +282,8 @@ size_is "and un-maximized, its own size" mx1 300 200
 stop mx1
 stop mx2
 
-x11 mj1 size=400x300
-x11 mj2 size=250x150
+wayland mj1 size=400x300
+wayland mj2 size=250x150
 do_input key alt+F10
 check "maximized before it joins" "[ \"\$(get mj2 max)\" = 1 ]"
 do_input key super+g
@@ -284,9 +294,9 @@ stop mj1
 stop mj2
 
 # The last one left in a state: what it goes back to is its own size, not that of the other.
-x11 ms1 size=400x300
+wayland ms1 size=400x300
 do_input key alt+F10
-x11 ms2 size=250x150
+wayland ms2 size=250x150
 do_input key super+g
 do_input key super+Tab
 shown "the first of a maximized group" ms1
@@ -302,9 +312,9 @@ stop ms1
 stop ms2
 
 # A window larger than its group is placed by the size it is about to have, so it fits.
-for i in 1 2 3 4 5; do x11 "pad$i" size=100x60; done
-x11 tiny size=200x100
-x11 large size=1200x640
+for i in 1 2 3 4 5; do wayland "pad$i" size=100x60; done
+wayland tiny size=200x100
+wayland large size=1200x640
 do_input key super+g
 size_is "in a small group" large 200 100
 do_input key super+shift+g
@@ -317,7 +327,7 @@ for i in 1 2 3 4 5; do stop "pad$i"; done
 # ---- who can't be in a group ---------------------------------------------------------------
 
 wayland a size=400x300
-x11 fixed size=200x100 min=200x100 max=200x100
+wayland fixed size=200x100 min=200x100 max=200x100
 do_input key super+g
 alone "a window of a fixed size can't join" fixed
 alone "and nothing happens to the other" a
@@ -326,7 +336,7 @@ wayland nof csd=1 size=200x100
 do_input key super+g
 alone "a window drawing its own frame can't join" nof
 stop nof
-DISPLAY=$X_DISPLAY build/xclient class=dlg dialog=kid >"$SMOKE_DIR/dlg.log" 2>&1 &
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=dlg dialog=kid >"$SMOKE_DIR/dlg.log" 2>&1 &
 PID_dlg=$!
 check "a dialog with the focus" "[ \"\$(get kid active)\" = 1 ]"
 do_input key super+g
@@ -336,33 +346,53 @@ stop a
 
 # ---- requests from behind ------------------------------------------------------------------
 
-x11 asks ask_later=fullscreen size=300x200
+wayland asks late_app=asks late_after="$SMOKE_DIR/asks" fs_output=0 size=300x200
 wayland front size=400x300
 do_input key super+g
 shown "the other tab in front" front
-wait_for "the hidden tab asks for fullscreen" said asks 'asked'
+touch "$SMOKE_DIR/asks"
+wait_for "the hidden tab asks for fullscreen" said asks 'fullscreen asked'
 sleep 0.3
 check "it stays behind" "[ \"\$(get asks tab_hidden)\" = 1 ] && [ \"\$(get asks full)\" = 0 ] && [ \"\$(get front full)\" = 0 ]"
 stop asks
 stop front
 
-x11 pa dialog=dk dialog_ms=2500 size=300x200
+# A dialog goes and comes with its tab.
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=pa dialog=dk size=300x200 >"$SMOKE_DIR/pa.log" 2>&1 &
+PID_pa=$!
+check "the dialog has the focus" "[ \"\$(get dk active)\" = 1 ]"
+do_input key alt+Tab
+shown "its window" pa
 wayland qa size=400x300
 do_input key super+g
 shown "a tab in front of the other" qa
-check "a dialog of the hidden one brings it to the front" "[ \"\$(get pa tab_hidden)\" = 0 ] && [ \"\$(get qa tab_hidden)\" = 1 ]"
-check "and has the focus" "[ \"\$(get dk active)\" = 1 ] && [ \"\$(get dk hidden)\" = 0 ]"
-do_input key alt+Tab
+check "the dialog goes with its tab" "[ \"\$(get dk hidden)\" = 1 ]"
 do_input key super+Tab
-check "the dialog goes with its tab" "[ \"\$(get dk hidden)\" = 1 ] && [ \"\$(get qa tab_hidden)\" = 0 ]"
-do_input key super+Tab
+shown "the other tab" pa
 check "and comes back with it" "[ \"\$(get dk hidden)\" = 0 ]"
 stop pa
 stop qa
-# Under a launcher the tab comes to the front all the same, and its dialog has the focus
-# below the launcher, then the keyboard when it goes.
-x11 tpa dialog=tdk dialog_after="$SMOKE_DIR/tdk" size=300x200
-x11 tqa size=400x300
+# A dialog of the hidden tab brings it to the front.
+wayland pb dialog=db dialog_after="$SMOKE_DIR/db" size=300x200
+wayland qb size=400x300
+do_input key super+g
+shown "a tab in front of the other" qb
+touch "$SMOKE_DIR/db"
+wait_for "the hidden tab opens a dialog" said pb 'dialog opened'
+check "a dialog of the hidden one brings it to the front" \
+	"[ \"\$(get pb tab_hidden)\" = 0 ] && [ \"\$(get qb tab_hidden)\" = 1 ]"
+check "and has the focus" "[ \"\$(get db active)\" = 1 ] && [ \"\$(get db hidden)\" = 0 ]"
+do_input key alt+Tab
+do_input key super+Tab
+check "the dialog goes with its tab" "[ \"\$(get db hidden)\" = 1 ] && [ \"\$(get qb tab_hidden)\" = 0 ]"
+do_input key super+Tab
+check "and comes back with it" "[ \"\$(get db hidden)\" = 0 ]"
+stop pb
+stop qb
+# Under a launcher the tab comes to the front all the same. Its dialog takes the
+# keyboard, as any new Wayland window does.
+wayland tpa dialog=tdk dialog_after="$SMOKE_DIR/tdk" size=300x200
+wayland tqa size=400x300
 do_input key super+g
 shown "a tab in front of the other" tqa
 WAYLAND_DISPLAY=wayland-0 build/layerc layer=top anchor=bottom size=200x100 \
@@ -371,44 +401,45 @@ PID_launcher=$!
 wait_for "a launcher has the keyboard" grep -q keyboard-enter "$SMOKE_DIR/launcher.log"
 touch "$SMOKE_DIR/tdk"
 check "the dialog of the hidden tab is mapped" "[ -n \"\$(get tdk x)\" ]"
-check "the tab is in front, its dialog active, the launcher keeps the keyboard" \
-	"[ \"\$(get tpa tab_hidden)\" = 0 ] && [ \"\$(get tdk visible)\" = 1 ] && \
-	 [ \"\$(get tdk active)\" = 1 ] && [ \"\$(global focus layer)\" = 1 ]"
-grep -q keyboard-leave "$SMOKE_DIR/launcher.log" && fail "the launcher lost the keyboard"
+check "the tab is in front, its dialog in sight with the keyboard" \
+	"[ \"\$(get tpa tab_hidden)\" = 0 ] && [ \"\$(get tqa tab_hidden)\" = 1 ] && \
+	 [ \"\$(get tdk visible)\" = 1 ] && [ \"\$(get tdk kbfocus)\" = 1 ] && \
+	 [ \"\$(global focus layer)\" = 0 ]"
 kill "$PID_launcher"
 wait "$PID_launcher" 2>/dev/null
-check "the launcher gone, the dialog has the keyboard" "[ \"\$(get tdk kbfocus)\" = 1 ]"
+check "the launcher gone, the dialog keeps the keyboard" "[ \"\$(get tdk kbfocus)\" = 1 ]"
 stop tpa
 stop tqa
-# With a Wayland window outside the group focused: the tab and its dialog come to the
-# front, in sight, and the keyboard stays.
-x11 upa dialog=udk dialog_after="$SMOKE_DIR/udk" size=300x200
-x11 uqa size=400x300
+# With a window outside the group focused: the tab and its dialog come to the front,
+# in sight, and the dialog has the focus, as a new window does.
+wayland upa dialog=udk dialog_after="$SMOKE_DIR/udk" size=300x200
+wayland uqa size=400x300
 do_input key super+g
 shown "a tab in front of the other" uqa
 wayland uw size=300x200
 touch "$SMOKE_DIR/udk"
 check "the dialog of the hidden tab is mapped" "[ -n \"\$(get udk x)\" ]"
-check "the tab is in front, the dialog in sight, the Wayland window keeps the keyboard" \
+check "the tab is in front, the dialog in sight and focused" \
 	"[ \"\$(get upa tab_hidden)\" = 0 ] && [ \"\$(get udk visible)\" = 1 ] && \
-	 [ \"\$(get uw kbfocus)\" = 1 ]"
+	 [ \"\$(get udk kbfocus)\" = 1 ] && [ \"\$(get uw kbfocus)\" = 0 ]"
 stop uw
 stop upa
 stop uqa
 
 # ---- clicks only reach what is shown -------------------------------------------------------
 
-x11 under move_press=1 pos=100,100 size=400x300
-x11 over move_press=1 size=300x200
+# xdgc's menu_at tells of a press: it asks for the window menu.
+wayland under menu_at=10,10 size=400x300
+wayland over menu_at=10,10 size=300x200
 do_input key super+g
-shown "one X tab over another" over
-: >"$SMOKE_DIR/under.log"
+shown "one tab over another" over
 do_input move 300 250
 do_input click left
-wait_for "the shown one gets the click" said over 'press main'
+wait_for "the shown one gets the click" said over 'menu asked'
+do_input key Escape
 sleep 0.3
-said under 'press' && fail "a hidden X window caught a click"
-echo "ok: the hidden X window didn't"
+said under 'menu asked' && fail "a hidden window caught a click"
+echo "ok: the hidden window didn't"
 stop under
 stop over
 
@@ -417,8 +448,8 @@ stop over
 do_input key super+t
 check "tiling" "[ \"\$(global tiling on)\" = 1 ]"
 wayland s1 size=300x200
-x11 s2 size=300x200
-x11 s3 size=300x200
+wayland s2 size=300x200
+wayland s3 size=300x200
 check "three cells" "[ \"\$(get s1 tiled)\" = 1 ] && [ \"\$(get s2 tiled)\" = 1 ] && [ \"\$(get s3 tile_main)\" = 1 ]"
 refresh
 do_input key super+g
@@ -444,13 +475,13 @@ stop s3
 
 # Its place in the layout goes with the shown tab: the group took the place of the older
 # window, below the other one in the stack, though the newer window is what shows.
-x11 o1 size=300x200
-x11 o0 size=300x200
+wayland o1 size=300x200
+wayland o0 size=300x200
 do_input key alt+Tab
 shown "the older one" o1
-x11 o2 size=300x200
+wayland o2 size=300x200
 do_input key super+g
-x11 o3 size=250x150
+wayland o3 size=250x150
 do_input key super+t
 do_input key alt+Tab
 do_input key alt+Tab
@@ -466,12 +497,12 @@ stop o0
 stop o3
 
 # What a group goes back to, and its place in the layout, go with the shown tab.
-x11 g1 pos=200,150 size=300x200
-x11 g2 size=300x200
+wayland g1 size=300x200
+wayland g2 size=300x200
 do_input key super+g
 refresh
 GX=$(get g2 x) GY=$(get g2 y)
-x11 g3 size=250x150
+wayland g3 size=250x150
 do_input key super+t
 check "two in the layout" "[ \"\$(get g2 tiled)\" = 1 ] && [ \"\$(get g3 tile_main)\" = 1 ]"
 do_input key alt+Tab
@@ -489,7 +520,7 @@ stop g3
 # ---- a reload ------------------------------------------------------------------------------
 
 wayland a size=400x300
-x11 b size=300x200
+wayland b size=300x200
 do_input key super+g
 reload_mwc
 shown "a group stays through a reload" b
@@ -500,17 +531,15 @@ finish
 
 # ---- tabs in the title bar -------------------------------------------------------------
 
-RC=$XDG_CONFIG_HOME/mwc/mwmrc
-mkdir -p "$(dirname "$RC")"
-cat >"$RC" <<'MWMRC'
+{ echo "$PLACES"; cat <<'MWMRC'; } >"$RC"
 Mwm*activeBackground:   #102030
 Mwm*ta*background:      #aa0000
 Mwm*tb*background:      #00aa00
 Mwm*tc*background:      #0000aa
 MWMRC
 begin
-x11 ta pos=100,100 size=600x200
-x11 tb size=300x200
+wayland ta size=600x200
+wayland tb size=300x200
 do_input key super+g
 shown "two tabs" tb
 refresh
@@ -574,7 +603,7 @@ shown "around the end" tb
 # The wheel over a group that doesn't have the focus: the tab shown takes the other's
 # place in the stacking order, its number included, which the icon box's place in
 # Alt+Tab goes by.
-x11 aside pos=800,450 size=200x100
+wayland aside size=200x100
 check "another window has the focus" "[ \"\$(get aside active)\" = 1 ]"
 refresh
 old_seq=$(get tb rseq)
@@ -600,10 +629,10 @@ stop tb
 
 # With the focus elsewhere, tabs of the same colour differ only by their bevels. The
 # top edge of a raised one is light, that of a sunken one dark.
-x11 sa pos=100,100 size=600x200
-x11 sb size=300x200
+wayland sa size=600x200
+wayland sb size=300x200
 do_input key super+g
-x11 elsewhere pos=800,400 size=200x100
+wayland elsewhere size=200x100
 TX=$((100 + B + T)) TY=$((100 + B))
 shot_until "the shown tab doesn't look like the other one" \
 	'LEFT=$(px $((TX + TW / 2)) "$TY"); RIGHT=$(px $((TX + TW + TW / 2)) "$TY");
@@ -619,8 +648,8 @@ stop sb
 stop elsewhere
 
 # A title that changes behind the shown tab shows.
-x11 tn pos=100,100 size=600x200 title_later=WWWWWWWWWWWWWWWW
-x11 tb size=300x200
+wayland tn size=600x200 late_app=tn late_after="$SMOKE_DIR/tn" titles=1
+wayland tb size=300x200
 do_input key super+g
 shown "with a hidden tab" tb
 refresh
@@ -628,15 +657,16 @@ TY=$((100 + B)) TX=$((100 + B + T))
 # How much of the hidden tab is its background colour: the text takes some of it.
 plain() { count $((TX + 3)) $((TY + 3)) $((TW - 6)) $((T - 6)) "$(px $((TX + 3)) $((TY + 3)))"; }
 shot_until "the hidden tab is drawn" 'BEFORE=$(plain); [ -n "$BEFORE" ]'
-wait_for "its title changes" said tn 'renamed'
+touch "$SMOKE_DIR/tn"
+wait_for "its title changes" said tn 'titles sent'
 shot_until "the tab of a hidden window shows its new title" '[ "$(plain)" != "$BEFORE" ]'
 stop tn
 stop tb
 
 # More tabs than fit.
-x11 n1 pos=100,100 size=300x200
+wayland n1 size=300x200
 for i in 2 3 4 5; do
-	x11 "n$i" size=300x200
+	wayland "n$i" size=300x200
 	do_input key super+g
 done
 shown "five tabs in a narrow window" n5
@@ -659,8 +689,8 @@ check "not the first" "[ \"\$(get n1 tab_hidden)\" = 1 ]"
 for i in 1 2 3 4 5; do stop "n$i"; done
 
 # A reload repaints the tabs of all members.
-x11 ta pos=100,100 size=600x200
-x11 tb size=300x200
+wayland ta size=600x200
+wayland tb size=300x200
 do_input key super+g
 shown "two tabs" tb
 TX=$((100 + B + T)) TY=$((100 + B))
@@ -671,7 +701,7 @@ pixel_is "the other tab's new colour" $((TX + 8)) $((TY + 4)) aa00aa
 stop ta
 stop tb
 finish
-rm "$RC"
+echo "$PLACES" >"$RC"
 
 # ---- taking one window along ---------------------------------------------------------
 
@@ -680,8 +710,8 @@ preview_is() { # description x y
 	check "$1" "[ \"\$(global preview shown)\" = 1 ] && [ \"\$(global preview x)\" = $2 ] && \
 		[ \"\$(global preview y)\" = $3 ]"
 }
-x11 t1 pos=100,100 size=300x200
-x11 t2 pos=600,300 size=300x200
+wayland t1 size=300x200
+wayland t2 size=300x200
 sleep 0.5
 do_input move 750 $((300 + B + T / 2))
 do_input down middle
@@ -719,8 +749,8 @@ check "the other one stayed" "[ \"\$(get t2 x)\" = 100 ] && [ \"\$(get t2 y)\" =
 shown "the taken one has the focus" t1
 
 # The outline shows the size it will have on its own.
-x11 ob1 pos=500,20 size=500x150
-x11 ob2 size=200x100
+wayland ob1 size=500x150
+wayland ob2 size=200x100
 do_input key super+g
 shown "a small window in a larger group" ob2
 sleep 0.5
@@ -763,7 +793,7 @@ do_input key Escape
 check "Escape ends it" "[ \"\$(global cursor mode)\" = 0 ] && [ \"\$(global preview shown)\" = 0 ]"
 do_input up middle
 check "and nothing happened" "[ \"\$(get t2 tab)\" != -1 ] && [ \"\$(get t2 x)\" = 100 ]"
-x11 t3 pos=500,50 size=200x100
+wayland t3 size=200x100
 do_input key alt+Tab
 shown "the group on top" t2
 do_input move $((TX + 20)) $((TY + T / 2))
@@ -774,7 +804,7 @@ check "without touching the group" "[ \"\$(get t2 tab)\" != -1 ]"
 stop t3
 
 # A window that can't join: it goes there, over the other.
-x11 fix pos=700,400 size=200x100 min=200x100 max=200x100
+wayland fix size=200x100 min=200x100 max=200x100
 do_input key alt+Tab
 sleep 0.5
 do_input move $((TX + 20)) $((TY + T / 2))
@@ -789,7 +819,7 @@ stop fix
 # The hidden window being taken along goes away.
 stop t2
 do_input key alt+Tab
-x11 t4 size=200x100
+wayland t4 size=200x100
 do_input key super+g
 shown "a group again" t4
 hidden "with one behind" t1
@@ -807,8 +837,8 @@ stop t4
 
 # ---- the window menu -------------------------------------------------------------------
 
-x11 m1 size=300x200
-x11 m2 size=300x200
+wayland m1 size=300x200
+wayland m2 size=300x200
 do_input key alt+space
 do_input key t
 shown "Tab With Previous Window" m2
@@ -832,7 +862,7 @@ fullgroup() {
 	wayland "$1" size=400x300
 	refresh
 	AX=$(get "$1" x) AY=$(get "$1" y)
-	x11 "$2" size=300x200
+	wayland "$2" size=300x200
 	do_input key super+g
 	shown "$2 is shown" "$2"
 	do_input key alt+F11
@@ -907,8 +937,8 @@ icon_is() { # description app x y: it is the icon, and not on the screen
 iconify() { # member member [options of the second]
 	local first=$1 second=$2
 	shift 2
-	x11 "$first" size=300x200
-	x11 "$second" size=300x200 "$@"
+	wayland "$first" size=300x200
+	wayland "$second" size=300x200 "$@"
 	do_input key super+g
 	shown "$second is shown" "$second"
 	do_input key alt+F9
@@ -930,8 +960,9 @@ check "it comes back from there" "[ \"\$(get i1 min)\" = 0 ] && [ \"\$(get i1 vi
 stop i1
 
 # Fixed at a size it can't be a tab any more, and comes out; the rest stays what it was.
-iconify i3 i4 hints_later=300x200 hints_ms=2000
-wait_for "i4 is fixed at a size" said i4 'hints set'
+iconify i3 i4 fixed_after="$SMOKE_DIR/i4"
+touch "$SMOKE_DIR/i4"
+wait_for "i4 is fixed at a size" said i4 'fixed'
 icon_is "a client leaves the group: the other takes over the icon" i3 "$IX" "$IY"
 check "and is on its own" "[ \"\$(get i3 tab)\" = -1 ]"
 check "the one that left is on the screen" "[ \"\$(get i4 min)\" = 0 ] && [ \"\$(get i4 visible)\" = 1 ] && \
@@ -939,22 +970,9 @@ check "the one that left is on the screen" "[ \"\$(get i4 min)\" = 0 ] && [ \"\$
 stop i3
 stop i4
 
-# ---- a window with a parent --------------------------------------------------------------
-
-# A dialog by its parent, even if it says that it is a normal window.
-DISPLAY=$X_DISPLAY build/xclient class=tparent size=300x200 dialog=tkid dialog_type=normal \
-	>"$SMOKE_DIR/tparent.log" 2>&1 &
-PID_tparent=$!
-check "it has the focus" "[ \"\$(get tkid active)\" = 1 ]"
-do_input key super+g
-sleep 0.3
-check "Super+G doesn't put it in a group with its parent" \
-	"[ \"\$(get tkid tab)\" = -1 ] && [ \"\$(get tparent tab)\" = -1 ] && [ \"\$(get tkid active)\" = 1 ]"
-stop tparent
-
 # ---- taking along a window without a group ---------------------------------------------
 
-x11 lone pos=100,100 size=300x200
+wayland lone size=300x200
 do_input key alt+F10
 check "lone is maximized" "[ \"\$(get lone max)\" = 1 ]"
 sleep 0.5
@@ -994,7 +1012,7 @@ do_input up left
 check "Ctrl+left out of a snap: free, at its own size" \
 	"[ \"\$(get lone snap)\" = 0 ] && [ \"\$(get lone w)\" = 300 ] && \
 	[ \"\$(get lone y)\" = $((400 - B - T / 2)) ]"
-x11 other pos=900,400 size=300x200
+wayland other size=300x200
 do_input key alt+Tab
 check "lone has the focus" "[ \"\$(get lone active)\" = 1 ]"
 do_input key alt+F10
@@ -1011,54 +1029,18 @@ check "dropped on another window, it joins that one" \
 	[ \"\$(get lone x)\" = 900 ]"
 stop lone
 stop other
-
-# A half is maximized vertically for X11 programs, also for the tab that takes it over.
-net_state_is() { [ "$(grep '^net-state' "$SMOKE_DIR/$1.log" | tail -1)" = "net-state $2" ]; }
-x11 hs1 size=300x200 netstate=1
-x11 hs2 size=300x200 netstate=1
-do_input key super+g
-shown "a group of two X11 windows" hs2
-do_input key super+Left
-check "snapped to the left half" "[ \"\$(get hs2 snap)\" != 0 ]"
-wait_for "it hears it is maximized vertically" net_state_is hs2 'vert=1 horz=0'
-do_input key super+Tab
-shown "the other tab" hs1
-check "takes the half over" "[ \"\$(get hs1 snap)\" != 0 ]"
-wait_for "and hears it is maximized vertically too" net_state_is hs1 'vert=1 horz=0'
-stop hs1
-stop hs2
-
-# A dialog its program minimized stays an icon when its window's tab goes and comes.
-x11 tq size=300x200
-x11 tp size=300x200 dialog=td dialog_ms=800 iconify_ms=1200 iconify_dialog=1
-wait_for "the dialog minimizes itself" grep -q '^iconified' "$SMOKE_DIR/tp.log"
-check "the dialog is an icon" "[ \"\$(get td min)\" = 1 ] && [ \"\$(get td visible)\" = 0 ]"
-do_input move $(($(get tp x) + 100)) $(($(get tp y) + $(get tp th) + 50))
-do_input click left
-check "its window has the focus" "[ \"\$(get tp active)\" = 1 ]"
-do_input key super+g
-shown "its window joins the other" tp
-do_input key super+Tab
-shown "the other tab" tq
-do_input key super+Tab
-shown "and back" tp
-sleep 0.3
-check "the dialog is still an icon, not on the screen" \
-	"[ \"\$(get td min)\" = 1 ] && [ \"\$(get td visible)\" = 0 ]"
-stop tp
-stop tq
 finish
 
 # Two monitors: a wide window joining a right half of the left one stays on the left
 # one, whatever its own width was.
 export WLR_HEADLESS_OUTPUTS=2
 begin
-x11 half size=300x200
+wayland half size=300x200
 do_input key super+Right
 check "a right half" "[ \"\$(get half snap)\" != 0 ]"
 HX=$(get half x)
 [ "$HX" -lt 1280 ] || fail "the half isn't on the left monitor: x=$HX"
-x11 wide size=1300x300
+wayland wide size=1300x300
 do_input key super+g
 shown "a wide window joins the half" wide
 check "it takes the half, on the same monitor" \

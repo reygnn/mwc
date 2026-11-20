@@ -6,18 +6,15 @@
 LOG=build/misc.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xclient build/xdgc; do
+require_tools grim
+for tool in build/vinput build/pngtool build/xdgc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
 export MWC_TEST_STATE=$SMOKE_DIR/state
 mkdir -p "$XDG_CONFIG_HOME/mwc"
 begin() {
-	rm -f "$SMOKE_DIR/display"
-	start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-	wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-	X_DISPLAY=$(cat "$SMOKE_DIR/display")
+	start_mwc 'exec sleep 300'
 	start_vinput
 	refresh
 	B=$(global theme border)
@@ -27,10 +24,10 @@ finish() {
 	stop_vinput
 	stop_mwc
 }
-x11() {
+wayland() {
 	local name=$1
 	shift
-	DISPLAY=$X_DISPLAY build/xclient class="$name" "$@" >"$SMOKE_DIR/$name.log" 2>&1 &
+	WAYLAND_DISPLAY=wayland-0 build/xdgc app="$name" "$@" >"$SMOKE_DIR/$name.log" 2>&1 &
 	eval "PID_$name=$!"
 	check "$name is mapped" "[ -n \"\$(get $name x)\" ]"
 }
@@ -70,24 +67,6 @@ wait_for "Super+Esc runs Mwm*screenSaver" test -e "$SMOKE_DIR/saver"
 finish
 rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 
-# ---- the clipboard ------------------------------------------------------------------
-
-# Copied in an X11 program, pasted in a Wayland one: all of it, through Xwayland's
-# selection bridge.
-begin
-DISPLAY=$X_DISPLAY build/xclient class=owner clipboard=1 >"$SMOKE_DIR/owner.events" 2>&1 &
-PID_owner=$!
-wait_for "the X11 program owns the clipboard" grep -q '^owner' "$SMOKE_DIR/owner.events"
-WAYLAND_DISPLAY=wayland-0 build/badclient paste >"$SMOKE_DIR/paste.events" 2>&1 &
-PID_paste=$!
-wait_for "the Wayland program pastes it" grep -q '^pasted' "$SMOKE_DIR/paste.events"
-got=$(sed -n 's/^pasted //p' "$SMOKE_DIR/paste.events" | head -1)
-[ "$got" = 200000 ] || fail "pasted $got bytes, the X11 program offered 200000"
-echo "ok: all 200000 bytes arrive"
-kill "$PID_paste" "$PID_owner"
-wait "$PID_paste" "$PID_owner" 2>/dev/null
-finish
-
 # ---- the terminal -----------------------------------------------------------------
 
 export MWC_TERMINAL="touch $SMOKE_DIR/started-1"
@@ -120,6 +99,8 @@ unset MWC_TERMINAL
 rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 
 export MWC_TERMINAL="touch $SMOKE_DIR/started-3"
+printf 'Mwm*under*geometry: +100+100\nMwm*over*geometry: +150+150\n' \
+	>"$XDG_CONFIG_HOME/mwc/mwmrc"
 begin
 do_input move 1000 600
 do_input click right
@@ -129,8 +110,8 @@ unset MWC_TERMINAL
 
 # ---- lowering ----------------------------------------------------------------------
 
-x11 under pos=100,100 size=300x200
-x11 over pos=150,150 size=300x200
+wayland under size=300x200
+wayland over size=300x200
 check "the newer window is in front" "[ \"\$(stack_pos over)\" = 0 ]"
 settle
 do_input move 300 $((150 + B + T / 2))
@@ -147,6 +128,7 @@ do_input release alt
 check "Alt+btn2 in the window lowers it too" "[ \"\$(stack_pos under)\" = 1 ]"
 stop under
 stop over
+rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 
 # ---- no way out? --------------------------------------------------------------------
 
@@ -195,15 +177,18 @@ export XDG_CONFIG_HOME=$SMOKE_DIR/config
 # ---- settings from the environment -------------------------------------------------------
 
 export MWC_ACTIVE='#102030' MWC_INACTIVE='#405060' MWC_FONT='Sans Bold 24'
+printf 'Mwm*first*geometry: +100+100\nMwm*second*geometry: +600+100\n' \
+	>"$XDG_CONFIG_HOME/mwc/mwmrc"
 begin
 check "MWC_FONT: the title bar grows with it" "[ \"\$(global theme title)\" -gt 30 ]"
-x11 first pos=100,100 size=300x200
-x11 second pos=600,100 size=300x200
+wayland first size=300x200
+wayland second size=300x200
 pixel_is "MWC_ACTIVE: the focused frame" $((600 + 3)) 200 102030
 pixel_is "MWC_INACTIVE: the other one" $((100 + 3)) 200 405060
 stop first
 stop second
 finish
+rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 unset MWC_ACTIVE MWC_INACTIVE MWC_FONT
 
 export MWC_FONT='Sans Bold 1000'

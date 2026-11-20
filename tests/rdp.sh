@@ -11,7 +11,7 @@
 LOG=build/rdp.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools foot Xwayland
+require_tools foot
 for tool in build/vinput build/xdgc build/outputc build/capturec build/powerc \
 		build/pngtool; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }

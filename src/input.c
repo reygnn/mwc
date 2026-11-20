@@ -28,7 +28,6 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
-#include <wlr/xwayland.h>
 #include "mwc.h"
 
 #define DOUBLE_CLICK_MS 400
@@ -131,15 +130,9 @@ static void update_feedback(struct server *server)
 	} else if (server->cursor_mode == CURSOR_MOVE) {
 		snprintf(buf, sizeof(buf), "%+d %+d", t->x, t->y);
 	} else {
-		/* Sizes in the client's own units, e.g. 80 x 24 for xterm. */
-		int w = t->width, h = t->height;
-		if (view->inc_w > 1)
-			w = (w - view->base_w) / view->inc_w;
-		if (view->inc_h > 1)
-			h = (h - view->base_h) / view->inc_h;
-		snprintf(buf, sizeof(buf), "%d x %d", w, h);
+		snprintf(buf, sizeof(buf), "%d x %d", t->width, t->height);
 	}
-	feedback_show(server, buf, view_drawn_x(view) + 1, view_drawn_y(view) + 1);
+	feedback_show(server, buf, view->x + 1, view->y + 1);
 }
 
 static void show_outline(struct server *server)
@@ -192,8 +185,7 @@ void grab_forget(struct server *server)
 static void stop_resizing_state(struct server *server)
 {
 	struct view *view = server->grabbed_view;
-	if (!server->grab_outline && server->cursor_mode == CURSOR_RESIZE &&
-			view->type == VIEW_XDG)
+	if (!server->grab_outline && server->cursor_mode == CURSOR_RESIZE)
 		wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, false);
 }
 
@@ -210,13 +202,9 @@ void grab_give_way(struct view *view)
 
 static void resize_to(struct view *view, const struct wlr_box *b)
 {
-	/* The client answers later. An xdg anchor keeps the opposite edge until then; an
-	 * X window gets the new place with the size and its frame follows the commit,
+	/* The client answers later, and its anchor keeps the opposite edge until then,
 	 * also for the size applied as the grab ends. */
-	if (view->type == VIEW_XWAYLAND)
-		view_send_geometry(view, b->x, b->y, b->width, b->height);
-	else
-		view_send_size(view, b->width, b->height);
+	view_send_size(view, b->width, b->height);
 }
 
 static void finish_take(struct server *server, struct view *view, struct view *take,
@@ -269,10 +257,7 @@ static void end_grab(struct server *server)
 		struct wlr_box current = target;
 		view->saved = current;
 		view->snap = SNAP_NONE;
-		if (view->type == VIEW_XWAYLAND)
-			wlr_xwayland_surface_set_maximized(view->xsurface, false, false);
-		else
-			wlr_xdg_toplevel_set_tiled(view->xdg_toplevel, WLR_EDGE_NONE);
+		wlr_xdg_toplevel_set_tiled(view->xdg_toplevel, WLR_EDGE_NONE);
 	}
 	if (!apply)
 		return;
@@ -390,7 +375,7 @@ static void process_move(struct server *server)
 			server->grab_drop = drop;
 			if (drop)
 				snap_preview_box(view, (struct wlr_box){
-					view_drawn_x(drop), view_drawn_y(drop),
+					drop->x, drop->y,
 					drop->width + frame_extra_w(drop), frame_height(drop) });
 			else
 				snap_preview_hide();
@@ -435,18 +420,11 @@ static void process_resize(struct server *server)
 		cw = min_cw;
 	if (ch < 8)
 		ch = 8;
-	bool dragged_w = edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
-	bool dragged_h = edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
-	/* With an aspect ratio, the axis not being dragged has to follow. */
-	bool aspect = view_has_aspect(view);
-	if (aspect && dragged_w != dragged_h)
-		view_aspect_follow(view, &cw, &ch, dragged_w);
-	view_apply_size_hints(view, &cw, &ch, true);
-	/* Otherwise it keeps its size: rounding it to the client's steps would change
-	 * it for no reason. */
-	if (!aspect && !dragged_w)
+	view_apply_size_hints(view, &cw, &ch);
+	/* The axis not dragged keeps its size. */
+	if (!(edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)))
 		cw = server->grab_orig.width;
-	if (!aspect && !dragged_h)
+	if (!(edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)))
 		ch = server->grab_orig.height;
 	if (edges & WLR_EDGE_LEFT)
 		left = right - cw - frame_extra_w(view);
@@ -460,12 +438,9 @@ static void process_resize(struct server *server)
 	server->grab_changed = true;
 	if (server->grab_outline)
 		show_outline(server);
-	else if (view->type == VIEW_XDG ?
-			view->xdg_toplevel->base->current.configure_serial < view->anchor_serial :
-			view->configure_pending)
+	else if (view->xdg_toplevel->base->current.configure_serial < view->anchor_serial)
 		/* Still busy with the last size: a mouse sends far more events than a
-		 * client can draw frames. This one goes out when it has caught up: an xdg
-		 * client acks it, an X11 window commits again (see xw_commit()). */
+		 * client can draw frames. This one goes out when it has acked it. */
 		server->grab_resize_waiting = true;
 	else
 		resize_to(view, &target);
@@ -541,8 +516,8 @@ static void process_cursor_motion(struct server *server, uint32_t time)
 			return;
 		}
 		uint32_t edges;
-		bool inside = frame_hit(v, server->cursor->x - view_drawn_x(v),
-			server->cursor->y - view_drawn_y(v), &edges) == v->pressed;
+		bool inside = frame_hit(v, server->cursor->x - v->x,
+			server->cursor->y - v->y, &edges) == v->pressed;
 		if (inside != v->pressed_inside) {
 			v->pressed_inside = inside;
 			frame_render(v);
@@ -554,9 +529,8 @@ static void process_cursor_motion(struct server *server, uint32_t time)
 	}
 
 	/* While a button is down the pointer stays with the client that got the press,
-	 * wherever it goes, or a text selection ends at the window's edge and X11 sees a
-	 * release that didn't happen. Drags and popups have grabs of their own, which
-	 * have to see what is under the pointer. */
+	 * wherever it goes, or a text selection ends at the window's edge. Drags and
+	 * popups have grabs of their own, which have to see what is under the pointer. */
 	struct wlr_seat *seat = server->seat;
 	if (server->n_forwarded > 0 && !wlr_seat_pointer_has_grab(seat)) {
 		if (seat->pointer_state.focused_surface) {
@@ -671,7 +645,7 @@ static bool handle_press(struct server *server, uint32_t button,
 		return true;
 
 	if (!view) {
-		/* A panel or an X11 popup menu: not ours to handle. */
+		/* A panel: not ours to handle. */
 		if (surface) {
 			layer_handle_click(server, surface);
 			return false;
@@ -704,7 +678,7 @@ static bool handle_press(struct server *server, uint32_t button,
 	 * its minimize button doesn't roll it right up again; only maximize goes on to
 	 * make it the main window. */
 	bool was_shaded = view->shaded;
-	int tab = part == PART_TAB ? frame_tab_at(view, cx - view_drawn_x(view)) : -1;
+	int tab = part == PART_TAB ? frame_tab_at(view, cx - view->x) : -1;
 	view_focus(view);
 	if (was_shaded && part != PART_MAXIMIZE_BUTTON) {
 		if (tab >= 0)
@@ -719,9 +693,9 @@ static bool handle_press(struct server *server, uint32_t button,
 		}
 		if (button == BTN_RIGHT && !view->maximized) {
 			/* Resize from the nearest corner. */
-			double mx = view_drawn_x(view) + (view->width +
+			double mx = view->x + (view->width +
 				frame_extra_w(view)) / 2.0;
-			double my = view_drawn_y(view) + (view->height +
+			double my = view->y + (view->height +
 				frame_extra_h(view)) / 2.0;
 			uint32_t e = (cx < mx ? WLR_EDGE_LEFT : WLR_EDGE_RIGHT) |
 				(cy < my ? WLR_EDGE_TOP : WLR_EDGE_BOTTOM);
@@ -787,8 +761,8 @@ static bool handle_press(struct server *server, uint32_t button,
 			return true;
 		/* The menu takes the grab; its own press handling sees the second click
 		 * of a double click and closes the window. */
-		menu_open_window(server, view, view_drawn_x(view) + frame_border(view),
-			view_drawn_y(view) + frame_top(view));
+		menu_open_window(server, view, view->x + frame_border(view),
+			view->y + frame_top(view));
 		server->menu.from_button = true;
 		return true;
 	case PART_MINIMIZE_BUTTON:
@@ -1146,8 +1120,8 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	}
 	if (shift && !alt && !ctrl && sym == XKB_KEY_Escape && view) {
 		/* mwm: Shift+Escape posts the window menu */
-		menu_open_window(server, view, view_drawn_x(view) + frame_border(view),
-			view_drawn_y(view) + frame_top(view));
+		menu_open_window(server, view, view->x + frame_border(view),
+			view->y + frame_top(view));
 		return true;
 	}
 	if (!alt || ctrl)
@@ -1166,8 +1140,8 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	case XKB_KEY_space:
 		if (view)
 			menu_open_window(server, view,
-				view_drawn_x(view) + frame_border(view),
-				view_drawn_y(view) + frame_top(view));
+				view->x + frame_border(view),
+				view->y + frame_top(view));
 		return true;
 	case XKB_KEY_F3:
 		run_action(server, ACT_LOWER, view);
@@ -1621,7 +1595,7 @@ void input_init(struct server *server)
 	const char *size = getenv("XCURSOR_SIZE");
 	server->cursor_mgr = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"),
 		size ? atoi(size) : 24);
-	/* Xwayland asks for the default cursor before any output has needed it. */
+	/* The default cursor may be asked for before any output has needed it. */
 	wlr_xcursor_manager_load(server->cursor_mgr, 1);
 
 	server->cursor_mode = CURSOR_PASSTHROUGH;

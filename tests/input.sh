@@ -1,13 +1,12 @@
 #!/bin/bash
 # Headless input test: drives mwc with simulated mouse and keyboard (vinput)
 # and checks window geometry and focus through the state file (src/testhook.c).
-# Every window operation runs against a Wayland client (foot) and an X11 client
-# (xterm), because they take different paths through the compositor.
+# Every window operation runs against two foot windows, foot and term.
 # Output goes to build/input.log. Exits non-zero on failure.
 LOG=build/input.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools foot xterm Xwayland
+require_tools foot
 [ -x build/vinput ] || { echo "FAIL: build/vinput not built"; exit 1; }
 
 SCREEN_W=1280
@@ -17,9 +16,9 @@ export MWC_TEST_STATE=$SMOKE_DIR/state
 marker='touch "$SMOKE_DIR/$0"; exec sleep 120'
 start_mwc "foot sh -c '$marker' foot-up & \
 	while [ ! -e \"\$SMOKE_DIR/foot-up\" ]; do sleep 0.1; done; \
-	exec xterm -e sh -c '$marker' xterm-up"
-wait_for "foot connected (Wayland)" test -e "$SMOKE_DIR/foot-up"
-wait_for "xterm connected (XWayland)" test -e "$SMOKE_DIR/xterm-up"
+	exec foot --app-id=term sh -c '$marker' term-up"
+wait_for "foot connected" test -e "$SMOKE_DIR/foot-up"
+wait_for "term connected" test -e "$SMOKE_DIR/term-up"
 
 start_vinput
 refresh
@@ -267,59 +266,25 @@ test_menus() {
 
 test_focus() {
 	bring_to_front foot
-	check "foot has the keyboard" "[ \"\$(get foot kbfocus)\" = 1 ] && [ \"\$(get XTerm active)\" = 0 ]"
+	check "foot has the keyboard" "[ \"\$(get foot kbfocus)\" = 1 ] && [ \"\$(get term active)\" = 0 ]"
 	do_input key alt+Tab
-	check "Alt+Tab focuses xterm" "[ \"\$(get XTerm kbfocus)\" = 1 ] && [ \"\$(get foot active)\" = 0 ]"
+	check "Alt+Tab focuses term" "[ \"\$(get term kbfocus)\" = 1 ] && [ \"\$(get foot active)\" = 0 ]"
 	do_input key alt+shift+Tab
 	check "Alt+Shift+Tab focuses foot" "[ \"\$(get foot kbfocus)\" = 1 ]"
 	do_input key alt+Escape
-	check "Alt+Escape focuses xterm" "[ \"\$(get XTerm kbfocus)\" = 1 ]"
+	check "Alt+Escape focuses term" "[ \"\$(get term kbfocus)\" = 1 ]"
 	do_input key alt+F3
-	check "Alt+F3 lowers xterm, foot gets the focus" \
-		"[ \"\$(get foot kbfocus)\" = 1 ] && [ \"\$(get XTerm active)\" = 0 ]"
-}
-
-# xterm's Ctrl+btn1 menu is an override-redirect window, which no view owns. It
-# stays open only while the button is held.
-test_x11_popup() {
-	bring_to_front XTerm
-	settle
-	remember XTerm
-	local cx=$((X0 + B + W0 / 2)) cy=$((Y0 + B + T + H0 / 2))
-	do_input move "$cx" "$cy"
-	do_input hold ctrl
-	do_input down left
-	check "xterm opens its X11 popup menu" "[ \"\$(global unmanaged count)\" -gt 0 ]"
-	check "that is not the root menu" "[ \"\$(global menu open)\" = 0 ]"
-	do_input up left
-	do_input release ctrl
-	check "releasing the button closes the popup" "[ \"\$(global unmanaged count)\" = 0 ]"
-
-	# So a press that lands on it has to be a second button. What xterm makes
-	# of two buttons is up to xterm, hence the click to clean up afterwards.
-	do_input hold ctrl
-	do_input down left
-	check "xterm opens its X11 popup menu again" "[ \"\$(global unmanaged count)\" -gt 0 ]"
-	do_input move $((cx + 5)) $((cy + 5))
-	do_input down right
-	check "a press on the X11 popup doesn't open the root menu" \
-		"[ \"\$(global menu open)\" = 0 ]"
-	do_input up right
-	do_input up left
-	do_input release ctrl
-	settle
-	do_input move "$cx" "$((Y0 + H0))"
-	do_input click left
-	check "the popup is gone after a click" "[ \"\$(global unmanaged count)\" = 0 ]"
+	check "Alt+F3 lowers term, foot gets the focus" \
+		"[ \"\$(get foot kbfocus)\" = 1 ] && [ \"\$(get term active)\" = 0 ]"
 }
 
 test_root_menu() {
 	# Minimize everything so the corner is free for the desktop.
 	bring_to_front foot
 	do_input key alt+F9
-	bring_to_front XTerm
+	bring_to_front term
 	do_input key alt+F9
-	check "both windows are icons" "[ \"\$(get foot min)\" = 1 ] && [ \"\$(get XTerm min)\" = 1 ]"
+	check "both windows are icons" "[ \"\$(get foot min)\" = 1 ] && [ \"\$(get term min)\" = 1 ]"
 	settle
 	do_input move $((SCREEN_W - 10)) 10
 	do_input click right
@@ -338,17 +303,17 @@ test_root_menu() {
 	check "foot is back" "[ \"\$(get foot min)\" = 0 ]"
 	settle
 	refresh
-	do_input move $(($(get XTerm icon_x) + 30)) $(($(get XTerm icon_y) + 30))
+	do_input move $(($(get term icon_x) + 30)) $(($(get term icon_y) + 30))
 	do_input click left
 	do_input click left
-	check "xterm is back" "[ \"\$(get XTerm min)\" = 0 ]"
+	check "term is back" "[ \"\$(get term min)\" = 0 ]"
 }
 
 test_close() {
-	bring_to_front XTerm
+	bring_to_front term
 	do_input key alt+F4
-	check "Alt+F4 closes xterm, foot gets the focus" \
-		"[ -z \"\$(get XTerm x)\" ] && [ \"\$(get foot kbfocus)\" = 1 ]"
+	check "Alt+F4 closes term, foot gets the focus" \
+		"[ -z \"\$(get term x)\" ] && [ \"\$(get foot kbfocus)\" = 1 ]"
 }
 
 # The window must be gone first: Quit is checked through the exit status.
@@ -375,18 +340,17 @@ test_quit() {
 	echo "ok: Quit... then OK ends mwc cleanly"
 }
 
-check "both windows are mapped" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get XTerm x)\" ]"
-for app in foot XTerm; do
+check "both windows are mapped" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get term x)\" ]"
+for app in foot term; do
 	test_move "$app"
 	test_resize "$app"
 	test_maximize "$app"
 	test_fullscreen "$app"
 	test_menus "$app"
 done
-test_minimize foot XTerm
-test_minimize XTerm foot
+test_minimize foot term
+test_minimize term foot
 test_focus
-test_x11_popup
 test_root_menu
 test_close
 test_quit

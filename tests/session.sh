@@ -1,12 +1,12 @@
 #!/bin/bash
-# Headless test of session settings: monitors and keyboard from mwmrc, the environment
-# programs get, and the properties X11 programs look for.
+# Headless test of session settings: monitors and keyboard from mwmrc, and the
+# environment programs get.
 # Output goes to build/session.log. Exits non-zero on failure.
 LOG=build/session.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xclient build/powerc build/outputc build/capturec; do
+require_tools grim
+for tool in build/vinput build/pngtool build/xdgc build/powerc build/outputc build/capturec; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -15,11 +15,12 @@ unset XDG_SESSION_TYPE XKB_DEFAULT_LAYOUT # the session around the test has its 
 RC=$XDG_CONFIG_HOME/mwc/mwmrc
 mkdir -p "$(dirname "$RC")"
 
+# The environment as a whole: written elsewhere, then moved.
+STARTUP='env > "$SMOKE_DIR/env.new" && mv "$SMOKE_DIR/env.new" "$SMOKE_DIR/env"; exec sleep 300'
 begin() { # [vinput width height]
-	rm -f "$SMOKE_DIR/display"
-	start_mwc 'env > "$SMOKE_DIR/env"; echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-	wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-	X_DISPLAY=$(cat "$SMOKE_DIR/display")
+	rm -f "$SMOKE_DIR/env"
+	start_mwc "$STARTUP"
+	wait_for "the startup command ran" test -s "$SMOKE_DIR/env"
 	start_vinput "$@"
 	refresh
 	B=$(global theme border)
@@ -42,8 +43,6 @@ log_has() { # description text: polling, mwc may get there after the check began
 
 begin
 log_has "the output's name is logged, for mwmrc" "new output HEADLESS-1"
-grep -q '^_JAVA_AWT_WM_NONREPARENTING=1$' "$SMOKE_DIR/env" || fail "Java isn't told"
-echo "ok: Java programs are told not to expect reparenting"
 # Qt asks for server-side frames through xdg-decoration; the variable would take away
 # its own frame where no compositor draws one.
 grep -q '^QT_WAYLAND_DISABLE_WINDOWDECORATION=' "$SMOKE_DIR/env" &&
@@ -52,34 +51,24 @@ echo "ok: Qt is left to xdg-decoration"
 grep -q '^XDG_SESSION_TYPE=wayland$' "$SMOKE_DIR/env" && fail "nested, the session type isn't ours to set"
 echo "ok: outside a real session the activation environment stays alone"
 
-DISPLAY=$X_DISPLAY build/xclient class=rep report=1 pos=100,100 size=300x200 >"$SMOKE_DIR/rep.log" 2>&1 &
-PID_rep=$!
-check "the window is mapped" "[ -n \"\$(get rep x)\" ]"
-wait_for "a Motif program finds a window manager" grep -q 'motif-wm running' "$SMOKE_DIR/rep.log"
-wait_for "_NET_FRAME_EXTENTS tells the frame" grep -q "frame-extents $B $B $((B + T)) $B" "$SMOKE_DIR/rep.log"
-do_input key alt+F11
-wait_for "fullscreen: none" grep -q 'frame-extents 0 0 0 0' "$SMOKE_DIR/rep.log"
-do_input key alt+F11
-check "back" "[ \"\$(get rep full)\" = 0 ]"
-: >"$SMOKE_DIR/rep.log"
-echo 'Mwm*fontList: Sans Bold 24' >"$RC"
-kill -HUP "$pid"
-check "a larger title bar" "[ \"\$(global theme title)\" -gt 30 ]"
-refresh
-wait_for "the extents follow" grep -q "frame-extents $B $B $((B + $(global theme title))) $B" "$SMOKE_DIR/rep.log"
-kill "$PID_rep"
-wait "$PID_rep" 2>/dev/null
-rm "$RC"
 finish
 
-export _JAVA_AWT_WM_NONREPARENTING=0 QT_WAYLAND_DISABLE_WINDOWDECORATION=0
+export QT_WAYLAND_DISABLE_WINDOWDECORATION=0
 begin
-grep -q '^_JAVA_AWT_WM_NONREPARENTING=0$' "$SMOKE_DIR/env" || fail "a value set by the user must stay"
 grep -q '^QT_WAYLAND_DISABLE_WINDOWDECORATION=0$' "$SMOKE_DIR/env" ||
 	fail "the user's Qt setting must stay"
 echo "ok: a value set by the user stays"
 finish
-unset _JAVA_AWT_WM_NONREPARENTING QT_WAYLAND_DISABLE_WINDOWDECORATION
+unset QT_WAYLAND_DISABLE_WINDOWDECORATION
+
+# No X server of mwc's own: a DISPLAY from around it isn't for its programs.
+rm -f "$SMOKE_DIR/env"
+DISPLAY=:99 "$MWC" -s "$STARTUP" >"$LOG" 2>&1 &
+pid=$!
+wait_for "the startup command ran" test -s "$SMOKE_DIR/env"
+grep -q '^DISPLAY=' "$SMOKE_DIR/env" && fail "a program mwc starts has DISPLAY"
+echo "ok: a program mwc starts has no DISPLAY"
+stop_mwc
 
 # ---- monitors -----------------------------------------------------------------------
 
@@ -97,7 +86,7 @@ kill -HUP "$pid"
 output_is "a reload: new mode and outputScale, the layout counts in scaled pixels" \
 	HEADLESS-1 0 0 400 250 200
 
-DISPLAY=$X_DISPLAY build/xclient class=follows pos=20,20 size=100x60 >/dev/null 2>&1 &
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=follows size=100x60 >/dev/null 2>&1 &
 PID_follows=$!
 check "a window" "[ -n \"\$(get follows x)\" ]"
 do_input key alt+F10
@@ -441,7 +430,10 @@ finish
 # comes back elsewhere, and its picture comes from there.
 printf 'Mwm*outputManagement: true\nMwm*rootBackground: #204060\nMwm*HEADLESS-1*outputPosition: 0,0\nMwm*HEADLESS-2*outputPosition: 1280,0\n' >"$RC"
 begin 2560 720
-DISPLAY=$X_DISPLAY build/xclient class=stranded pos=100,100 size=300x200 >/dev/null 2>&1 &
+# New windows open on the output under the pointer.
+do_input move 640 360
+check "the pointer on HEADLESS-1" "[ \"\$(global cursor x)\" -lt 1280 ]"
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=stranded size=300x200 >/dev/null 2>&1 &
 PID_stranded=$!
 check "a window on HEADLESS-1" "[ -n \"\$(get stranded x)\" ] && [ \"\$(get stranded x)\" -lt 1280 ]"
 outputc apply HEADLESS-1 off || fail "a client switching off the newest monitor"
@@ -450,15 +442,19 @@ check "the window goes to the monitor that is left" \
 outputc apply HEADLESS-1 on at 2560,0 || fail "on again, elsewhere"
 check "it comes back where the client says" \
 	"outputc list | grep -q '^HEADLESS-1 on=1 w=1280 h=720 x=2560 y=0 '"
-DISPLAY=$X_DISPLAY build/xclient class=there pos=2700,100 size=300x200 >/dev/null 2>&1 &
+# The pointer's range is the layout's box, now from 1280 to 3840.
+do_input move 2000 360
+check "the pointer on HEADLESS-1" "[ \"\$(global cursor x)\" -ge 2560 ]"
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=there size=300x200 >/dev/null 2>&1 &
 PID_there=$!
 check "a window where it is now" "[ \"\$(get there x)\" -ge 2560 ]"
 sleep 0.3
 capturec frame HEADLESS-1 "$SMOKE_DIR/back.png" || fail "capturing it"
 [ "$(build/pngtool pixel "$SMOKE_DIR/back.png" 1000 600)" = 204060 ] ||
 	fail "its desktop isn't where it is: $(build/pngtool pixel "$SMOKE_DIR/back.png" 1000 600)"
-[ "$(build/pngtool pixel "$SMOKE_DIR/back.png" 290 200)" != 204060 ] ||
-	fail "its picture isn't from where it is now: no window at 290,200"
+tx=$(($(get there x) - 2560 + 100)) ty=$(($(get there y) + 100))
+[ "$(build/pngtool pixel "$SMOKE_DIR/back.png" $tx $ty)" != 204060 ] ||
+	fail "its picture isn't from where it is now: no window at $tx,$ty"
 echo "ok: and its picture comes from there"
 kill "$PID_stranded" "$PID_there" 2>/dev/null
 finish

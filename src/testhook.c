@@ -21,7 +21,6 @@
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/log.h>
-#include <wlr/xwayland.h>
 #include "mwc.h"
 
 static struct server *test_server;
@@ -59,8 +58,8 @@ static int unplug_output(int signal, void *data)
 	return 0;
 }
 
-/* Who a surface belongs to, for the seat line: a window's app, an X11
- * override-redirect window, something else (a layer surface, a popup), or nobody. */
+/* Who a surface belongs to, for the seat line: a window's app, something else (a layer
+ * surface, a popup), or nobody. */
 static const char *surface_owner(struct server *server, struct wlr_surface *surface)
 {
 	if (!surface)
@@ -70,11 +69,6 @@ static const char *surface_owner(struct server *server, struct wlr_surface *surf
 	wl_list_for_each(v, &server->views, link) {
 		if (v->mapped && view_surface(v) == surface)
 			return view_app_id(v);
-	}
-	struct unmanaged *um;
-	wl_list_for_each(um, &server->unmanaged, link) {
-		if (um->xsurface->surface == surface)
-			return "unmanaged";
 	}
 	return "other";
 }
@@ -99,24 +93,19 @@ static int dump_state(int signal, void *data)
 			continue;
 		fprintf(f, "view app=%s x=%d y=%d w=%d h=%d active=%d kbfocus=%d "
 			"max=%d min=%d full=%d frame=%d icon_x=%d icon_y=%d hidden=%d "
-			"bw=%d th=%d above=%d below=%d snap=%d tiled=%d tile_main=%d shaded=%d "
+			"bw=%d th=%d snap=%d tiled=%d tile_main=%d shaded=%d "
 			"fh=%d tab=%d tab_hidden=%d visible=%d tab_first=%d desktop=%d "
-			"icon_shown=%d everywhere=%d rseq=%ld tlen=%zu tdraws=%d tdrawn=%zu "
-			"nx=%d ny=%d xw=%d\n",
+			"icon_shown=%d everywhere=%d rseq=%ld tlen=%zu tdraws=%d tdrawn=%zu\n",
 			view_app_id(v), v->x, v->y, v->width, v->height,
 			v->activated, kb_focus && kb_focus == view_surface(v),
 			v->maximized, v->minimized, v->fullscreen, view_decorated(v),
 			v->icon_x, v->icon_y, v->hidden_with_parent,
-			frame_border(v), frame_title(v),
-			v->type == VIEW_XWAYLAND && v->xsurface->above,
-			v->type == VIEW_XWAYLAND && v->xsurface->below, v->snap,
+			frame_border(v), frame_title(v), v->snap,
 			v->tiled, v->tile_main, v->shaded, frame_height(v), tabs_index(v),
 			v->tab_hidden, v->tree->node.enabled,
 			v->group ? v->group->first_visible : 0, v->desktop + 1,
 			v->icon_node->node.enabled, view_on_all_desktops(v), v->raise_seq,
-			strlen(view_title(v)), v->title_draws, v->title_drawn_len,
-			v->tree->node.x, v->tree->node.y,
-			v->type == VIEW_XWAYLAND ? v->xsurface->width : 0);
+			strlen(view_title(v)), v->title_draws, v->title_drawn_len);
 	}
 	/* The mnemonics of what can be chosen, without spaces for the parser. */
 	char sensitive[MENU_MAX_ITEMS + 1];
@@ -139,11 +128,6 @@ static int dump_state(int signal, void *data)
 		fprintf(f, "output ux=%d uy=%d uw=%d uh=%d on=%d\n", o->usable.x,
 			o->usable.y, o->usable.width, o->usable.height,
 			o->wlr_output->enabled);
-	int unmanaged = 0;
-	struct unmanaged *um;
-	wl_list_for_each(um, &server->unmanaged, link)
-		unmanaged += um->tree != NULL;
-	fprintf(f, "unmanaged count=%d\n", unmanaged);
 	iconbox_state(f);
 	dock_state(f);
 	struct output *each;

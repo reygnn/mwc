@@ -1,8 +1,7 @@
 /*
- * wlr-layer-shell: panels, docks, launchers and wallpaper tools. This is the
- * Wayland counterpart of mwm-x11's _NET_WM_STRUT handling: a surface with an
- * exclusive zone shrinks the output's usable area, which maximized windows,
- * new windows, icons and menus then stay inside.
+ * wlr-layer-shell: panels, docks, launchers and wallpaper tools. As mwm-x11 does
+ * with _NET_WM_STRUT, a surface with an exclusive zone shrinks the output's usable
+ * area, which maximized windows, new windows, icons and menus then stay inside.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
@@ -13,8 +12,6 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
-#include <wlr/xwayland.h>
-#include <xcb/xcb_ewmh.h>
 #include "mwc.h"
 
 struct layer_surface {
@@ -59,79 +56,8 @@ static void arrange_pass(struct output *output, const struct wlr_box *full,
 	}
 }
 
-/* What a strut has to leave of a monitor, in either direction, to count there. */
+/* What a panel has to leave of a monitor, in either direction, to count there. */
 #define MIN_ROOM 100
-
-static bool ranges_overlap(long a0, long a1, long b0, long b1)
-{
-	return a0 <= b1 && b0 <= a1;
-}
-
-/* _NET_WM_STRUT_PARTIAL of X11 panels. Its right and bottom values count from
- * the far edges of the X screen, which spans all outputs. */
-static void apply_struts(struct output *output, struct wlr_box *usable)
-{
-	struct server *server = output->server;
-	struct wlr_box m, all;
-	wlr_output_layout_get_box(server->output_layout, output->wlr_output, &m);
-	wlr_output_layout_get_box(server->output_layout, NULL, &all);
-	int sw = all.x + all.width, sh = all.y + all.height;
-	int left = usable->x, right = usable->x + usable->width;
-	int top = usable->y, bottom = usable->y + usable->height;
-
-	struct view *v;
-	wl_list_for_each(v, &server->views, link) {
-		if (v->type != VIEW_XWAYLAND || !v->mapped || view_hidden(v) ||
-				!v->xsurface->strut_partial)
-			continue;
-		const xcb_ewmh_wm_strut_partial_t *s = v->xsurface->strut_partial;
-		/* Past the whole screen it means nothing, and the sums below would
-		 * overflow. */
-		if ((long)s->left > sw || (long)s->right > sw || (long)s->top > sh ||
-				(long)s->bottom > sh)
-			continue;
-		/* A strut counts from the edge of the whole screen, so that of a panel on
-		 * an inner edge reaches over the monitors before it. There it leaves too
-		 * little room and means nothing, and neither does a nonsensical one. The
-		 * other struts still count. */
-		int edge = sw - (int)s->right;
-		if ((int)s->left > m.x && ranges_overlap(s->left_start_y,
-				s->left_end_y, m.y, m.y + m.height - 1) &&
-				(int)s->left > left && right - (int)s->left >= MIN_ROOM)
-			left = s->left;
-		if (s->right && edge < m.x + m.width &&
-				ranges_overlap(s->right_start_y, s->right_end_y, m.y,
-				m.y + m.height - 1) && edge < right && edge - left >= MIN_ROOM)
-			right = edge;
-		edge = sh - (int)s->bottom;
-		if ((int)s->top > m.y && ranges_overlap(s->top_start_x, s->top_end_x,
-				m.x, m.x + m.width - 1) && (int)s->top > top &&
-				bottom - (int)s->top >= MIN_ROOM)
-			top = s->top;
-		if (s->bottom && edge < m.y + m.height &&
-				ranges_overlap(s->bottom_start_x, s->bottom_end_x, m.x,
-				m.x + m.width - 1) && edge < bottom && edge - top >= MIN_ROOM)
-			bottom = edge;
-	}
-	*usable = (struct wlr_box){ left, top, right - left, bottom - top };
-}
-
-/* _NET_WORKAREA, for X11 programs placing their own windows. There is one per
- * desktop rather than per output, so the first output's has to do. */
-void layer_publish_workarea(struct server *server)
-{
-	/* Xwayland exits by itself when idle, and may not have started yet. */
-	if (!server->xwayland || !wlr_xwayland_get_xwm_connection(server->xwayland) ||
-			wl_list_empty(&server->outputs))
-		return;
-	/* One a client switched off has no area: the oldest one in the layout. */
-	struct output *first = output_first(server);
-	if (!first)
-		return;
-	wlr_xwayland_set_workareas(server->xwayland, &first->usable, 1);
-	/* wlroots leaves it in the queue, and idle clients would never hear of it. */
-	xcb_flush(wlr_xwayland_get_xwm_connection(server->xwayland));
-}
 
 void layer_arrange(struct output *output)
 {
@@ -142,12 +68,10 @@ void layer_arrange(struct output *output)
 	/* Surfaces that reserve space first, so the others fit around them. */
 	arrange_pass(output, &full, &usable, true);
 	arrange_pass(output, &full, &usable, false);
-	apply_struts(output, &usable);
 	struct wlr_box open = usable;
 	dock_reserve(output, &usable);
 	/* A panel may reserve more than there is, or all but a sliver. Then there is no
-	 * use in believing it: windows would have nowhere to go. X11 struts keep the same
-	 * room, see apply_struts(). */
+	 * use in believing it: windows would have nowhere to go. */
 	if (!wlr_box_intersection(&open, &open, &full) || open.width < MIN_ROOM ||
 			open.height < MIN_ROOM)
 		open = full;
@@ -164,7 +88,6 @@ void layer_arrange(struct output *output)
 	output->dock = dock;
 	if (areas) {
 		views_usable_area_changed(output->server);
-		layer_publish_workarea(output->server);
 	} else if (moved) {
 		/* A tool changing its width moves the dock within its strip: only which
 		 * windows are beside it changes, not the areas, the icons or the tiling. */
@@ -191,20 +114,6 @@ void layer_arrange_soon(struct output *output)
 	output->arrange.run = arrange_now;
 	output->arrange.data = output;
 	throttle_call(&output->arrange, output->server->event_loop);
-}
-
-void layers_arrange_all_soon(struct server *server)
-{
-	struct output *output;
-	wl_list_for_each(output, &server->outputs, link)
-		layer_arrange_soon(output);
-}
-
-void layers_arrange_all(struct server *server)
-{
-	struct output *output;
-	wl_list_for_each(output, &server->outputs, link)
-		layer_arrange(output);
 }
 
 /* ---- keyboard focus ------------------------------------------------------- */

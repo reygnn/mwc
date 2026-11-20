@@ -5,8 +5,8 @@
 LOG=build/outputs.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xclient build/layerc build/outputc; do
+require_tools grim
+for tool in build/vinput build/pngtool build/xdgc build/layerc build/outputc build/badclient; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -14,9 +14,7 @@ export MWC_TEST_STATE=$SMOKE_DIR/state
 export WLR_HEADLESS_OUTPUTS=2
 build/pngtool stripes "$SMOKE_DIR/wall.png" 1280 720 ff0000 0000ff
 export MWC_WALLPAPER=$SMOKE_DIR/wall.png
-start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-X_DISPLAY=$(cat "$SMOKE_DIR/display")
+start_mwc 'exec sleep 300'
 start_vinput 2560 720
 refresh
 B=$(global theme border)
@@ -54,9 +52,12 @@ pixel_is "the wallpaper fills the first output" 640 360 0000ff
 pixel_is "and the second, on its own" 1920 360 0000ff
 pixel_is "starting at its own edge" 1290 360 ff0000
 
-DISPLAY=$X_DISPLAY build/xclient class=win pos=100,100 size=300x200 >/dev/null 2>&1 &
+do_input move 640 360
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=win size=300x200 >/dev/null 2>&1 &
 PID_win=$!
-check "the window is mapped" "[ -n \"\$(get win x)\" ]"
+check "the window is mapped on the first output" \
+	"[ -n \"\$(get win x)\" ] && [ \"\$(get win x)\" -lt 1280 ]"
+WX=$(get win x) WY=$(get win y)
 
 # ---- snapping follows the pointer -----------------------------------------------
 
@@ -70,13 +71,13 @@ preview_is "the second output's right edge: its right half" 1924 8 628 704
 do_input up left
 frame_is "dropped there" win 1924 8 628 704
 do_input key alt+F5
-client_is "Alt+F5 comes back from the other output" win 100 100 300 200
+client_is "Alt+F5 comes back from the other output" win "$WX" "$WY" 300 200
 
 drag_to win 1920 0
 check "dropped on the second output's top edge: maximized" "[ \"\$(get win max)\" = 1 ]"
 frame_is "maximized on that output, not on the one it came from" win 1280 0 1280 720
 do_input key alt+F5
-client_is "and back" win 100 100 300 200
+client_is "and back" win "$WX" "$WY" 300 200
 
 # ---- a window on the second output ----------------------------------------------
 
@@ -174,9 +175,9 @@ echo 'Mwm*corner*geometry: -0-0' >"$RC"
 reload_mwc
 for edge in 2560 1280; do
 	do_input move $((edge - 640)) 300
-	DISPLAY=$X_DISPLAY build/xclient class=corner size=300x200 >/dev/null 2>&1 &
+	WAYLAND_DISPLAY=wayland-0 build/xdgc app=corner size=300x200 >/dev/null 2>&1 &
 	PID_corner=$!
-	check "the corner of the output ending at $edge" \
+	check "geometry -0-0 is in the corner of the output ending at $edge" \
 		"[ -n \"\$(get corner x)\" ] && \
 		[ \$((\$(get corner x) + \$(get corner w) + 2 * \$(get corner bw))) = $edge ] && \
 		[ \$((\$(get corner y) + \$(get corner h) + 2 * \$(get corner bw) + \$(get corner th))) = 720 ]"
@@ -186,43 +187,6 @@ for edge in 2560 1280; do
 done
 rm "$RC"
 reload_mwc
-
-# A panel on the inner edge of the right output: a strut counts from the edge of the whole
-# screen, so it reaches over all of the left output, where it means nothing.
-DISPLAY=$X_DISPLAY build/xclient class=topdock type=dock pos=0,0 size=1280x40 strut=0,0,40,0 >/dev/null 2>&1 &
-PID_topdock=$!
-check "a panel at the top" "[ \"\$(global output uy)\" = 40 ]"
-DISPLAY=$X_DISPLAY build/xclient class=innerdock type=dock pos=1280,0 size=30x720 strut=1310,0,0,0 >/dev/null 2>&1 &
-PID_innerdock=$!
-check "a panel on the inner edge" "[ -n \"\$(get innerdock x)\" ]"
-sleep 0.3
-check "the left output keeps its own strut and ignores the other" \
-	"[ \"\$(global output ux)\" = 0 ] && [ \"\$(global output uy)\" = 40 ] && \
-	[ \"\$(global output uw)\" = 1280 ] && [ \"\$(global output uh)\" = 680 ]"
-do_input move 1900 400
-DISPLAY=$X_DISPLAY build/xclient class=rightwin pos=1500,100 size=300x200 >/dev/null 2>&1 &
-PID_rightwin=$!
-check "a window on the right" "[ \"\$(get rightwin active)\" = 1 ]"
-do_input key alt+F10
-frame_is "maximized on the right, it stays out of both panels" rightwin 1310 40 1250 680
-kill "$PID_rightwin" "$PID_innerdock" "$PID_topdock"
-wait "$PID_rightwin" "$PID_innerdock" "$PID_topdock" 2>/dev/null
-
-# A panel changing its strut as fast as it can: the usable area is worked out again
-# at most once a refresh (16 ms), as for a layer surface, not once per change.
-DISPLAY=$X_DISPLAY build/xclient class=waf workarea=1 >"$SMOKE_DIR/wa-flicker.events" 2>&1 &
-PID_waf=$!
-check "a window that hears of the workarea" "[ -n \"\$(get waf x)\" ]"
-DISPLAY=$X_DISPLAY build/xclient class=flicker type=dock pos=0,0 size=1280x40 \
-	strut=0,0,40,0 strut_flicker=300 >"$SMOKE_DIR/flicker.events" 2>&1 &
-PID_flicker=$!
-wait_for "the panel has flickered" grep -q flickered "$SMOKE_DIR/flicker.events"
-check "the last strut counts" "[ \"\$(global output uy)\" = 40 ]"
-n=$(grep -c '^workarea' "$SMOKE_DIR/wa-flicker.events")
-[ "$n" -le 60 ] || fail "300 strut changes made $n workarea changes"
-echo "ok: 300 strut changes made $n workarea changes"
-kill "$PID_flicker" "$PID_waf"
-wait "$PID_flicker" "$PID_waf" 2>/dev/null
 
 # A submenu of a window across both monitors stays on the monitor its menu opened on,
 # the right one: not slid back onto the left one, where the window begins.
@@ -259,34 +223,27 @@ wait "$PID_fsout" 2>/dev/null
 stop_vinput
 stop_mwc
 
-# The oldest monitor unplugged while the places are fixed: the other one doesn't move,
-# and X11 programs must still hear its workarea, now the first one's.
+# The oldest monitor unplugged while the places are fixed: the other one doesn't move.
 mkdir -p "$XDG_CONFIG_HOME/mwc"
 printf 'Mwm*HEADLESS-1*outputPosition: 0,0\nMwm*HEADLESS-2*outputPosition: 1280,0\n' \
 	>"$XDG_CONFIG_HOME/mwc/mwmrc"
-rm -f "$SMOKE_DIR/display"
-start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-X_DISPLAY=$(cat "$SMOKE_DIR/display")
+start_mwc 'exec sleep 300'
 start_vinput 2560 720
-DISPLAY=$X_DISPLAY build/xclient class=wa workarea=1 size=200x100 >"$SMOKE_DIR/wa.log" 2>&1 &
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=wa size=200x100 >/dev/null 2>&1 &
 PID_wa=$!
-check "a window that watches the workarea" "[ -n \"\$(get wa x)\" ]"
-workarea_is() { [ "$(grep '^workarea' "$SMOKE_DIR/wa.log" | tail -1)" = "workarea $1" ]; }
+check "a window" "[ -n \"\$(get wa x)\" ]"
 # The oldest is the one announced first, whichever number the backend gave it.
 oldest=$(sed -n 's/.*new output \(HEADLESS-[0-9]*\).*/\1/p' "$LOG" | head -1)
 case $oldest in HEADLESS-1) other=HEADLESS-2 ;; HEADLESS-2) other=HEADLESS-1 ;;
 *) fail "which output came first: '$oldest'" ;; esac
 area() { refresh; echo "$(global "output_$1" x) $(global "output_$1" y) 1280 720"; }
-first_area=$(area "$oldest") other_area=$(area "$other")
-wait_for "the workarea is the oldest monitor's ($oldest)" workarea_is "$first_area"
+other_area=$(area "$other")
 # A panel on it, with the keyboard: closed with its monitor, the keyboard back to a window.
 do_input move $(($(global "output_$oldest" x) + 640)) 360
 WAYLAND_DISPLAY=wayland-0 build/layerc layer=overlay anchor=top,left,right size=0x30 \
 	exclusive=30 keyboard=exclusive color=444444 >"$SMOKE_DIR/gone.events" 2>&1 &
 PID_gone=$!
 wait_for "a panel with the keyboard" grep -q keyboard-enter "$SMOKE_DIR/gone.events"
-wait_for "it reserves its strip" workarea_is "$(global "output_$oldest" x) 30 1280 690"
 echo "$oldest" >"$MWC_TEST_STATE.unplug"
 kill -USR2 "$pid"
 check "$oldest is unplugged, the other stays where it was" \
@@ -294,7 +251,6 @@ check "$oldest is unplugged, the other stays where it was" \
 	[ \"\$(global output_$other x) \$(global output_$other y) 1280 720\" = \"$other_area\" ]"
 wait_for "the panel is closed with it" grep -q '^closed' "$SMOKE_DIR/gone.events"
 check "the window has the keyboard back" "[ \"\$(get wa kbfocus)\" = 1 ]"
-wait_for "the workarea is now the other monitor's" workarea_is "$other_area"
 kill "$PID_gone" 2>/dev/null
 wait "$PID_gone" 2>/dev/null
 kill "$PID_wa"
@@ -308,21 +264,18 @@ stop_mwc
 # automatically), or in the gap left beside it (wlr-output-management, placed as given).
 RC=$XDG_CONFIG_HOME/mwc/mwmrc
 echo 'Mwm*outputManagement: true' >"$RC"
-rm -f "$SMOKE_DIR/display"
-start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-X_DISPLAY=$(cat "$SMOKE_DIR/display")
+start_mwc 'exec sleep 300'
 start_vinput 2560 720
 refresh
 left=HEADLESS-1 right=HEADLESS-2
 [ "$(global output_HEADLESS-2 x)" = 0 ] && left=HEADLESS-2 right=HEADLESS-1
 do_input move 640 360
-DISPLAY=$X_DISPLAY build/xclient class=half pos=100,100 size=300x200 >/dev/null 2>&1 &
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=half size=300x200 >/dev/null 2>&1 &
 PID_half=$!
 check "a window on the left output" "[ \"\$(get half active)\" = 1 ]"
 do_input key super+Right
 frame_is "snapped to its right half" half 644 8 628 704
-DISPLAY=$X_DISPLAY build/xclient class=full pos=100,100 size=300x200 >/dev/null 2>&1 &
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=full size=300x200 >/dev/null 2>&1 &
 PID_full=$!
 check "another one" "[ \"\$(get full active)\" = 1 ]"
 do_input key alt+F11

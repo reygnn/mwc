@@ -26,8 +26,8 @@
  *   Mwm*tiling:                    true       start in tiling mode
  *   Mwm*tileMainWidth:             60         the main window's share, in %
  *   Mwm*DoNotTile:                 Navigator  Firefox floats in tiling mode
- *   Mwm*TileOnly:                  XTerm, mfm only these tile
- *   Mwm*XTerm*activeBackground:    #8a0303    per client, also background
+ *   Mwm*TileOnly:                  foot, mfm  only these tile
+ *   Mwm*firefox*activeBackground:  #8a0303    per client, also background
  *   Mwm*foot*activeBackground:     gold
  *   Mwm*pulseControl*geometry:     -0-0       where its windows appear, per client
  *   Mwm*deskControl*allDesktops:   true       its windows are on every desktop
@@ -38,8 +38,8 @@
  *   Mwm*useIconBox:                true       icons in a box, see iconbox.c
  *   Mwm*iconBoxSize:               10         its length at most, in icons
  *
- * The client part matches an X11 window's WM_CLASS instance or class name, or
- * a Wayland client's app_id, ignoring case. Colours are #rrggbb, colour names
+ * The client part matches a client's app_id, ignoring case: mwm-x11's instance and
+ * class name are both the app_id. Colours are #rrggbb, colour names
  * or rgb:rr/gg/bb. Lines starting with ! are comments; there are no comments
  * after a value. Later lines win.
  */
@@ -53,7 +53,6 @@
 #include <pango/pango.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
-#include <wlr/xwayland.h>
 #include "mwc.h"
 
 /* An unfocused client with its own colour shows this much of the global
@@ -157,8 +156,7 @@ static void add_rule(char *key, const char *value, int line)
 }
 
 /* The last global DoNotTile or TileOnly line decides, and an empty one switches the
- * filter off again. Programs are separated by commas; WM_CLASS names may contain
- * spaces. */
+ * filter off again. Programs are separated by commas; names may contain spaces. */
 static void load_tile_filter(void)
 {
 	for (int i = 0; i < n_tile_names; i++)

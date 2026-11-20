@@ -5,7 +5,7 @@
 LOG=build/config.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools foot xterm Xwayland grim
+require_tools foot grim
 for tool in build/vinput build/pngtool; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
@@ -78,8 +78,8 @@ Mwm*rootBackground:             rgb:20/40/60
 Mwm*foot*activeBackground:      firebrick
 Mwm*foot*activeForeground:      #00ff00
 Mwm*foot*background:            not-a-colour
-Mwm*XTERM*activeBackground:     #00aa00
-Mwm*myterm*background:          #334455
+Mwm*TERM*activeBackground:       #00aa00
+Mwm*term*background:            #334455
 
 this line has no colon
 Other*activeBackground:         #ffffff
@@ -90,11 +90,11 @@ EOF
 start_mwc "grep SigBlk /proc/self/status > \"\$SMOKE_DIR/sigblk\"; \
 	foot sh -c '$marker' foot-up & \
 	while [ ! -e \"\$SMOKE_DIR/foot-up\" ]; do sleep 0.1; done; \
-	exec xterm -name myterm -e sh -c '$marker' xterm-up"
+	exec foot --app-id=term -W 60x15 sh -c '$marker' term-up"
 wait_for "foot connected (Wayland)" test -e "$SMOKE_DIR/foot-up"
-wait_for "xterm connected (XWayland)" test -e "$SMOKE_DIR/xterm-up"
+wait_for "term connected" test -e "$SMOKE_DIR/term-up"
 start_vinput
-check "both windows are mapped" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get XTerm x)\" ]"
+check "both windows are mapped" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get term x)\" ]"
 
 wait_for "started programs have no signals blocked" \
 	grep -q 'SigBlk:[[:space:]]*0*$' "$SMOKE_DIR/sigblk"
@@ -104,30 +104,30 @@ log_has "a wrong prefix is reported" "mwmrc:13: expected Mwm"
 log_has "a font name without a size is reported" 'ignoring font "Sans-12"'
 log_has "an unknown colour is reported" 'unknown colour "not-a-colour"'
 
-# Move xterm next to foot, so both frames can be seen whichever has the focus.
+# Move term next to foot, so both frames can be seen whichever has the focus.
 B=$(global theme border)
 T=$(global theme title)
-tx=$(($(get XTerm x) + ($(get XTerm w) + 2 * B) / 2))
-ty=$(($(get XTerm y) + B + T / 2))
+tx=$(($(get term x) + ($(get term w) + 2 * B) / 2))
+ty=$(($(get term y) + B + T / 2))
 do_input move "$tx" "$ty"
 do_input down left
 do_input move $((tx + 730)) $((ty + 100))
 do_input up left
 
 pixel_is "rootBackground in rgb: form" 1270 700 204060
-check "xterm has the focus" "[ \"\$(get XTerm active)\" = 1 ]"
-border_is "activeBackground by WM_CLASS class, ignoring case" XTerm 00aa00
+check "term has the focus" "[ \"\$(get term active)\" = 1 ]"
+border_is "activeBackground by app_id, ignoring case" term 00aa00
 # firebrick mixed with gold, because foot's own "background" is unusable
 border_near "unfocused: a paler version of the client's colour" foot dc860f
 # 00aa00 is a mid-tone: black has the higher contrast, a luma threshold chose white.
-title_has "black title text on a mid-tone" XTerm 000000
+title_has "black title text on a mid-tone" term 000000
 
 do_input key alt+Tab
 check "foot has the focus" "[ \"\$(get foot active)\" = 1 ]"
 border_is "a colour name, by app_id" foot b22222
 title_has "activeForeground" foot 00ff00
-title_has "white title text on a dark background, unfocused" XTerm ffffff
-border_is "background by WM_CLASS instance" XTerm 334455
+title_has "white title text on a dark background, unfocused" term ffffff
+border_is "background by app_id" term 334455
 
 # ---- the desktop icon wears the colours too ----------------------------------
 
@@ -162,7 +162,7 @@ border_is "SIGHUP: per-client entry gone, global colour" foot aa0000
 do_input key alt+F10
 check "foot is no longer maximized" "[ \"\$(get foot max)\" = 0 ]"
 pixel_is "SIGHUP: new desktop colour" 1270 700 445566
-border_is "SIGHUP: other window has the new colour" XTerm 00aa00
+border_is "SIGHUP: other window has the new colour" term 00aa00
 
 build/pngtool stripes "$SMOKE_DIR/wall.png" 1280 720 ff0000 0000ff
 cat >"$RC" <<EOF
@@ -175,7 +175,7 @@ check "the root menu is open" "[ \"\$(global menu open)\" = 1 ]"
 do_input key r
 check "Reload asks nothing" "[ \"\$(global menu open)\" = 0 ]"
 pixel_is "Reload: wallpaper from the file" 1270 700 ff0000
-check "the window is still there" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get XTerm x)\" ]"
+check "the window is still there" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get term x)\" ]"
 
 rm "$RC"
 reload_mwc
@@ -365,18 +365,18 @@ Mwm*foot*activeBackground:  #005500
 Mwm*foot*activeBackground:  #006600
 Mwm*foot*background:        #aa0000
 EOF
-rm -f "$SMOKE_DIR/foot-up" "$SMOKE_DIR/xterm-up"
+rm -f "$SMOKE_DIR/foot-up" "$SMOKE_DIR/term-up"
 start_mwc "foot sh -c '$marker' foot-up & \
 	while [ ! -e \"\$SMOKE_DIR/foot-up\" ]; do sleep 0.1; done; \
-	exec xterm -e sh -c '$marker' xterm-up"
+	exec foot --app-id=term -W 60x15 sh -c '$marker' term-up"
 wait_for "foot connected" test -e "$SMOKE_DIR/foot-up"
-wait_for "xterm connected" test -e "$SMOKE_DIR/xterm-up"
+wait_for "term connected" test -e "$SMOKE_DIR/term-up"
 start_vinput
-check "both windows are mapped" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get XTerm x)\" ]"
-check "xterm has the focus" "[ \"\$(get XTerm active)\" = 1 ]"
+check "both windows are mapped" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get term x)\" ]"
+check "term has the focus" "[ \"\$(get term active)\" = 1 ]"
 pixel_is "the later of two global lines" 1270 700 222222
-border_is "for frames as well" XTerm 440000
-title_has "global activeForeground" XTerm 00ff00
+border_is "for frames as well" term 440000
+title_has "global activeForeground" term 00ff00
 title_has "global foreground, on a window that isn't focused" foot ff00ff
 do_input key alt+Tab
 check "foot has the focus" "[ \"\$(get foot active)\" = 1 ]"
@@ -399,10 +399,10 @@ pixel_is "a reload reads the wallpaper again" 1270 700 00ff00
 # ---- iconPlacement ------------------------------------------------------------
 
 do_input key alt+F9
-check "xterm is an icon too" "[ \"\$(get XTerm min)\" = 1 ]"
-# icons_at <description> <x,y> <x,y>: foot and xterm in these two slots, either way
+check "term is an icon too" "[ \"\$(get term min)\" = 1 ]"
+# icons_at <description> <x,y> <x,y>: foot and term in these two slots, either way
 icons_at() {
-	check "$1" "p=\"\$(get foot icon_x),\$(get foot icon_y) \$(get XTerm icon_x),\$(get XTerm icon_y)\"; \
+	check "$1" "p=\"\$(get foot icon_x),\$(get foot icon_y) \$(get term icon_x),\$(get term icon_y)\"; \
 		[ \"\$p\" = \"$2 $3\" ] || [ \"\$p\" = \"$3 $2\" ]"
 }
 icons_at "by default along the bottom from the left" 8,640 88,640
@@ -425,11 +425,11 @@ do_input move $(($(get foot icon_x) + 30)) $(($(get foot icon_y) + 30))
 do_input click left
 do_input click left
 check "foot is back" "[ \"\$(get foot min)\" = 0 ]"
-check "the other icon is in the middle now" "[ \"\$(get XTerm icon_x),\$(get XTerm icon_y)\" = 1200,324 ]"
+check "the other icon is in the middle now" "[ \"\$(get term icon_x),\$(get term icon_y)\" = 1200,324 ]"
 do_input key alt+F9
 check "foot is an icon again" "[ \"\$(get foot min)\" = 1 ]"
 check "first again, as it became an icon first" \
-	"[ \"\$(get foot icon_y)\" = 284 ] && [ \"\$(get XTerm icon_y)\" = 364 ]"
+	"[ \"\$(get foot icon_y)\" = 284 ] && [ \"\$(get term icon_y)\" = 364 ]"
 echo "Mwm*iconPlacement: center bottom tight" >>"$RC"
 reload_mwc
 icons_at "center bottom tight: along the bottom in the middle, no gap" 568,640 640,640
@@ -444,14 +444,14 @@ echo "Mwm*iconPlacement: top right" >>"$RC"
 reload_mwc
 icons_at "top right again" 1200,8 1200,88
 do_input key super+t
-do_input move $(($(get XTerm icon_x) + 30)) $(($(get XTerm icon_y) + 30))
+do_input move $(($(get term icon_x) + 30)) $(($(get term icon_y) + 30))
 do_input click left
 do_input click left
-check "xterm is back and tiled" "[ \"\$(get XTerm min)\" = 0 ] && [ \"\$(get XTerm tiled)\" = 1 ]"
+check "term is back and tiled" "[ \"\$(get term min)\" = 0 ] && [ \"\$(get term tiled)\" = 1 ]"
 check "the layout ends left of the icon column" \
-	"[ \$((\$(get XTerm x) + \$(get XTerm w) + 2 * $B)) -le \$(get foot icon_x) ]"
-check "and keeps the full height" "[ \$((\$(get XTerm y) + 300)) -lt 640 ] && \
-	[ \$((\$(get XTerm y) + \$(get XTerm h))) -gt 640 ]"
+	"[ \$((\$(get term x) + \$(get term w) + 2 * $B)) -le \$(get foot icon_x) ]"
+check "and keeps the full height" "[ \$((\$(get term y) + 300)) -lt 640 ] && \
+	[ \$((\$(get term y) + \$(get term h))) -gt 640 ]"
 do_input key super+t
 stop_vinput
 stop_mwc

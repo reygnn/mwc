@@ -148,7 +148,7 @@ static struct view *plan(struct server *server, struct view **list, int n,
 	for (int i = 0; i < n; i++) {
 		struct view *v = list[i];
 		int cw = 1, ch = 1;
-		view_apply_size_hints(v, &cw, &ch, true);
+		view_apply_size_hints(v, &cw, &ch);
 		w[i] = (struct tile_window){
 			.min_w = cw + frame_extra_w(v), .min_h = ch + frame_extra_h(v),
 			.shaded_h = frame_extra_h(v), .can_shade = tile_can_shade(v),

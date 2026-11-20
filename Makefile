@@ -2,7 +2,7 @@
 
 PREFIX ?= /usr/local
 PKG_CONFIG ?= pkg-config
-PKGS = wlroots-0.19 wayland-server xkbcommon pixman-1 cairo pangocairo xcb xcb-icccm
+PKGS = wlroots-0.19 wayland-server xkbcommon pixman-1 cairo pangocairo
 
 ifeq ($(filter clean uninstall,$(MAKECMDGOALS)),)
 MISSING := $(foreach p,$(PKGS) wayland-protocols wayland-scanner,\
@@ -22,12 +22,12 @@ MWC_CFLAGS = -std=c11 -Wall -Wextra -Wno-unused-parameter -Werror=implicit \
 	-DWLR_USE_UNSTABLE -Ibuild $(shell $(PKG_CONFIG) --cflags $(PKGS))
 MWC_LIBS = $(shell $(PKG_CONFIG) --libs $(PKGS)) -lm
 
-SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
+SRC = src/main.c src/view.c src/frame.c src/menu.c \
 	src/input.c src/draw.c src/wallpaper.c src/config.c src/layer.c \
 	src/hints.c src/outline.c src/snap.c src/tile.c src/tabs.c src/testhook.c \
 	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c src/iconbox.c \
 	src/dock.c src/outputrc.c src/sizehints.c src/snaprules.c src/configview.c \
-	src/tilelayout.c src/sentplace.c
+	src/tilelayout.c
 # Protocols mwc implements itself, not through wlroots: their glue code too.
 PROTO_CODE = build/fifo-v1-protocol.c build/ext-workspace-v1-protocol.c
 OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)
@@ -122,7 +122,7 @@ check: build/mwc-asan
 # logic kept apart from the display code: real data and libraries, fakes the test
 # fills where needed, no mocks. Always with the sanitizers: an overflow fails the
 # test. Fast, and the first step of make test.
-UNIT = outputrc sizehints snaprules config draw tilelayout sentplace
+UNIT = outputrc sizehints snaprules config draw tilelayout
 # What a module needs of another: also linked, real.
 UNIT_WITH_config = src/draw.c
 UNIT_WITH_draw = src/config.c
@@ -273,11 +273,6 @@ build/layerc: tests/layerc.c $(LAYERC_GEN)
 		build/wlr-layer-shell-unstable-v1-code.c build/xdg-shell-code.c \
 		$(shell $(PKG_CONFIG) --libs wayland-client)
 
-# Clients that can ask for any window property.
-build/xclient: tests/xclient.c | build
-	$(CC) -O2 -g -std=c11 -Wall -Wextra -o $@ tests/xclient.c \
-		$(shell $(PKG_CONFIG) --cflags --libs x11)
-
 build/xdg-decoration-unstable-v1-client.h: $(WAYLAND_PROTOCOLS)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml | build
 	$(WAYLAND_SCANNER) client-header $< $@
 
@@ -383,7 +378,7 @@ build/workspacec: tests/workspacec.c build/ext-workspace-v1-client.h build/ext-w
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/workspacec.c \
 		build/ext-workspace-v1-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
 
-desktop-test: mwc build/vinput build/xclient build/xdgc build/workspacec build/outputc \
+desktop-test: mwc build/vinput build/xdgc build/workspacec build/outputc \
 		build/layerc
 	tests/desktop.sh
 
@@ -393,50 +388,49 @@ rdp-test: mwc build/vinput build/xdgc build/outputc build/capturec build/powerc 
 		build/pngtool
 	tests/rdp.sh
 
-tabs-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/layerc
+tabs-test: mwc build/vinput build/pngtool build/xdgc build/layerc
 	tests/tabs.sh
 
-session-test: mwc build/vinput build/pngtool build/xclient build/powerc build/outputc \
+session-test: mwc build/vinput build/pngtool build/powerc build/outputc \
 		build/capturec build/idlec
 	tests/session.sh
 
-misc-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/badclient
+misc-test: mwc build/vinput build/pngtool build/xdgc build/badclient
 	tests/misc.sh
 
-state-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/badclient build/layerc
+state-test: mwc build/vinput build/pngtool build/xdgc build/badclient build/layerc
 	tests/state.sh
 
-pointer-test: mwc build/vinput build/pngtool build/xclient build/badclient build/xdgc
+pointer-test: mwc build/vinput build/pngtool build/badclient build/xdgc
 	tests/pointer.sh
 
-crash-test: mwc build/vinput build/xclient build/xdgc build/badclient build/layerc
+crash-test: mwc build/vinput build/xdgc build/badclient build/layerc
 	tests/crash.sh
 
-outputs-test: mwc build/vinput build/pngtool build/xclient build/layerc build/badclient \
+outputs-test: mwc build/vinput build/pngtool build/layerc build/badclient \
 	build/outputc
 	tests/outputs.sh
 
-tile-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/outputc \
+tile-test: mwc build/vinput build/pngtool build/xdgc build/outputc \
 	build/fifoc
 	tests/tile.sh
 
-snap-test: mwc build/vinput build/pngtool build/xclient build/xdgc
+snap-test: mwc build/vinput build/pngtool build/xdgc
 	tests/snap.sh
 
-move-test: mwc build/vinput build/pngtool build/xclient build/xdgc
+move-test: mwc build/vinput build/pngtool build/xdgc
 	tests/move.sh
 
-window-test: mwc build/vinput build/pngtool build/xclient build/xdgc build/layerc
+window-test: mwc build/vinput build/pngtool build/xdgc build/layerc
 	tests/window.sh
 
-iconbox-test: mwc build/vinput build/pngtool build/xdgc build/workspacec build/layerc \
-	build/xclient
+iconbox-test: mwc build/vinput build/pngtool build/xdgc build/workspacec build/layerc
 	tests/iconbox.sh
 
-dock-test: mwc build/vinput build/xclient build/xdgc build/pngtool build/workspacec
+dock-test: mwc build/vinput build/xdgc build/pngtool build/workspacec
 	tests/dock.sh
 
-layer-test: mwc build/vinput build/pngtool build/layerc build/xdgc build/xclient
+layer-test: mwc build/vinput build/pngtool build/layerc build/xdgc
 	tests/layer.sh
 
 config-test: mwc build/vinput build/pngtool

@@ -22,6 +22,12 @@
  *     grow=WxH     after mapping, take that size of its own accord; says "grown"
  *     grow_ms=MS   wait that long before, default 1000
  *     dialog=NAME  also open a child toplevel with this app_id
+ *     dialog_after=FILE  open it only once FILE exists; says "dialog opened"
+ *     minimize_after=FILE  once FILE exists, ask to be minimized; says "minimize asked"
+ *     rehide_after=FILE  once FILE exists, unmap (a null buffer); says "hidden"; map
+ *                  again once reshow_after=FILE exists, or 500 ms later; says "shown"
+ *     unframe_after=FILE  once FILE exists, drop its xdg-decoration: no frame asked
+ *                  for any more; says "unframed"
  *     caps=1       print the wm_capabilities each window is offered:
  *                  "caps NAME max=M min=N"
  *     fs_output=N  a moment after mapping, ask for fullscreen on the Nth wl_output,
@@ -92,6 +98,8 @@ static bool geometry_at;
 static int32_t geom_x, geom_y;
 static int popup_x, popup_y, popup_w, popup_h;
 static const char *popup_after, *fixed_after;
+static const char *dialog_after, *minimize_after, *rehide_after, *reshow_after;
+static const char *unframe_after;
 static int sub_x, sub_y, sub_w, sub_h;
 static struct wl_subcompositor *subcompositor;
 
@@ -102,6 +110,7 @@ struct window {
 	int w, h;
 	int natural_w, natural_h; /* what it takes when the choice is its own */
 	bool framed;
+	struct zxdg_toplevel_decoration_v1 *deco;
 	struct wp_viewport *viewport;
 	const char *app;
 };
@@ -312,10 +321,9 @@ static void xdg_configure(void *data, struct xdg_surface *xdg, uint32_t serial)
 	}
 	if (late_frame && !strcmp(late_frame, "xdg") && !win->framed) {
 		win->framed = true;
-		struct zxdg_toplevel_decoration_v1 *deco =
-			zxdg_decoration_manager_v1_get_toplevel_decoration(deco_manager,
+		win->deco = zxdg_decoration_manager_v1_get_toplevel_decoration(deco_manager,
 			win->toplevel);
-		zxdg_toplevel_decoration_v1_set_mode(deco,
+		zxdg_toplevel_decoration_v1_set_mode(win->deco,
 			ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 	}
 	draw(win);
@@ -346,6 +354,10 @@ static void toplevel_configure(void *data, struct xdg_toplevel *t, int32_t w,
 static void toplevel_close(void *data, struct xdg_toplevel *t)
 {
 	struct window *win = data;
+	/* The decoration goes first: it may not outlive its toplevel. */
+	if (win->deco)
+		zxdg_toplevel_decoration_v1_destroy(win->deco);
+	win->deco = NULL;
 	xdg_toplevel_destroy(win->toplevel);
 	xdg_surface_destroy(win->xdg);
 	wl_surface_destroy(win->surface);
@@ -472,10 +484,9 @@ static struct window *open_window(const char *app, struct window *parent,
 		xdg_toplevel_set_max_size(win->toplevel, max_w, max_h);
 	}
 	if (!client_side && !late_frame && !early_frame) {
-		struct zxdg_toplevel_decoration_v1 *deco =
-			zxdg_decoration_manager_v1_get_toplevel_decoration(deco_manager,
+		win->deco = zxdg_decoration_manager_v1_get_toplevel_decoration(deco_manager,
 			win->toplevel);
-		zxdg_toplevel_decoration_v1_set_mode(deco,
+		zxdg_toplevel_decoration_v1_set_mode(win->deco,
 			ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 	}
 	if (limits && pre_state && !strcmp(pre_state, "max"))
@@ -635,6 +646,16 @@ int main(int argc, char *argv[])
 			popup_after = v;
 		else if (!strcmp(argv[i], "fixed_after"))
 			fixed_after = v;
+		else if (!strcmp(argv[i], "dialog_after"))
+			dialog_after = v;
+		else if (!strcmp(argv[i], "minimize_after"))
+			minimize_after = v;
+		else if (!strcmp(argv[i], "rehide_after"))
+			rehide_after = v;
+		else if (!strcmp(argv[i], "reshow_after"))
+			reshow_after = v;
+		else if (!strcmp(argv[i], "unframe_after"))
+			unframe_after = v;
 		else if (!strcmp(argv[i], "sub"))
 			sscanf(v, "%d,%d,%d,%d", &sub_x, &sub_y, &sub_w, &sub_h);
 	}
@@ -660,6 +681,8 @@ int main(int argc, char *argv[])
 	if (dialog) {
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
+		while (dialog_after && access(dialog_after, F_OK) != 0)
+			wait_dispatching(display, 50);
 		struct window *dialog_win = open_window(dialog, main_win, 120, 80, false);
 		if (unparent) {
 			wl_display_roundtrip(display);
@@ -667,6 +690,11 @@ int main(int argc, char *argv[])
 			usleep(1500000);
 			xdg_toplevel_set_parent(dialog_win->toplevel, NULL);
 			wl_display_flush(display);
+		}
+		if (dialog_after) {
+			wl_display_flush(display);
+			printf("dialog opened\n");
+			fflush(stdout);
 		}
 	}
 	if (late_frame && !strcmp(late_frame, "kde")) {
@@ -750,6 +778,49 @@ int main(int argc, char *argv[])
 		wl_surface_commit(main_win->surface);
 		wl_display_flush(display);
 		printf("fixed\n");
+		fflush(stdout);
+	}
+	if (minimize_after) {
+		while (access(minimize_after, F_OK) != 0)
+			wait_dispatching(display, 50);
+		xdg_toplevel_set_minimized(main_win->toplevel);
+		wl_display_flush(display);
+		printf("minimize asked\n");
+		fflush(stdout);
+	}
+	if (rehide_after) {
+		while (access(rehide_after, F_OK) != 0)
+			wait_dispatching(display, 50);
+		wl_surface_attach(main_win->surface, NULL, 0, 0);
+		wl_surface_commit(main_win->surface);
+		wl_display_roundtrip(display);
+		printf("hidden\n");
+		fflush(stdout);
+		if (reshow_after) {
+			while (access(reshow_after, F_OK) != 0)
+				wait_dispatching(display, 50);
+		} else {
+			wait_dispatching(display, 500);
+		}
+		/* Unmapped, it starts over, as wlroots forgets its app_id and title: a commit
+		 * without a buffer, then the configure. */
+		xdg_toplevel_set_app_id(main_win->toplevel, main_win->app);
+		xdg_toplevel_set_title(main_win->toplevel, main_win->app);
+		wl_surface_commit(main_win->surface);
+		wl_display_roundtrip(display);
+		wl_display_roundtrip(display);
+		printf("shown\n");
+		fflush(stdout);
+	}
+	if (unframe_after) {
+		while (access(unframe_after, F_OK) != 0)
+			wait_dispatching(display, 50);
+		if (main_win->deco)
+			zxdg_toplevel_decoration_v1_destroy(main_win->deco);
+		main_win->deco = NULL;
+		wl_surface_commit(main_win->surface);
+		wl_display_flush(display);
+		printf("unframed\n");
 		fflush(stdout);
 	}
 	while (open_windows > 0 && wl_display_dispatch(display) != -1) {

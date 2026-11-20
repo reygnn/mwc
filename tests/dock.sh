@@ -1,18 +1,18 @@
 #!/bin/bash
-# Headless test of the dock (Mwm*NAME*dock): Wayland and X11 tools side by side in
+# Headless test of the dock (Mwm*NAME*dock): tools side by side in
 # mwmrc order from the corner, aligned at the bottom, the strip kept free, no
 # focus on map and none by Alt+Tab, no moving, minimizing, maximizing or fullscreen,
 # closing up when one grows or goes, clicks between them, and a reload that changes
 # who is docked and where; dialogs stay outside. Then what clients and other features
-# might do to a docked window: states asked for before mapping, a late app_id, an X11
-# move, _NET_WM_STATE_BELOW, Lower, the window menu, tabs, tiling, desktops; a column,
-# a centred row and a wrong dockPlacement.
+# might do to a docked window: states asked for before mapping, a late app_id, Lower,
+# the window menu, tabs, tiling, desktops; a column, a centred row and a wrong
+# dockPlacement.
 # Output goes to build/dock.log. Exits non-zero on failure.
 LOG=build/dock.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools Xwayland grim
-for tool in build/vinput build/xclient build/xdgc build/pngtool build/workspacec; do
+require_tools grim
+for tool in build/vinput build/xdgc build/pngtool build/workspacec; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -20,25 +20,16 @@ RC=$XDG_CONFIG_HOME/mwc/mwmrc
 mkdir -p "$(dirname "$RC")"
 cat >"$RC" <<'EOF'
 Mwm*one*dock: true
-Mwm*xone*dock: true
+Mwm*middle*dock: true
 Mwm*two*dock: true
 EOF
 
 export MWC_TEST_STATE=$SMOKE_DIR/state
-start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-X_DISPLAY=$(cat "$SMOKE_DIR/display")
+start_mwc 'exec sleep 300'
 start_vinput
 refresh
 B=3 # bevel 2 + 1
 
-x11() {
-	local name=$1
-	shift
-	DISPLAY=$X_DISPLAY build/xclient class="$name" "$@" >"$SMOKE_DIR/$name.log" 2>&1 &
-	eval "PID_$name=$!"
-	check "$name is mapped" "[ -n \"\$(get $name x)\" ]"
-}
 wayland() {
 	local name=$1
 	shift
@@ -83,14 +74,14 @@ check "mapping a docked window takes no focus" \
 check "the dock's strip is kept free" "[ \"\$(global output uh)\" = \$(dock y) ]"
 check "on every desktop" "[ \"\$(get one everywhere)\" = 1 ]"
 
-x11 xone size=150x60
-check "xone, the second line: left of one, aligned at the bottom" \
-	"[ \$(right xone) = \$(get one x) ] && [ \$(bottom xone) = $((720 - B)) ]"
+wayland middle size=150x60
+check "middle, the second line: left of one, aligned at the bottom" \
+	"[ \$(right middle) = \$(get one x) ] && [ \$(bottom middle) = $((720 - B)) ]"
 check "the dock as high as the highest" \
 	"[ \"\$(dock h)\" = \$((2 * B + \$(get one fh))) ] && \
-	 [ \"\$(dock w)\" = \$((2 * B + \$(ow one) + \$(ow xone))) ]"
+	 [ \"\$(dock w)\" = \$((2 * B + \$(ow one) + \$(ow middle))) ]"
 wayland two size=100x40 grow=120x140 grow_ms=1500
-check "two, the third line: left of xone" "[ \$(right two) = \$(get xone x) ]"
+check "two, the third line: left of middle" "[ \$(right two) = \$(get middle x) ]"
 
 # ---- the strip --------------------------------------------------------------------
 
@@ -117,21 +108,22 @@ do_input key super+Up
 # A tool widens the dock under the left half: it refits above the dock, and goes
 # back down when the dock shrinks. Only the dock's box changes, not the areas.
 echo 'Mwm*wide*dock: true' >>"$RC"
-echo 'Mwm*xhide*dock: true' >>"$RC"
+echo 'Mwm*hide*dock: true' >>"$RC"
 reload_mwc
 wayland wide size=600x40
 check "the dock reaches under the left half" "[ \$(dock x) -lt 636 ]"
 check "the left half refits above it" "[ \$(bottom plain) = \$((\$(dock y) - G)) ]"
 stop wide
 check "and back down when the dock shrinks" "[ \$(bottom plain) = $((720 - G)) ]"
-# A docked X11 window asking to be an icon isn't one, and _NET_WM_STATE, which
-# wlroots wrote as asked, says so again (Review 2026-11-18 #39).
-x11 xhide size=80x40 netstate=1 script=+i
-wait_for "it asks to be hidden" grep -q '^sent 1' "$SMOKE_DIR/xhide.log"
-check "it stays in the dock" "[ \"\$(get xhide min)\" = 0 ]"
-wait_for "and _NET_WM_STATE says it isn't hidden" \
-	eval "grep '^net-more' \"\$SMOKE_DIR/xhide.log\" | tail -1 | grep -q 'hidden=0'"
-stop xhide
+# A docked window asking to be an icon isn't one. Dropping its frame right after tells
+# when mwc has had the request.
+wayland hide size=80x40 minimize_after="$SMOKE_DIR/hide" unframe_after="$SMOKE_DIR/hide"
+check "hide is docked" "[ \"\$(get hide everywhere)\" = 1 ] && [ \"\$(get hide frame)\" = 1 ]"
+touch "$SMOKE_DIR/hide"
+wait_for "it asks to be minimized" grep -q "^minimize asked" "$SMOKE_DIR/hide.log"
+check "mwc has had the request" "[ \"\$(get hide frame)\" = 0 ]"
+check "it stays in the dock" "[ \"\$(get hide min)\" = 0 ] && [ \"\$(get hide visible)\" = 1 ]"
+stop hide
 check "the dock as before" "[ \$(bottom plain) = $((720 - G)) ]"
 do_input key super+Right
 do_input key super+Right
@@ -203,12 +195,12 @@ check "a click on the dock's frame opens nothing" "[ \"\$(global menu open)\" = 
 # ---- changes ----------------------------------------------------------------------
 
 wait_for "two has grown" grep -q '^grown' "$SMOKE_DIR/two.log"
-check "two grew: still left of xone, the dock higher" \
-	"[ \"\$(get two h)\" = 140 ] && [ \$(right two) = \$(get xone x) ] && \
+check "two grew: still left of middle, the dock higher" \
+	"[ \"\$(get two h)\" = 140 ] && [ \$(right two) = \$(get middle x) ] && \
 	 [ \$(bottom two) = $((720 - B)) ] && [ \"\$(dock h)\" = \$((2 * B + \$(get two fh))) ] && \
 	 [ \"\$(global output uh)\" = \$(dock y) ]"
-stop xone
-check "xone gone: two closes up to one" \
+stop middle
+check "middle gone: two closes up to one" \
 	"[ \$(right two) = \$(get one x) ] && \
 	 [ \"\$(dock w)\" = \$((2 * B + \$(ow one) + \$(ow two))) ]"
 
@@ -261,9 +253,7 @@ done
 
 DOCKED='Mwm*premax*dock: true
 Mwm*prefull*dock: true
-Mwm*late*dock: true
-Mwm*xmove*dock: true
-Mwm*xbelow*dock: true'
+Mwm*late*dock: true'
 echo "$DOCKED" >"$RC"
 reload_mwc
 wayland premax size=200x100 pre=max
@@ -282,20 +272,8 @@ check "an app_id set after mapping: docked" \
 	"[ -n \"\$(get late x)\" ] && [ \"\$(get late everywhere)\" = 1 ] && \
 	 [ \$(right late) = \$(get prefull x) ]"
 
-x11 xmove size=120x50 moveto=100,100
-wait_for "xmove asked to move" grep -q '^moved' "$SMOKE_DIR/xmove.log"
-# A normal window's map is handled after that request, and doesn't touch the dock.
-x11 sync1 size=200x150
-check "an X11 tool can't move itself out of the dock" \
-	"[ \$(right xmove) = \$(get late x) ] && [ \$(bottom xmove) = $((720 - B)) ]"
-
-x11 xbelow size=100x50 state=below color=00ff00 grow=100x150
-check "xbelow docked" "[ \$(right xbelow) = \$(get xmove x) ]"
-wait_for "xbelow has grown" grep -q '^grown' "$SMOKE_DIR/xbelow.log"
-check "an X11 tool grew: the dock as high as it" \
-	"[ \"\$(get xbelow h)\" = 150 ] && [ \$(bottom xbelow) = $((720 - B)) ] && \
-	 [ \"\$(dock h)\" = \$((2 * B + \$(get xbelow fh))) ]"
-pixel_is "asked to be below: still above the dock's frame" $(mid xbelow) 00ff00
+# A normal window, for tabs, tiling and desktops.
+wayland sync1 size=200x150
 
 # ---- what the user might do -------------------------------------------------------
 
@@ -323,7 +301,7 @@ check "tiling off" "[ \"\$(global tiling on)\" = 0 ] && [ \"\$(get sync1 tiled)\
 ws activate 2 >/dev/null || fail "activating desktop 2"
 check "on desktop 2: the dock, not the normal window" \
 	"[ \"\$(global desktop current)\" = 2 ] && [ \"\$(get premax visible)\" = 1 ] && \
-	 [ \"\$(get xmove visible)\" = 1 ] && [ \"\$(get sync1 visible)\" = 0 ]"
+	 [ \"\$(get late visible)\" = 1 ] && [ \"\$(get sync1 visible)\" = 0 ]"
 ws activate 1 >/dev/null || fail "activating desktop 1"
 check "back on desktop 1" "[ \"\$(global desktop current)\" = 1 ]"
 
@@ -336,7 +314,7 @@ check "later is an icon" "[ \"\$(get later min)\" = 1 ]"
 printf '%s\nMwm*later*dock: true\n' "$DOCKED" >"$RC"
 reload_mwc
 check "a reload docks an icon: restored, into the dock" \
-	"[ \"\$(get later min)\" = 0 ] && [ \$(right later) = \$(get xbelow x) ] && \
+	"[ \"\$(get later min)\" = 0 ] && [ \$(right later) = \$(get late x) ] && \
 	 [ \$(bottom later) = $((720 - B)) ]"
 
 # ---- other placements -------------------------------------------------------------

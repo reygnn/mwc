@@ -21,7 +21,6 @@ struct wlr_layer_surface_v1;
 struct wlr_surface;
 struct wlr_xdg_surface;
 struct wlr_xdg_toplevel;
-struct wlr_xwayland_surface;
 
 #define MWC_SHELL_LAYERS 4 /* background, bottom, top, overlay */
 
@@ -104,31 +103,7 @@ void throttle_call(struct throttle *t, struct wl_event_loop *loop);
 /* Drops a call that waits, and the timer. */
 void throttle_cancel(struct throttle *t);
 
-/* ---- sentplace.c ---------------------------------------------------------- */
-
-#define SENT_PLACES 8
-
-struct sent_place {
-	int x, y, w, h;
-};
-
-/* Oldest first, one per size. */
-struct sent_places {
-	struct sent_place p[SENT_PLACES];
-	int n;
-};
-
-void sent_places_clear(struct sent_places *s);
-void sent_places_add(struct sent_places *s, int x, int y, int w, int h);
-bool sent_places_find(const struct sent_places *s, int w, int h, int *x, int *y);
-void sent_places_move(struct sent_places *s, int dx, int dy);
-
 /* ---- views -------------------------------------------------------------- */
-
-enum view_type {
-	VIEW_XDG,
-	VIEW_XWAYLAND,
-};
 
 /* Motif's clientDecoration and clientFunctions, bits as in _MOTIF_WM_HINTS. */
 enum {
@@ -153,11 +128,6 @@ enum {
 enum window_type {
 	WT_NORMAL,
 	WT_DIALOG,
-	WT_UTILITY,
-	WT_SPLASH,
-	WT_DOCK,
-	WT_DESKTOP,
-	WT_NOTIFICATION,
 };
 
 /* SNAP_MAXIMIZE is only a target: the window ends up SNAP_NONE and maximized. */
@@ -200,11 +170,7 @@ struct tab_group {
 struct view {
 	struct wl_list link; /* server.views, front to back */
 	struct server *server;
-	enum view_type type;
-	union {
-		struct wlr_xdg_toplevel *xdg_toplevel;
-		struct wlr_xwayland_surface *xsurface;
-	};
+	struct wlr_xdg_toplevel *xdg_toplevel;
 
 	struct wlr_scene_tree *tree;         /* frame and client */
 	struct wlr_scene_tree *content_tree; /* the client's surfaces */
@@ -232,11 +198,7 @@ struct view {
 	unsigned decor, funcs; /* see view_update_properties() */
 	unsigned base_funcs;   /* before tiling takes some away */
 	uint32_t wm_caps;      /* last sent, see xdg_publish_caps() */
-	uint32_t motif_flags, motif_funcs, motif_decor; /* X11 */
-	/* 0: no limit. */
-	int min_w, min_h, max_w, max_h, base_w, base_h, inc_w, inc_h;
-	float min_aspect, max_aspect;
-	int gravity;
+	int min_w, min_h, max_w, max_h; /* 0: no limit */
 	bool hidden_with_parent; /* a dialog of a minimized window */
 	struct tab_group *group; /* NULL: alone */
 	struct wl_list tab_link; /* tab_group.members */
@@ -268,7 +230,7 @@ struct view {
 	struct wlr_box saved;  /* before maximize, snap, fullscreen */
 	double fit_px, fit_py; /* on the output its state fills */
 	struct output *fit_output; /* that output, while it exists */
-	/* xdg: edges kept until the client has acked its new size. */
+	/* Edges kept until the client has acked its new size. */
 	uint32_t anchor_edges;
 	int anchor_right, anchor_bottom;
 	uint32_t anchor_serial;
@@ -276,9 +238,7 @@ struct view {
 	 * moved, resized or grouped. */
 	uint32_t gravity_edges;
 	int gravity_extra_w, gravity_extra_h; /* the frame's size then */
-	int requested_w, requested_h; /* the size last sent, not what X last said */
-	bool configure_pending; /* X11: a new size configured since its last commit */
-	struct sent_places sent; /* X11: where its frame goes for a size it commits */
+	int requested_w, requested_h; /* the size last sent */
 	int icon_x, icon_y;
 	bool icon_placed;
 	long icon_seq;   /* order of becoming an icon */
@@ -300,26 +260,8 @@ struct view {
 	struct wl_listener request_fullscreen;
 	struct wl_listener request_show_window_menu;
 	struct wl_listener set_title;
-	struct wl_listener set_app_id; /* or WM_CLASS */
-	/* X11 */
-	struct wl_listener associate;
-	struct wl_listener dissociate;
-	struct wl_listener request_configure;
-	struct wl_listener request_activate;
-	struct wl_listener set_decorations;
-	struct wl_listener focus_in;
-	bool been_mapped;
-	int unmap_x, unmap_y; /* where it was withdrawn */
+	struct wl_listener set_app_id;
 	struct wl_listener set_parent;
-	struct wl_listener set_window_type;
-	struct wl_listener set_strut_partial;
-	struct wl_listener request_above;
-	struct wl_listener request_below;
-	struct wl_listener set_override_redirect;
-	struct wl_listener request_sticky;
-	struct wl_listener request_shaded;
-	struct wl_listener request_demands_attention;
-	struct wl_listener set_hints;
 };
 
 /* Not counting another desktop: what restoring undoes. */
@@ -343,22 +285,6 @@ static inline bool view_decorated(const struct view *view)
 {
 	return view->ssd && !view->fullscreen;
 }
-
-/* Override-redirect X11 windows: menus, tooltips, drag icons. */
-struct unmanaged {
-	struct wl_list link;
-	struct server *server;
-	struct wlr_xwayland_surface *xsurface;
-	struct wlr_scene_tree *tree;
-	struct wl_listener associate;
-	struct wl_listener dissociate;
-	struct wl_listener map;
-	struct wl_listener unmap;
-	struct wl_listener destroy;
-	struct wl_listener request_configure;
-	struct wl_listener set_geometry;
-	struct wl_listener set_override_redirect;
-};
 
 /* ---- menus -------------------------------------------------------------- */
 
@@ -444,10 +370,8 @@ struct server {
 	struct wlr_scene_tree *layer_bg;
 	struct wlr_scene_tree *layer_shell[MWC_SHELL_LAYERS]; /* see main() */
 	struct wlr_scene_tree *layer_icons;
-	struct wlr_scene_tree *layer_below;
 	struct wlr_scene_tree *layer_views;
 	struct wlr_scene_tree *layer_fullscreen; /* when focused */
-	struct wlr_scene_tree *layer_unmanaged;
 	struct wlr_scene_tree *layer_menu;
 	struct wlr_scene_tree *layer_feedback; /* outline, move/size box */
 	struct wlr_scene_tree *layer_drag;
@@ -463,15 +387,6 @@ struct server {
 	struct wl_listener new_server_decoration;
 	struct wlr_server_decoration_manager *kde_decorations;
 	struct wl_list views;
-	struct wl_list unmanaged;
-
-	struct wlr_xwayland *xwayland;
-	struct wl_listener xwayland_ready;
-	struct wl_listener new_xwayland_surface;
-	uint32_t atom_motif_hints, atom_motif_info, atom_frame_extents;
-	uint32_t atom_net_wm_state, atom_state_above, atom_state_below;
-	uint32_t atom_state_fullscreen, atom_state_max_vert, atom_state_max_horz;
-	uint32_t atom_state_sticky;
 
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
@@ -527,8 +442,6 @@ struct server {
 
 	uint32_t last_click_msec;
 	struct view *last_click_view;
-	struct view *x11_refocused; /* given the X focus back by xw_focus_in() */
-	uint32_t x11_refocused_msec;
 	enum frame_part last_click_part;
 
 	struct menu menu;
@@ -625,19 +538,13 @@ const char *view_app_id(struct view *view);
 bool view_app_id_changed(struct view *view);
 struct wlr_surface *view_surface(struct view *view);
 void view_cycle(struct server *server, bool backwards);
-/* After the xdg or X11 part has set the client. */
+/* After the xdg part has set the client. */
 void view_init_common(struct view *view);
 /* focus: false raises it, but leaves the keyboard and a hidden tab as they are. */
 void view_handle_map(struct view *view, bool focus);
 void view_handle_unmap(struct view *view);
 void view_handle_destroy(struct view *view);
 void view_send_size(struct view *view, int w, int h);
-/* X11: place and size for the window; the frame follows with its commit. */
-void view_send_geometry(struct view *view, int x, int y, int w, int h);
-void view_place_x11_frame(struct view *view);
-/* Where its frame is: X11's view->x is where the size last sent goes. */
-int view_drawn_x(const struct view *view);
-int view_drawn_y(const struct view *view);
 void view_set_activated(struct view *view, bool activated);
 struct view *view_at(struct server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy,
@@ -689,21 +596,10 @@ void view_parent_changed(struct view *view);
 
 /* Largest window size; beyond it frame sizes and placement overflow. */
 #define VIEW_MAX_SIZE (1 << 20)
-#define X11_MAX_SIZE 32767
 
-/* The frame around a client: where the client sits in it, and what it adds. */
-struct frame_size {
-	int left, top, extra_w, extra_h;
-};
-
-void read_xwayland_size_hints(struct view *view);
 void read_xdg_size_hints(struct view *view);
 bool view_fixed(struct view *view);
-bool view_has_aspect(const struct view *view);
-void view_aspect_follow(struct view *view, int *pw, int *ph, bool width_given);
-void view_apply_size_hints(struct view *view, int *w, int *h, bool incr);
-void view_gravity_to_frame(struct view *view, struct frame_size f, int x, int y, int w,
-	int h, int *fx, int *fy);
+void view_apply_size_hints(struct view *view, int *w, int *h);
 
 /* ---- hints.c ------------------------------------------------------------ */
 
@@ -722,17 +618,6 @@ const char *terminal_command(struct server *server);
 /* The clock input events are stamped with, in ms. */
 uint32_t now_msec(void);
 
-/* ---- xwayland.c --------------------------------------------------------- */
-
-void xwayland_init(struct server *server);
-/* Sticky and shaded into _NET_WM_STATE. */
-void xwayland_publish_state(struct view *view);
-void xwayland_publish_frame_extents(struct view *view);
-/* An X11 program may move the keyboard: an X11 window or none has it. */
-bool xwayland_may_take_focus(struct server *server);
-/* Blocks on the X server. wlroots tells only of decoration changes. */
-void xwayland_read_motif_hints(struct view *view);
-
 /* ---- frame.c ------------------------------------------------------------ */
 
 int frame_border(struct view *view);
@@ -742,7 +627,6 @@ int frame_left(struct view *view);
 int frame_top(struct view *view);
 int frame_extra_w(struct view *view);
 int frame_extra_h(struct view *view);
-struct frame_size frame_size(struct view *view);
 /* For a window opened at the pointer. */
 void frame_title_center(struct view *view, int *x, int *y);
 int frame_height(struct view *view);
@@ -932,9 +816,6 @@ void layer_init(struct server *server);
 void layer_arrange(struct output *output);
 /* At once, then at most once per refresh. */
 void layer_arrange_soon(struct output *output);
-void layers_arrange_all_soon(struct server *server);
-void layers_arrange_all(struct server *server);
-void layer_publish_workarea(struct server *server);
 void layer_output_gone(struct output *output);
 void layer_handle_click(struct server *server, struct wlr_surface *surface);
 bool layer_surface_is_desktop(struct wlr_surface *surface);
@@ -983,7 +864,7 @@ struct config_position {
 	bool from_right, from_bottom;
 	bool at_pointer;
 };
-/* By a client's instance and class name (X11), or its app_id as both: */
+/* By a client's name and class, both its app_id, as mwm-x11's rules go by them: */
 
 /* Its dock line's place in mwmrc, the dock's order; -1: not docked. */
 int config_client_dock(const char *name, const char *class);

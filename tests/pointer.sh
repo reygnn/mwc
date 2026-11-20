@@ -6,17 +6,14 @@
 LOG=build/pointer.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xclient build/badclient build/xdgc; do
+require_tools grim
+for tool in build/vinput build/pngtool build/badclient build/xdgc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
 export MWC_TEST_STATE=$SMOKE_DIR/state
 BTN_LEFT=272
-rm -f "$SMOKE_DIR/display"
-start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-X_DISPLAY=$(cat "$SMOKE_DIR/display")
+start_mwc 'exec sleep 300'
 start_vinput
 refresh
 B=$(global theme border)
@@ -27,13 +24,6 @@ client() { # name mode
 	eval "PID_$1=$!"
 	eval "SYNCS_$1=1" # badclient syncs on SIGUSR1, see lacks()
 	check "$1 is mapped" "[ -n \"\$(get $1 x)\" ]"
-}
-x11() {
-	local name=$1
-	shift
-	DISPLAY=$X_DISPLAY build/xclient class="$name" "$@" >"$SMOKE_DIR/$name.log" 2>&1 &
-	eval "PID_$name=$!"
-	check "$name is mapped" "[ -n \"\$(get $name x)\" ]"
 }
 stop() {
 	local var="PID_$1"
@@ -59,7 +49,7 @@ lacks() { # description client regex
 		done
 		[ "$(grep -c '^synced' "$SMOKE_DIR/$2.log")" -gt "$n" ] || fail "$1: $2 didn't sync"
 	else
-		sleep 0.2 # an X11 client: no way to ask it
+		sleep 0.2 # a client with no way to ask it
 	fi
 	has "$2" "$3" && { cat "$SMOKE_DIR/$2.log"; fail "$1"; }
 	echo "ok: $1"
@@ -348,78 +338,6 @@ sleep 0.2
 check "nothing is glued to the pointer" "[ \"\$(global cursor mode)\" = 0 ]"
 stop L
 
-x11 xlate moveresize=2 pos=100,100 size=300x200
-wait_for "the X client asked with no button down" has xlate '^asked'
-sleep 0.2
-check "refused for X11 too" "[ \"\$(global cursor mode)\" = 0 ]"
-stop xlate
-
-# Asked while a button is held on another window: it can't take over the user's drag.
-# It asks only once the button is down: a fixed delay could fire before, and the request
-# would then be refused for no button at all (Review 2026-11-18 #37).
-x11 xother moveresize_after="$SMOKE_DIR/mr" pos=100,100 size=300x200
-x11 xheld pos=600,100 size=300x200
-do_input move 750 200
-do_input down left
-touch "$SMOKE_DIR/mr"
-wait_for "an X client asks while the button is held on another" has xother '^asked'
-# Retitled after the request (xclient's usage): by then mwc has handled it.
-check "mwc has had the request" "[ \"\$(get xother tlen)\" = 12 ]"
-check "refused: the drag stays the user's" \
-	"[ \"\$(global cursor mode)\" = 0 ] && [ \"\$(get xother x)\" = 100 ]"
-do_input up left
-stop xother
-stop xheld
-
-x11 xpress move_press=1 pos=100,100 size=300x200
-do_input move 250 200
-do_input down left
-saw "the X client gets the press" xpress '^press main'
-check "and is granted its move" "[ \"\$(global cursor mode)\" = 1 ]"
-do_input move 300 260
-do_input up left
-check "which ends with the release" "[ \"\$(global cursor mode)\" = 0 ] && [ \"\$(get xpress x)\" != 100 ]"
-stop xpress
-
-# ---- press, drag, release: Motif's pulldown menus ----------------------------------------------
-
-x11 pull pulldown=1 pos=100,100 size=300x60
-do_input move 200 $((100 + B + T + 30))
-clear_log pull
-do_input down left
-saw "a press posts the menu" pull '^posted'
-check "as an X11 window of its own" "[ \"\$(global unmanaged count)\" = 1 ]"
-do_input move 210 $((100 + B + T + 60))
-do_input move 215 $((100 + B + T + 90))
-lacks "dragging onto it is no release" pull '^release'
-do_input up left
-saw "only the real release comes through" pull '^release menu 215,'
-stop pull
-
-# ---- override-redirect windows coming and going under a pointer that doesn't move ----------
-
-x11 orp pos=100,100 size=300x200 popup=150,150 popup_type=menu popup_ms=2000 popup_for=2000
-do_input move 200 200
-check "the pointer is over orp" "[ \"\$(global seat pointer)\" = orp ]"
-saw "a menu opens under it" orp '^popup shown'
-check "the menu has the pointer at once, without a move" "[ \"\$(global seat pointer)\" = unmanaged ]"
-check "a menu doesn't take the keyboard" "[ \"\$(global seat keyboard)\" = orp ]"
-saw "the menu closes" orp '^popup gone'
-check "the window below has the pointer again, without a move" \
-	"[ \"\$(global seat pointer)\" = orp ]"
-stop orp
-
-# One that wants the keyboard, with no window to give it back to when it goes: Xwayland
-# destroys the surface of a window it unmaps, so the keyboard isn't left on it.
-x11 ork iconic=1 popup=600,300 popup_ms=1500 popup_for=1500
-check "ork starts as an icon, no window has the focus" "[ \"\$(global focus any)\" = 0 ]"
-saw "a prompt opens" ork '^popup shown'
-check "it has the keyboard" "[ \"\$(global seat keyboard)\" = unmanaged ]"
-saw "the prompt closes" ork '^popup gone'
-check "with nobody to hand it back to, the keyboard goes to nobody" \
-	"[ \"\$(global seat keyboard)\" = none ]"
-stop ork
-
 # ---- keys that went to a binding ----------------------------------------------------------------
 
 client K log
@@ -569,7 +487,11 @@ lacks "and the release of its press goes nowhere" B2 "^button $BTN_LEFT up"
 stop B2
 
 # Another button doesn't end a drag or set off a frame button.
-x11 titled pos=100,300 size=300x100
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=titled size=300x100 >"$SMOKE_DIR/titled.log" 2>&1 &
+PID_titled=$!
+check "titled is mapped" "[ -n \"\$(get titled x)\" ]"
+focus_on titled
+place titled 100 300
 TY=$((300 + B + T / 2))
 do_input move 250 "$TY"
 do_input down left

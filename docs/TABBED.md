@@ -10,7 +10,7 @@ and tiled windows alike, and it keeps the Motif look: tabs are bevels like the r
 the frame.
 
     +---+----------+----------+----------+---+---+
-    | - |  xterm   |  [ mfm ] | Firefox  | . | o |
+    | - |  foot    |  [ mfm ] | Firefox  | . | o |
     +---+----------+----------+----------+---+---+
     |                                            |
     |                the shown tab               |
@@ -82,7 +82,7 @@ resize they wait for the final commit.
 A hidden client may not answer while it is suspended. Then the switch shows its old buffer
 for a frame, which is acceptable.
 
-Sizes can still differ, as `xterm` resizes in character steps. The frame follows the
+Sizes can still differ, as a client may keep a size of its own. The frame follows the
 shown client's real size, as tiling does today through `view_apply_tile()`, anchored at
 the top left.
 
@@ -166,7 +166,7 @@ With a group, the title's area in `struct title_layout` is divided evenly among 
 each a bevel:
 
 - The **shown** tab is sunken, in the view's current frame colours.
-- **Other tabs** are raised, in that member's own unfocused colours. So a blood-red xterm
+- **Other tabs** are raised, in that member's own unfocused colours. So a blood-red foot
   stays recognisable next to a brown Firefox, in a group of any colour.
 - Text goes through `draw_text()`, ellipsized.
 

@@ -5,8 +5,8 @@
 LOG=build/layer.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools foot xterm Xwayland grim
-for tool in build/vinput build/pngtool build/layerc build/xdgc build/xclient; do
+require_tools foot grim
+for tool in build/vinput build/pngtool build/layerc build/xdgc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -38,14 +38,13 @@ output_is() { # <description> <x> <y> <w> <h>: the usable area
 }
 
 marker='touch "$SMOKE_DIR/$0"; exec sleep 120'
-start_mwc "echo \"\$DISPLAY\" > \"\$SMOKE_DIR/display\"; foot sh -c '$marker' foot-up & \
-	while [ ! -e \"\$SMOKE_DIR/foot-up\" ]; do sleep 0.1; done; \
-	exec xterm -e sh -c '$marker' xterm-up"
-wait_for "foot connected (Wayland)" test -e "$SMOKE_DIR/foot-up"
-wait_for "xterm connected (XWayland)" test -e "$SMOKE_DIR/xterm-up"
-X_DISPLAY=$(cat "$SMOKE_DIR/display")
+start_mwc "exec foot sh -c '$marker' foot-up"
+wait_for "foot connected" test -e "$SMOKE_DIR/foot-up"
 start_vinput
-check "both windows are mapped" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get XTerm x)\" ]"
+check "foot is mapped" "[ -n \"\$(get foot x)\" ]"
+# A second window, mapped after foot, so it has the focus.
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=win size=300x200 >/dev/null 2>&1 &
+check "both windows are mapped" "[ -n \"\$(get win x)\" ] && [ \"\$(get win active)\" = 1 ]"
 B=$(global theme border)
 T=$(global theme title)
 
@@ -54,29 +53,29 @@ T=$(global theme title)
 output_is "without panels, all of the output is usable" 0 0 1280 720
 
 do_input key alt+F10
-check "xterm is maximized over everything" \
-	"[ \"\$(get XTerm max)\" = 1 ] && [ \"\$(get XTerm y)\" = 0 ] && \
-	[ \$((\$(get XTerm h) + 2 * B + T)) = 720 ]"
+check "the window is maximized over everything" \
+	"[ \"\$(get win max)\" = 1 ] && [ \"\$(get win y)\" = 0 ] && \
+	[ \$((\$(get win h) + 2 * B + T)) = 720 ]"
 
 layerc_start top layer=top anchor=top,left,right size=0x30 exclusive=30 color=$PANEL
 output_is "a top panel reserves its height" 0 30 1280 690
-check "a maximized X11 window moves out of its way" \
-	"[ \"\$(get XTerm y)\" = 30 ] && [ \$((\$(get XTerm h) + 2 * B + T)) = 690 ]"
+check "a maximized window moves out of its way" \
+	"[ \"\$(get win y)\" = 30 ] && [ \$((\$(get win h) + 2 * B + T)) = 690 ]"
 pixel_is "the panel is drawn" 640 10 "$PANEL"
 
 layerc_start left layer=top anchor=left,top,bottom size=50x0 exclusive=50 color=00ffff
 output_is "a left panel reserves its width as well" 50 30 1230 690
 check "the window moves again" \
-	"[ \"\$(get XTerm x)\" = 50 ] && [ \$((\$(get XTerm w) + 2 * B)) = 1230 ]"
+	"[ \"\$(get win x)\" = 50 ] && [ \$((\$(get win w) + 2 * B)) = 1230 ]"
 
 layerc_stop left
 output_is "the left panel is gone" 0 30 1280 690
-check "the window takes the room back" "[ \"\$(get XTerm x)\" = 0 ] && [ \$((\$(get XTerm w) + 2 * B)) = 1280 ]"
+check "the window takes the room back" "[ \"\$(get win x)\" = 0 ] && [ \$((\$(get win w) + 2 * B)) = 1280 ]"
 
 do_input key alt+F10
-check "xterm is back to normal" "[ \"\$(get XTerm max)\" = 0 ]"
+check "the window is back to normal" "[ \"\$(get win max)\" = 0 ]"
 
-# Wayland client on the same path.
+# foot on the same path.
 do_input key alt+Tab
 check "foot has the focus" "[ \"\$(get foot active)\" = 1 ]"
 do_input key alt+F10
@@ -128,7 +127,7 @@ check "foot is fullscreen, over the whole output" \
 	"[ \"\$(get foot full)\" = 1 ] && [ \"\$(get foot y)\" = 0 ] && [ \"\$(get foot h)\" = 720 ]"
 pixel_isnt "a focused fullscreen window covers the panel" 640 10 "$PANEL"
 do_input key alt+Tab
-check "xterm has the focus" "[ \"\$(get XTerm active)\" = 1 ] && [ \"\$(get foot full)\" = 1 ]"
+check "the window has the focus" "[ \"\$(get win active)\" = 1 ] && [ \"\$(get foot full)\" = 1 ]"
 pixel_is "without the focus, the panel is visible again" 640 10 "$PANEL"
 do_input key alt+Tab
 check "foot has the focus again" "[ \"\$(get foot active)\" = 1 ]"
@@ -159,38 +158,13 @@ layerc_start top layer=top anchor=top,left,right size=0x30 exclusive=30 color=$P
 do_input key alt+F11
 check "foot leaves fullscreen" "[ \"\$(get foot full)\" = 0 ]"
 pixel_is "the panel is back on top" 640 10 "$PANEL"
-# An X11 window both fullscreen and above the others (mpv --ontop --fs) leaves the
-# fullscreen layer for the one it shares with top-layer surfaces: there too the
-# prompt must stay above it.
-DISPLAY=$X_DISPLAY build/xclient class=XOnTop state=above,fullscreen color=0000ff \
-	>"$SMOKE_DIR/xontop.log" 2>&1 &
-XONTOP=$!
-check "the X11 window is fullscreen" "[ \"\$(get XOnTop full)\" = 1 ]"
-# Drawn at its new size before the click, or the click lands on what was there.
-pixel_is "it is drawn over the output" 640 360 0000ff
-do_input move 640 360
-do_input click left
-check "and has the focus" "[ \"\$(get XOnTop active)\" = 1 ]"
-pixel_isnt "it covers the panel" 640 10 "$PANEL"
-layerc_start prompt layer=top size=200x100 keyboard=exclusive color=00ff00
-wait_for "the prompt has the keyboard" has_event prompt keyboard-enter
-pixel_is "the prompt is above a fullscreen window that is above the others" 640 360 00ff00
-do_input move 100 600
-do_input click left
-pixel_is "and stays there when that window is clicked beside it" 640 360 00ff00
-layerc_stop prompt
-check "the X11 window has the focus back" "[ \"\$(get XOnTop kbfocus)\" = 1 ]"
-kill "$XONTOP"
-wait "$XONTOP" 2>/dev/null
-check "the X11 window is gone" "[ -z \"\$(get XOnTop x)\" ]"
-
 # ---- clicks and the desktop ---------------------------------------------------
 
 do_input key alt+F9
-bring() { for _ in 1 2 3; do refresh; [ "$(get XTerm active)" = 1 ] && break; do_input key alt+Tab; done; }
+bring() { for _ in 1 2 3; do refresh; [ "$(get win active)" = 1 ] && break; do_input key alt+Tab; done; }
 bring
 do_input key alt+F9
-check "both windows are icons" "[ \"\$(get foot min)\" = 1 ] && [ \"\$(get XTerm min)\" = 1 ]"
+check "both windows are icons" "[ \"\$(get foot min)\" = 1 ] && [ \"\$(get win min)\" = 1 ]"
 
 do_input move 640 10
 do_input click left

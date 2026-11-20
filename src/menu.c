@@ -264,7 +264,6 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 	m->n_items = 0;
 	m->target = view;
 	m->from_button = false;
-	xwayland_read_motif_hints(view);
 	view_update_properties(view);
 	bool normal = !view->minimized && !view->maximized && !view->fullscreen &&
 		view->snap == SNAP_NONE;
@@ -462,8 +461,8 @@ bool menu_button(struct server *server, double lx, double ly, bool pressed,
 		struct view *t = m->target;
 		uint32_t edges;
 		bool close = m->from_button && t && age < 400 &&
-			(t->funcs & FUNC_CLOSE) && frame_hit(t, (int)lx - view_drawn_x(t),
-			(int)ly - view_drawn_y(t), &edges) == PART_MENU_BUTTON;
+			(t->funcs & FUNC_CLOSE) && frame_hit(t, (int)lx - t->x,
+			(int)ly - t->y, &edges) == PART_MENU_BUTTON;
 		menu_close(server);
 		if (close)
 			view_close(t);
@@ -566,9 +565,9 @@ void run_action(struct server *server, enum menu_action action,
 			break;
 		/* Like f.move from a menu: the pointer jumps to the title and
 		 * the window follows it until the next click. */
-		wlr_cursor_warp(c, NULL, view_drawn_x(view) + (view->width +
+		wlr_cursor_warp(c, NULL, view->x + (view->width +
 			frame_extra_w(view)) / 2.0,
-			view_drawn_y(view) + frame_border(view) + frame_title(view) / 2.0);
+			view->y + frame_border(view) + frame_title(view) / 2.0);
 		view_begin_interactive(view, CURSOR_MOVE, 0, true);
 		break;
 	case ACT_SIZE:
@@ -580,8 +579,8 @@ void run_action(struct server *server, enum menu_action action,
 				server->cursor_mode != CURSOR_PASSTHROUGH)
 			break;
 		wlr_cursor_warp(c, NULL,
-			view_drawn_x(view) + view->width + frame_extra_w(view) - 1,
-			view_drawn_y(view) + view->height + frame_extra_h(view) - 1);
+			view->x + view->width + frame_extra_w(view) - 1,
+			view->y + view->height + frame_extra_h(view) - 1);
 		view_begin_interactive(view, CURSOR_RESIZE,
 			WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT, true);
 		break;

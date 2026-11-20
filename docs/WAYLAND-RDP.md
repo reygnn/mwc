@@ -12,14 +12,14 @@ corporate notebook (Windows)              server (Ubuntu 26.04)
 ┌──────────────────────────┐  SSH tunnel  ┌──────────────────────────────────┐
 │ Bitvise SSH Client       │ ═══════════> │ wayrdp  127.0.0.1:3389           │
 │  └─ Remote Desktop       │ (encrypted)  │  └─ mwc, headless output         │
-│     (mstsc)              │              │      ├─ Wayland apps             │
-└──────────────────────────┘              │      └─ Xwayland: xterm, …       │
-                                          └──────────────────────────────────┘
+│     (mstsc)              │              │      └─ Wayland apps             │
+└──────────────────────────┘              └──────────────────────────────────┘
 ```
 
 mwc runs on wlroots' headless backend, and wayrdp serves its screen over RDP:
 it captures the output, sends it to `mstsc` and passes keyboard, mouse and
-clipboard back. Your X programs keep running, through Xwayland.
+clipboard back. X programs don't run any more: mwc has no Xwayland. Make sure
+you need none before you move.
 
 wayrdp is new. It goes on a server only once it runs stable on a test
 machine, because there is no phase with both next to each other: section 5
@@ -39,7 +39,7 @@ Between the two the server has no RDP, only SSH.
 | Screen size | the size of the `mstsc` window at login | the same: the size `mstsc` connects with. It doesn't follow the window afterwards (other clients do) |
 | Keyboard layout | the notebook's, through xorgxrdp | `wayrdp -k`, set once on the server |
 | Clipboard | text, images, files | text, full Unicode, both ways |
-| X programs | on Xorg | on Xwayland, inside mwc |
+| X programs | on Xorg | none: mwc runs Wayland programs only |
 | Config | `~/.config/mwm/mwmrc`, `~/.config/mwm/autostart` | `~/.config/mwc/mwmrc`, `~/.config/mwc/autostart`, same syntax |
 
 ## 1. Requirements
@@ -107,19 +107,16 @@ sudo apt install --no-install-recommends \
     build-essential pkg-config git meson ninja-build \
     libwlroots-0.19-dev wayland-protocols libwayland-dev libxkbcommon-dev \
     libpixman-1-dev libcairo2-dev libpango1.0-dev \
-    libxcb1-dev libxcb-icccm4-dev \
     freerdp3-dev libwinpr3-dev libdrm-dev libpam0g-dev \
-    xwayland dbus-user-session \
-    xterm xfonts-base fonts-dejavu-core
+    dbus-user-session foot fonts-dejavu-core
 ```
 
 | Packages | Purpose |
 |---|---|
-| `build-essential … libxcb-icccm4-dev` | build mwc |
+| `build-essential … libpango1.0-dev` | build mwc |
 | `meson ninja-build freerdp3-dev … libpam0g-dev` | build wayrdp (FreeRDP 3, and PAM for `-a pam`) |
-| `xwayland` | X programs inside mwc |
 | `dbus-user-session` | the session bus for user services, replaces `dbus-launch` from `dbus-x11` |
-| `xterm xfonts-base fonts-dejavu-core` | already there: terminal and fonts |
+| `foot fonts-dejavu-core` | a Wayland terminal, and fonts |
 
 ## 3. Build and install mwc and wayrdp
 
@@ -157,7 +154,7 @@ cat >> ~/.config/mwc/mwmrc <<'EOF'
 Mwm*HEADLESS-1*outputMode:   1920x1080
 ! The size mstsc connects with (wayrdp sets it).
 Mwm*outputManagement:        true
-Mwm*terminal:                xterm
+Mwm*terminal:                foot
 EOF
 ```
 
@@ -325,10 +322,9 @@ sudo apt purge xorgxrdp libx11-dev libxext-dev libxft-dev libxrandr-dev \
 sudo apt autoremove --purge
 ```
 
-apt lists what it will remove before it asks. **`xwayland`, `xterm`,
-`xfonts-base` and `fonts-dejavu-core` must not be on that list.** If one is,
-answer `n` and leave out the package that pulls it along. Packages that
-aren't installed are reported and skipped.
+apt lists what it will remove before it asks. **`foot` and `fonts-dejavu-core`
+must not be on that list.** If one is, answer `n` and leave out the package
+that pulls it along. Packages that aren't installed are reported and skipped.
 
 Afterwards no Xorg should be left:
 
@@ -360,4 +356,3 @@ sudo rm -f /usr/local/bin/mwm /usr/share/xsessions/mwm-x11.desktop
 | The desktop doesn't take the size `mstsc` connects with | `Mwm*outputManagement: true` is missing in mwmrc, or mwc was not restarted since (it reads it at its start). The log says "offers no output management". That it doesn't follow a resized `mstsc` window is `mstsc`: reconnect. |
 | The whole session ends when a tool changes the screen | `wlr-randr`, `kanshi` or the like used output management next to wayrdp: wlroots aborts then. Don't run them with `outputManagement: true`. |
 | No mouse pointer | Add `-r` to `ExecStart`: wayrdp then draws the pointer into the picture. |
-| X programs don't start | `xwayland` is missing, or `journalctl --user -u mwc` shows why Xwayland failed. |

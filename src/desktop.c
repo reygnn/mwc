@@ -6,16 +6,16 @@
  * current one, and counts as one more way of being hidden (view_hidden()), so focus,
  * Alt+Tab, clicks and the layout pass them by as they do minimized windows.
  *
- * - Panels, desktop windows, notifications and splash screens are on all of them,
- *   as are programs with Mwm*NAME*allDesktops, windows put there through "On All
- *   Desktops" in their window menu, and their dialogs.
+ * - Docked windows are on all of them, as are programs with Mwm*NAME*allDesktops,
+ *   windows put there through "On All Desktops" in their window menu, and their
+ *   dialogs.
  * - A dialog goes where its window is, a tab group as a whole.
  * - Icons belong to their window's desktop and are only seen there; each desktop
  *   has its own icon slots.
  * - Tiling lays out the current desktop's windows; the others keep their place in
  *   the layout for when their desktop comes back.
- * - Hiding is the scene's alone: clients aren't told, an X11 window on another
- *   desktop isn't iconic, and a capture of the output sees the current desktop.
+ * - Hiding is the scene's alone: clients aren't told, and a capture of the output
+ *   sees the current desktop.
  * - A window there that asks for the focus doesn't switch: it is marked
  *   (view.attention), and its desktop is urgent while one there is.
  *
@@ -27,9 +27,7 @@
 
 static bool by_rule(const struct view *view)
 {
-	return view->all_desktops || view_docked(view) || view->wtype == WT_DOCK ||
-		view->wtype == WT_DESKTOP || view->wtype == WT_NOTIFICATION ||
-		view->wtype == WT_SPLASH;
+	return view->all_desktops || view_docked(view);
 }
 
 static bool everywhere(const struct view *view)
@@ -96,8 +94,6 @@ static void focus_after(struct server *server, bool lost, bool asked)
 	else if (lost)
 		view_focus_top(server);
 	icons_arrange(server);
-	/* An X11 window's strut only counts while it is shown. */
-	layers_arrange_all(server);
 	tile_arrange(server);
 	views_update_layers(server);
 	input_pointer_changed(server);
@@ -159,7 +155,6 @@ static bool recheck_one(struct view *v, bool *lost)
 {
 	if (!v->mapped)
 		return false;
-	xwayland_publish_state(v); /* sticky as it is now */
 	/* A window in sight stays in sight: one that is no longer everywhere stays
 	 * on the current desktop. A dialog goes with its window. */
 	if (!v->off_desktop || view_transient_root(v) != v)
@@ -197,7 +192,6 @@ static void recheck_all(struct server *server, bool always)
 	struct view *v;
 	bool lost = false, changed = false;
 	wl_list_for_each(v, &server->views, link) {
-		xwayland_publish_state(v); /* sticky as the rules say now */
 		bool now = off(v);
 		if (now != v->off_desktop) {
 			changed = true;
@@ -240,7 +234,6 @@ void view_toggle_sticky(struct view *view)
 		if (r == v)
 			v->sticky = on;
 		v->desktop = server->desktop;
-		xwayland_publish_state(v);
 	}
 	recheck_all(server, false);
 }

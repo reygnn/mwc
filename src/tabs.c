@@ -12,7 +12,6 @@
 #include <stdlib.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_xdg_shell.h>
-#include <wlr/xwayland.h>
 #include "mwc.h"
 
 static bool tab_material(struct view *view)
@@ -30,7 +29,7 @@ static bool tabs_can_join(struct view *view)
 
 static void tell_suspended(struct view *view, bool suspended)
 {
-	if (view->type == VIEW_XDG && view->xdg_toplevel->base->initialized)
+	if (view->xdg_toplevel->base->initialized)
 		wlr_xdg_toplevel_set_suspended(view->xdg_toplevel, suspended);
 }
 
@@ -42,8 +41,6 @@ static void move_place(struct view *to, struct view *from)
 {
 	to->x = from->x;
 	to->y = from->y;
-	/* Where its own sizes went is no longer its place. */
-	sent_places_clear(&to->sent);
 	to->saved = from->saved;
 	to->fit_px = from->fit_px;
 	to->fit_py = from->fit_py;
@@ -179,7 +176,7 @@ static void switch_to(struct tab_group *g, struct view *to, struct view *from, b
 		 * before, and a wide one would pick the next monitor from it. */
 		view_refit_at(to, to->x + w / 2.0, to->y + h / 2.0);
 	} else {
-		view_apply_size_hints(to, &w, &h, false);
+		view_apply_size_hints(to, &w, &h);
 		view_set_geometry(to, to->x, to->y, w, h);
 	}
 	frame_render(to);
@@ -235,11 +232,8 @@ static void back_to_own_size(struct view *view)
 		view->saved.height = h;
 		return;
 	}
-	/* A size of 0 means the client chooses, which X doesn't know. */
-	if (!w && view->type != VIEW_XDG)
-		return;
 	if (w)
-		view_apply_size_hints(view, &w, &h, false);
+		view_apply_size_hints(view, &w, &h);
 	view_send_size(view, w, h);
 }
 
@@ -449,7 +443,7 @@ void tabs_sync_sizes(struct view *view)
 		if (m == view)
 			continue;
 		int mw = w, mh = h, cw, ch;
-		view_apply_size_hints(m, &mw, &mh, false);
+		view_apply_size_hints(m, &mw, &mh);
 		asked_size(m, &cw, &ch);
 		if (mw != cw || mh != ch)
 			view_send_size(m, mw, mh);

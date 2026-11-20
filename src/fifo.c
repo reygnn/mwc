@@ -5,7 +5,7 @@
  * the second is applied only once the first was on the screen for a refresh. That
  * is vsync for a client that doesn't want to wait for frame callbacks, which stop
  * when its window is hidden. SDL 3 takes Wayland only where a compositor offers
- * this; elsewhere it prefers X11, and an SDL program in mwc ran through Xwayland.
+ * this; elsewhere it prefers X11, which mwc doesn't run.
  *
  * wlroots has no implementation, 0.20.2 neither; this one is built on the surface's
  * synced state and its cached-state locks:
@@ -38,8 +38,8 @@
 #include "fifo-v1-protocol.h"
 #include "mwc.h"
 
-/* How long the barrier of a surface on no output holds: as Xwayland does for a
- * window nobody sees, about one update a second. */
+/* How long the barrier of a surface on no output holds: about one update a second,
+ * as Xwayland does for a window nobody sees. */
 #define OFF_SCREEN_MS 1000
 
 /* Commits waiting per surface. A swapchain holds a few, tests/fifoc.c sends 30; a
@@ -401,5 +401,5 @@ void fifo_init(struct server *server)
 {
 	if (!wl_global_create(server->display, &wp_fifo_manager_v1_interface, 1, NULL,
 			manager_bind))
-		wlr_log(WLR_ERROR, "no wp_fifo_manager_v1: SDL programs will take Xwayland");
+		wlr_log(WLR_ERROR, "no wp_fifo_manager_v1: SDL 3 programs may find no display");
 }

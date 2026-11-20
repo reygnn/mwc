@@ -12,7 +12,7 @@ TODO
     genau eine gezeigte Karte, alle auf einem Desktop; Tile-Zellen überlappen
     nicht, liegen in der nutzbaren Fläche und füllen sie, ein Shaded-Fenster
     behält seine Zelle; ein Sticky-Fenster samt Dialogen ist auf jedem Desktop
-    zu sehen, _NET_WM_STATE stimmt bei X11. Fehlende Felder in testhook.c.
+    zu sehen. Fehlende Felder in testhook.c.
   - Matrix: ein Floating-Client; zwei Floating-Clients als Tabs; drei tiled,
     alle sichtbar; drei tiled, einer shaded; tiled und tabbed; jede mit und
     ohne Sticky. Je Operation einmal: Minimieren und Wiederherstellen,
@@ -143,23 +143,20 @@ TODO
   Mwm*focusAutoRaise (bei pointer standardmäßig aus, damit Fenster beim
   Überfahren nicht nach vorn springen).
   Zu klären: kein Fokuswechsel während Move/Resize, Drag and Drop, offenem
-  Menü oder Zeigergriff; Popups und Override-Redirect-Fenster von X11 nehmen
-  den Fokus nicht; nach Alt+Tab erst bei echter Zeigerbewegung wechseln, nicht
+  Menü oder Zeigergriff; Popups nehmen den Fokus nicht; nach Alt+Tab erst bei echter Zeigerbewegung wechseln, nicht
   wenn ein Fenster unter einem stehenden Zeiger auftaucht oder verschwindet;
-  exklusive Tastatur von Layer-Shell-Flächen hat Vorrang; Fenster ohne
-  Eingabefokus (WM_HINTS) bleiben außen vor.
+  exklusive Tastatur von Layer-Shell-Flächen hat Vorrang.
   Abnahme: ein Test in tests/pointer.sh, der diese Fälle mit vinput abfährt,
   und README unter Mouse und Configuration.
 
 * Programme als Icon starten, etwa Firefox aus dem Autostart (geparkt
-  2026-11-11). X11-Programme, die selbst iconic starten wollen (xterm
-  -iconic, WM_HINTS), kann mwc schon; Firefox hat dafür keine Option, und
-  unter Wayland gibt es kein Protokoll dafür. Idee: Mwm*NAME*startIconic: true,
+  2026-11-11). Firefox hat dafür keine Option, und unter Wayland gibt es kein
+  Protokoll dafür. Idee: Mwm*NAME*startIconic: true,
   wie allDesktops pro Programm; das Fenster kommt gleich beim Mappen als Icon,
   ohne kurz sichtbar zu sein (in view_handle_map(), vor dem Einschalten des
   Knotens). Dialoge sind ausgenommen.
   Zu klären: gilt es nur für das erste Fenster, das ein Programm seit dem
   Start von mwc öffnet (passt zum Autostart, ein späteres Strg+N öffnet
   normal), oder für jedes Hauptfenster?
-  Abnahme: ein Test in tests/window.sh mit xdgc und xclient, README unter
+  Abnahme: ein Test in tests/window.sh mit xdgc, README unter
   Configuration.

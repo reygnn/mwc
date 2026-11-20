@@ -46,7 +46,7 @@ purge() {
 	systemctl --user is-active --quiet wayrdp ||
 		die "wayrdp doesn't run: run sh $0 without options first, or see journalctl --user -u wayrdp"
 	say "Purging X11 packages (apt shows the list and asks)"
-	echo "xwayland, xterm, xfonts-base and fonts-dejavu-core must NOT be on it."
+	echo "foot and fonts-dejavu-core must NOT be on it."
 	pkgs=$(installed xrdp xorgxrdp libx11-dev libxext-dev libxft-dev libxrandr-dev \
 		x11-utils x11-xserver-utils x11-xkb-utils dbus-x11 \
 		tigervnc-standalone-server tigervnc-tools)
@@ -105,10 +105,8 @@ sudo apt-get install -y --no-install-recommends \
 	build-essential pkg-config git meson ninja-build \
 	libwlroots-0.19-dev wayland-protocols libwayland-dev libxkbcommon-dev \
 	libpixman-1-dev libcairo2-dev libpango1.0-dev \
-	libxcb1-dev libxcb-icccm4-dev \
 	freerdp3-dev libwinpr3-dev libdrm-dev libpam0g-dev \
-	xwayland dbus-user-session \
-	xterm xfonts-base fonts-dejavu-core
+	dbus-user-session foot fonts-dejavu-core
 
 # ---- 3. build mwc and wayrdp ----------------------------------------------------
 fetch() {	# fetch <dir> <repository>
@@ -150,7 +148,7 @@ grep -qi '^Mwm\*outputManagement:' "$CFG/mwmrc" ||
 	printf '! The size mstsc connects with (wayrdp sets it).\nMwm*outputManagement:        true\n' \
 		>>"$CFG/mwmrc"
 grep -qi '^Mwm\*terminal:' "$CFG/mwmrc" ||
-	echo 'Mwm*terminal:                xterm' >>"$CFG/mwmrc"
+	echo 'Mwm*terminal:                foot' >>"$CFG/mwmrc"
 
 # ---- 5. xrdp and wayvnc out -----------------------------------------------------
 # Only now, with mwc and wayrdp built: a failed build leaves xrdp in place.

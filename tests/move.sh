@@ -5,8 +5,8 @@
 LOG=build/move.log
 . "$(dirname "$0")/lib.sh"
 
-require_tools Xwayland grim
-for tool in build/vinput build/pngtool build/xclient build/xdgc; do
+require_tools grim
+for tool in build/vinput build/pngtool build/xdgc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -16,21 +16,12 @@ mkdir -p "$(dirname "$RC")"
 MODE_MOVE=1
 MODE_RESIZE=2
 
-start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display"; exec sleep 300'
-wait_for "the startup command ran" test -s "$SMOKE_DIR/display"
-X_DISPLAY=$(cat "$SMOKE_DIR/display")
+start_mwc 'exec sleep 300'
 start_vinput
 refresh
 B=$(global theme border)
 T=$(global theme title)
 
-x11() {
-	local name=$1
-	shift
-	DISPLAY=$X_DISPLAY build/xclient class="$name" "$@" >"$SMOKE_DIR/$name.events" 2>&1 &
-	eval "PID_$name=$!"
-	check "$name is mapped" "[ -n \"\$(get $name x)\" ]"
-}
 wayland() {
 	local name=$1
 	shift
@@ -84,9 +75,11 @@ check "the window is gone" "[ -z \"\$(get premaxed x)\" ]"
 
 # ---- moving with the outline --------------------------------------------------
 
-x11 mover pos=100,100 size=300x200
+wayland mover size=300x200
+refresh
+X=$(get mover x) Y=$(get mover y)
 OW=$((300 + 2 * B)) OH=$((200 + 2 * B + T))
-TX=250 TY=$((100 + B + T / 2))
+TX=$((X + 150)) TY=$((Y + B + T / 2))
 
 settle
 do_input move "$TX" "$TY"
@@ -95,11 +88,11 @@ do_input move $((TX + 2)) $((TY + 2))
 check "a press and a little motion don't start a move" \
 	"[ \"\$(global cursor mode)\" = $MODE_MOVE ] && [ \"\$(global outline shown)\" = 0 ]"
 do_input move $((TX + 50)) $((TY + 30))
-outline_is "the outline follows the pointer" 150 130 "$OW" "$OH"
-geometry_is "the window stays where it is" mover 100 100 300 200
-feedback_is "the box shows the position" "+150_+130"
-pixel_is "the outline is drawn in the window's colour" 151 200 7387ad
-pixel_is "the title bar line is drawn too" 300 $((130 + B + T - 1)) 7387ad
+outline_is "the outline follows the pointer" $((X + 50)) $((Y + 30)) "$OW" "$OH"
+geometry_is "the window stays where it is" mover "$X" "$Y" 300 200
+feedback_is "the box shows the position" "+$((X + 50))_+$((Y + 30))"
+pixel_is "the outline is drawn in the window's colour" $((X + 51)) $((Y + 100)) 7387ad
+pixel_is "the title bar line is drawn too" $((X + 200)) $((Y + 30 + B + T - 1)) 7387ad
 refresh
 pixel_is "the box is drawn" $(($(global feedback x) + 2)) $(($(global feedback y) + 10)) aeb2c3
 # A fast mouse: the box is drawn about once a refresh, not for every motion event,
@@ -107,59 +100,61 @@ pixel_is "the box is drawn" $(($(global feedback x) + 2)) $(($(global feedback y
 draws=$(global feedback draws)
 do_input glide $((TX + 250)) $((TY + 130)) 200
 do_input glide $((TX + 50)) $((TY + 30)) 200
-feedback_is "after a fast move the box shows the position" "+150_+130"
+feedback_is "after a fast move the box shows the position" "+$((X + 50))_+$((Y + 30))"
 refresh
 [ $(($(global feedback draws) - draws)) -le 40 ] ||
 	fail "400 motion events drew the box $(($(global feedback draws) - draws)) times"
 echo "ok: 400 motion events drew the box $(($(global feedback draws) - draws)) times"
 do_input up left
-geometry_is "the window goes there when released" mover 150 130 300 200
+X=$((X + 50)) Y=$((Y + 30))
+geometry_is "the window goes there when released" mover "$X" "$Y" 300 200
 no_grab_left "nothing is left of the grab"
 
 settle
-TX=300 TY=$((130 + B + T / 2))
+TX=$((X + 150)) TY=$((Y + B + T / 2))
 do_input move "$TX" "$TY"
 do_input down left
 do_input move $((TX + 2)) "$TY"
 do_input up left
-geometry_is "a small slip doesn't move the window" mover 150 130 300 200
+geometry_is "a small slip doesn't move the window" mover "$X" "$Y" 300 200
 
 settle
 do_input move "$TX" "$TY"
 do_input down left
 do_input move $((TX + 80)) $((TY + 40))
-outline_is "dragging again" 230 170 "$OW" "$OH"
+outline_is "dragging again" $((X + 80)) $((Y + 40)) "$OW" "$OH"
 do_input key Escape
 no_grab_left "Escape ends the drag"
-geometry_is "and leaves the window where it was" mover 150 130 300 200
+geometry_is "and leaves the window where it was" mover "$X" "$Y" 300 200
 do_input up left
-geometry_is "the release doesn't change that" mover 150 130 300 200
+geometry_is "the release doesn't change that" mover "$X" "$Y" 300 200
 
 # ---- moving with the keyboard ---------------------------------------------------
 
 do_input key alt+F7
 check "Alt+F7 starts a move" "[ \"\$(global cursor mode)\" = $MODE_MOVE ]"
-outline_is "and shows the outline at once" 150 130 "$OW" "$OH"
-feedback_is "and the box" "+150_+130"
+outline_is "and shows the outline at once" "$X" "$Y" "$OW" "$OH"
+feedback_is "and the box" "+${X}_+${Y}"
 do_input key Right
-outline_is "an arrow key moves 10 px" 160 130 "$OW" "$OH"
+outline_is "an arrow key moves 10 px" $((X + 10)) "$Y" "$OW" "$OH"
 do_input key Down
-outline_is "in every direction" 160 140 "$OW" "$OH"
+outline_is "in every direction" $((X + 10)) $((Y + 10)) "$OW" "$OH"
 do_input key shift+Left
-outline_is "Shift+arrow moves 1 px" 159 140 "$OW" "$OH"
+outline_is "Shift+arrow moves 1 px" $((X + 9)) $((Y + 10)) "$OW" "$OH"
 do_input key shift+Up
-outline_is "in every direction" 159 139 "$OW" "$OH"
+outline_is "in every direction" $((X + 9)) $((Y + 9)) "$OW" "$OH"
 do_input key a
 check "other keys do nothing" "[ \"\$(global cursor mode)\" = $MODE_MOVE ]"
-geometry_is "the window hasn't moved yet" mover 150 130 300 200
+geometry_is "the window hasn't moved yet" mover "$X" "$Y" 300 200
 do_input key Return
-geometry_is "Return confirms" mover 159 139 300 200
+X=$((X + 9)) Y=$((Y + 9))
+geometry_is "Return confirms" mover "$X" "$Y" 300 200
 no_grab_left "nothing is left of the grab"
 
 # Held down, an arrow repeats, as keys do for clients (600 ms, then 25 a second).
 do_input key alt+F7
 do_input press Right
-check "a held arrow repeats" "[ \"\$(global outline x)\" -ge 209 ]"
+check "a held arrow repeats" "[ \"\$(global outline x)\" -ge $((X + 50)) ]"
 do_input lift Right
 refresh
 held_x=$(global outline x)
@@ -168,7 +163,7 @@ refresh
 [ "$(global outline x)" = "$held_x" ] || fail "the repeat goes on after the key went up"
 echo "ok: and stops when it goes up"
 do_input key Escape
-geometry_is "Escape: the window stays where it was" mover 159 139 300 200
+geometry_is "Escape: the window stays where it was" mover "$X" "$Y" 300 200
 
 # Its own repeat follows mwmrc as the clients' does; with rate 0 a held arrow is one
 # step. (A reload ends the move, so it can't change the rate in the middle of one.)
@@ -195,8 +190,9 @@ do_input lift Right
 # The default delay, 600 ms, has no repeat yet: a second step shows mwmrc's 100 ms, if the
 # reading was taken in time to tell.
 [ $((t1 - t0)) -lt 600 ] || fail "too slow to tell the delay: read $((t1 - t0)) ms after the press"
-[ "$early" -gt 169 ] || fail "no repeat $((t1 - t0)) ms after the press: the delay isn't mwmrc's 100 ms"
-echo "ok: a shorter delay ($early within $((t1 - t0)) ms)"
+[ "$early" -gt $((X + 10)) ] ||
+	fail "no repeat $((t1 - t0)) ms after the press: the delay isn't mwmrc's 100 ms"
+echo "ok: a shorter delay ($((early - X)) px within $((t1 - t0)) ms)"
 # Steps between the readings over the longest time they can have been apart: 50 a
 # second gives about 50, the default 25 about 25.
 # Late enough, the outline stops at the edge of the output and the steps run out.
@@ -209,20 +205,20 @@ printf 'Mwm*keyboardRepeatDelay: 100\nMwm*keyboardRepeatRate: 0\n' >"$RC"
 reload_mwc
 do_input key alt+F7
 do_input press Right
-outline_is "rate 0: one step" 169 139 "$OW" "$OH"
+outline_is "rate 0: one step" $((X + 10)) "$Y" "$OW" "$OH"
 sleep 0.8 # past the default delay too, which would have shown a second step
-outline_is "and no more" 169 139 "$OW" "$OH"
+outline_is "and no more" $((X + 10)) "$Y" "$OW" "$OH"
 do_input lift Right
 do_input key Escape
 rm "$RC"
 reload_mwc
-geometry_is "the window stays where it was" mover 159 139 300 200
+geometry_is "the window stays where it was" mover "$X" "$Y" 300 200
 
 do_input key alt+F7
 do_input key Left
-outline_is "a new move" 149 139 "$OW" "$OH"
+outline_is "a new move" $((X - 10)) "$Y" "$OW" "$OH"
 do_input key Escape
-geometry_is "Escape cancels" mover 159 139 300 200
+geometry_is "Escape cancels" mover "$X" "$Y" 300 200
 no_grab_left "nothing is left of the grab"
 
 do_input key alt+space
@@ -232,54 +228,45 @@ do_input key Escape
 
 # ---- resizing -------------------------------------------------------------------
 
-RX=$((159 + OW - 2)) RY=$((139 + OH - 2))
+RX=$((X + OW - 2)) RY=$((Y + OH - 2))
 do_input move "$RX" "$RY"
 do_input down left
 do_input move $((RX + 60)) $((RY + 40))
-outline_is "resizing: the outline grows" 159 139 $((OW + 60)) $((OH + 40))
-geometry_is "the window keeps its size meanwhile" mover 159 139 300 200
+outline_is "resizing: the outline grows" "$X" "$Y" $((OW + 60)) $((OH + 40))
+geometry_is "the window keeps its size meanwhile" mover "$X" "$Y" 300 200
 feedback_is "the box shows the size" "360_x_240"
 do_input up left
-geometry_is "it takes the new size when released" mover 159 139 360 240
+geometry_is "it takes the new size when released" mover "$X" "$Y" 360 240
 no_grab_left "nothing is left of the grab"
 
-do_input move $((159 + 1)) $((139 + 1))
+do_input move $((X + 1)) $((Y + 1))
 do_input down left
-do_input move $((159 + 1 + 40)) $((139 + 1 + 20))
-outline_is "from the top left, the opposite corner stays" 199 159 $((OW + 60 - 40)) $((OH + 40 - 20))
+do_input move $((X + 1 + 40)) $((Y + 1 + 20))
+outline_is "from the top left, the opposite corner stays" $((X + 40)) $((Y + 20)) \
+	$((OW + 60 - 40)) $((OH + 40 - 20))
 do_input key Escape
-geometry_is "Escape cancels a resize" mover 159 139 360 240
+geometry_is "Escape cancels a resize" mover "$X" "$Y" 360 240
 no_grab_left "nothing is left of the grab"
 do_input up left
 
 do_input key alt+F8
 check "Alt+F8 starts a resize" "[ \"\$(global cursor mode)\" = $MODE_RESIZE ]"
-outline_is "and shows the outline at once" 159 139 $((OW + 60)) $((OH + 40))
+outline_is "and shows the outline at once" "$X" "$Y" $((OW + 60)) $((OH + 40))
 do_input key Right
 do_input key shift+Down
-outline_is "arrow keys resize as well" 159 139 $((OW + 70)) $((OH + 41))
+outline_is "arrow keys resize as well" "$X" "$Y" $((OW + 70)) $((OH + 41))
 do_input key Return
-geometry_is "Return confirms" mover 159 139 370 241
+geometry_is "Return confirms" mover "$X" "$Y" 370 241
 no_grab_left "nothing is left of the grab"
 stop mover
 
-# Sizes in the client's own units, like 80x24 for a terminal.
-x11 stepper pos=100,100 size=320x210 base=20x10 inc=30x20
-do_input key alt+F8
-feedback_is "the box counts steps above the base size" "10_x_10"
-do_input key Right
-do_input key Right
-do_input key Right
-feedback_is "and follows them" "11_x_10"
-do_input key Escape
-stop stepper
-
-# The axis not being dragged must keep its size, steps or not.
-x11 edgey pos=100,100 size=325x215 inc=30x20
+# The axis not being dragged must keep its size.
+wayland edgey size=325x215
 refresh
-do_input move $((100 + 325 + 2 * B - 2)) $((100 + 100))
+X=$(get edgey x) Y=$(get edgey y)
+do_input move $((X + 325 + 2 * B - 2)) $((Y + 100))
 do_input down left
-do_input move $((100 + 325 + 2 * B + 60)) $((100 + 100))
+do_input move $((X + 325 + 2 * B + 60)) $((Y + 100))
 do_input up left
 check "the right edge only changes the width" \
 	"[ \"\$(get edgey h)\" = 215 ] && [ \"\$(get edgey w)\" -gt 325 ]"
@@ -317,7 +304,9 @@ stop wmover
 
 # ---- a maximized window -----------------------------------------------------------
 
-x11 maxed pos=100,100 size=300x200
+wayland maxed size=300x200
+refresh
+X=$(get maxed x) Y=$(get maxed y)
 do_input key alt+F10
 check "the window is maximized" "[ \"\$(get maxed max)\" = 1 ]"
 settle
@@ -332,17 +321,19 @@ check "Escape maximizes it again" \
 no_grab_left "nothing is left of the grab"
 do_input up left
 do_input key alt+F10
-geometry_is "and it still remembers its place" maxed 100 100 300 200
+geometry_is "and it still remembers its place" maxed "$X" "$Y" 300 200
 stop maxed
 
 # ---- the window goes away during a drag --------------------------------------------
 
-x11 victim pos=100,100 size=300x200
+wayland victim size=300x200
+refresh
+X=$(get victim x) Y=$(get victim y)
 settle
-do_input move 250 $((100 + B + T / 2))
+do_input move $((X + 150)) $((Y + B + T / 2))
 do_input down left
-do_input move 300 200
-outline_is "dragging a window" 150 $((100 + 200 - 100 - B - T / 2)) "$OW" "$OH"
+do_input move $((X + 200)) $((Y + 100))
+outline_is "dragging a window" $((X + 50)) $((Y + 100 - B - T / 2)) "$OW" "$OH"
 stop victim
 no_grab_left "when it goes away, so does the grab"
 do_input up left
@@ -353,180 +344,35 @@ kill -0 "$pid" || fail "mwc died"
 echo 'Mwm*moveOpaque: true' >"$RC"
 reload_mwc
 
-x11 opaque pos=100,100 size=300x200
+wayland opaque size=300x200
+refresh
+X=$(get opaque x) Y=$(get opaque y)
 settle
-TX=250 TY=$((100 + B + T / 2))
+TX=$((X + 150)) TY=$((Y + B + T / 2))
 do_input move "$TX" "$TY"
 do_input down left
 do_input move $((TX + 50)) $((TY + 30))
-geometry_is "moveOpaque: the window itself follows the pointer" opaque 150 130 300 200
+geometry_is "moveOpaque: the window itself follows the pointer" opaque \
+	$((X + 50)) $((Y + 30)) 300 200
 check "moveOpaque: no outline" "[ \"\$(global outline shown)\" = 0 ]"
-feedback_is "moveOpaque: the box stays" "+150_+130"
+feedback_is "moveOpaque: the box stays" "+$((X + 50))_+$((Y + 30))"
 do_input key Escape
-geometry_is "moveOpaque: Escape puts it back" opaque 100 100 300 200
+geometry_is "moveOpaque: Escape puts it back" opaque "$X" "$Y" 300 200
 do_input up left
 no_grab_left "nothing is left of the grab"
 
-RX=$((100 + OW - 2)) RY=$((100 + OH - 2))
+RX=$((X + OW - 2)) RY=$((Y + OH - 2))
 do_input move "$RX" "$RY"
 do_input down left
 do_input move $((RX + 60)) $((RY + 40))
-geometry_is "moveOpaque: the window itself grows" opaque 100 100 360 240
+geometry_is "moveOpaque: the window itself grows" opaque "$X" "$Y" 360 240
 do_input key Escape
-geometry_is "moveOpaque: Escape restores the size" opaque 100 100 300 200
+geometry_is "moveOpaque: Escape restores the size" opaque "$X" "$Y" 300 200
 do_input up left
 stop opaque
 
-# Faster than the client draws, as a 1000 Hz mouse is: each size waits for the one
-# before, as for Wayland, instead of a ConfigureWindow for every motion. 200 motions at
-# once, counted by the ConfigureNotify the X window gets.
-x11 xglide pos=100,100 size=300x200 sizes=1
-settle
-do_input move "$RX" "$RY"
-do_input down left
-before=$(grep -c '^size' "$SMOKE_DIR/xglide.events")
-do_input glide $((RX + 200)) $((RY + 150)) 200
-geometry_is "moveOpaque, X11: many motions end at the last one" xglide 100 100 500 350
-do_input up left
-# Counted once the last one is logged, which follows all before it.
-wait_for "xclient has seen the last size" grep -q '^size 500x350$' "$SMOKE_DIR/xglide.events"
-n=$(($(grep -c '^size' "$SMOKE_DIR/xglide.events") - before))
-[ "$n" -le 60 ] || fail "200 motions resized the X11 window $n times"
-echo "ok: 200 motions resized the X11 window $n times"
-no_grab_left "nothing is left of the grab"
-stop xglide
-
-# What it waits for is a commit, not xsurface's size, which every ConfigureNotify sets:
-# one that is stale, or sent by any client, would hold the resize until the release.
-x11 xspoof pos=100,100 size=300x200 spoof_after="$SMOKE_DIR/spoof"
-settle
-do_input move "$RX" "$RY"
-do_input down left
-do_input move $((RX + 10)) $((RY + 10))
-geometry_is "moveOpaque, X11: resizing" xspoof 100 100 310 210
-touch "$SMOKE_DIR/spoof"
-wait_for "a ConfigureNotify saying 1x1 is sent" grep -q '^spoofed' "$SMOKE_DIR/xspoof.events"
-check "wlroots has it" "[ \"\$(get xspoof xw)\" = 1 ]"
-do_input move $((RX + 40)) $((RY + 30))
-geometry_is "moveOpaque, X11: it still follows the pointer" xspoof 100 100 340 230
-do_input up left
-stop xspoof
-
-# A configure that keeps the size gets no commit: X changes nothing. Here the answer to
-# a resize to the size it has, which the window asks for itself; the next resize must
-# follow the pointer all the same.
-x11 xsame pos=100,100 size=300x200 grow=300x200
-wait_for "the X11 window asked for the size it has" grep -q '^grown' "$SMOKE_DIR/xsame.events"
-settle
-do_input move "$RX" "$RY"
-do_input down left
-do_input move $((RX + 40)) $((RY + 30))
-geometry_is "moveOpaque, X11: after that it resizes with the pointer" xsame 100 100 340 230
-do_input up left
-stop xsame
-
-# From the left edge the right one stays, also before the window has the new size: with
-# Xwayland stopped, none comes. The frame (nx, its scene node) moves with the commit.
-# CONT_ON_EXIT continues it should the test fail meanwhile.
-x11 xleft pos=200,100 size=300x200 geom=1
-settle
-refresh
-R0=$(($(get xleft nx) + $(get xleft w)))
-LX=$(($(get xleft x) + 1)) LY=$(($(get xleft y) + OH / 2))
-right() { echo $(($(get xleft nx) + $(get xleft w))); }
-do_input move "$LX" "$LY"
-do_input down left
-do_input move $((LX - 10)) "$LY"
-check "moveOpaque, X11: it grows to the left" \
-	"[ \"\$(get xleft w)\" = 310 ] && [ \"\$(right)\" = $R0 ]"
-XW=$(pgrep -f "^Xwayland $X_DISPLAY ") || fail "no Xwayland for $X_DISPLAY"
-# A step taken while Xwayland is stopped; sets $right to the right edge after it and
-# $cname to the pointer's shape. Nothing in it may need an answer from X: a grab or a
-# menu reads _MOTIF_WM_HINTS and would wait.
-stopped() {
-	CONT_ON_EXIT=$XW
-	kill -STOP $XW
-	eval "$1"
-	check "the pointer is there" "[ \"\$(global cursor x)\" = $2 ]"
-	right=$(right)
-	cname=$(global cursor name)
-	kill -CONT $XW
-	CONT_ON_EXIT=
-}
-# Where X has the window is where its frame is drawn (no reparenting: root coordinates).
-x_is() {
-	[ "$(grep '^geom' "$SMOKE_DIR/$1.events" | tail -n1)" = "geom $(($(get "$1" nx) + \
-		B)),$(($(get "$1" ny) + B + $(global theme title))) $(get "$1" w)x$(get "$1" h)" ]
-}
-stopped 'do_input move $((LX - 50)) "$LY"' $((LX - 50))
-[ "$right" = "$R0" ] || fail "before the commit the right edge went from $R0 to $right"
-echo "ok: before the commit the right edge stays"
-check "moveOpaque, X11: then it has the size, the right edge where it was" \
-	"[ \"\$(get xleft w)\" = 350 ] && [ \"\$(right)\" = $R0 ]"
-# Released with a size still waiting: the one applied at the end is anchored too. Its
-# right border, where it is drawn, is one to resize by before the commit as well.
-stopped 'do_input move $((LX - 70)) "$LY"; do_input move $((LX - 90)) "$LY"; do_input up left
-	do_input move $((R0 + 2 * B - 2)) "$LY"' $((R0 + 2 * B - 2))
-[ "$right" = "$R0" ] || fail "released, before the commit the right edge went from $R0 to $right"
-echo "ok: released, before the commit the right edge stays"
-[ "$cname" = e-resize ] || fail "before the commit, its right border shows '$cname'"
-echo "ok: before the commit, its right border is one"
-check "moveOpaque, X11: released, it has the last size, the right edge where it was" \
-	"[ \"\$(get xleft w)\" = 390 ] && [ \"\$(right)\" = $R0 ] && \
-	 [ \"\$(get xleft nx)\" = \"\$(get xleft x)\" ]"
-check "X has it where its frame is" "x_is xleft"
-no_grab_left "nothing is left of the grab"
-stop xleft
-
-# The frame changes size while a size from the top is on its way: a reload with a larger
-# title. The window ends where X was told, its frame with it.
-x11 xtop pos=200,200 size=300x200 geom=1
-settle
-refresh
-TX=$(($(get xtop x) + OW / 2)) TY=$(($(get xtop y) + 1))
-T0=$(global theme title)
-do_input move "$TX" "$TY"
-do_input down left
-do_input move "$TX" $((TY - 10))
-check "moveOpaque, X11: it grows to the top" "[ \"\$(get xtop h)\" = 210 ]"
-CONT_ON_EXIT=$XW
-kill -STOP $XW
-do_input move "$TX" $((TY - 50))
-check "the pointer is there" "[ \"\$(global cursor y)\" = $((TY - 50)) ]"
-printf 'Mwm*moveOpaque: true\nMwm*fontList: Sans Bold 24\n' >"$RC"
-reload_mwc
-check "the reload came first" "[ \"\$(get xtop h)\" = 210 ]"
-kill -CONT $XW
-CONT_ON_EXIT=
-check "the title is larger" "[ \"\$(global theme title)\" -gt $T0 ]"
-check "moveOpaque, X11: it has the size, its frame where mwc has it" \
-	"[ \"\$(get xtop h)\" = 250 ] && [ \"\$(get xtop ny)\" = \"\$(get xtop y)\" ]"
-check "X has it where its frame is" "x_is xtop"
-# The resize goes on from that frame: its bottom stays.
-bottom=$(($(get xtop ny) + $(get xtop h)))
-do_input move "$TX" $((TY - 60))
-check "moveOpaque, X11: after the reload the bottom stays" \
-	"[ \"\$(get xtop h)\" = 260 ] && [ \$((\$(get xtop ny) + \$(get xtop h))) = $bottom ]"
-do_input up left
-no_grab_left "nothing is left of the grab"
-stop xtop
-echo 'Mwm*moveOpaque: true' >"$RC"
-reload_mwc
-
 # A reload in the middle of a resize: the outputs are as they were, so the grab goes on,
 # with the size it may be waiting to send.
-x11 xreload pos=100,100 size=300x200
-settle
-do_input move "$RX" "$RY"
-do_input down left
-do_input move $((RX + 10)) $((RY + 10))
-geometry_is "moveOpaque, X11: resizing" xreload 100 100 310 210
-reload_mwc
-check "after a reload the grab goes on" "[ \"\$(global cursor mode)\" = $MODE_RESIZE ]"
-do_input move $((RX + 40)) $((RY + 30))
-geometry_is "moveOpaque, X11: it still follows the pointer" xreload 100 100 340 230
-do_input up left
-stop xreload
 wayland wreload size=300x200
 refresh
 WX=$(get wreload x) WY=$(get wreload y)
@@ -541,37 +387,6 @@ geometry_is "moveOpaque, Wayland: it still follows the pointer" wreload \
 	$((WX + 40)) $((WY + 20)) 260 180
 do_input up left
 stop wreload
-
-# A ConfigureNotify, stale or sent by another client, says nothing of the size mwc asked
-# for: a move or resize from the keyboard starts from mwc's own.
-for how in F8 F7; do
-	x11 xspoof$how pos=100,100 size=300x200 spoof_after="$SMOKE_DIR/spoof$how"
-	settle
-	touch "$SMOKE_DIR/spoof$how"
-	wait_for "a ConfigureNotify saying 1x1 is sent" \
-		grep -q '^spoofed' "$SMOKE_DIR/xspoof$how.events"
-	check "wlroots has it" "[ \"\$(get xspoof$how xw)\" = 1 ]"
-	do_input key alt+$how
-	if [ $how = F8 ]; then
-		check "Alt+F8 starts a resize" "[ \"\$(global cursor mode)\" = $MODE_RESIZE ]"
-		# Escape goes back to the size mwc has, not to what the ConfigureNotify said.
-		do_input key Right
-		geometry_is "resizing from the keyboard" xspoof$how 100 100 310 200
-		do_input key Escape
-		geometry_is "Escape puts it back to its own size" xspoof$how 100 100 300 200
-		do_input key alt+$how
-		check "Alt+F8 starts a resize" "[ \"\$(global cursor mode)\" = $MODE_RESIZE ]"
-		do_input key Right
-		do_input key Return
-		geometry_is "resized from the keyboard, from its own size" xspoof$how 100 100 310 200
-	else
-		check "Alt+F7 starts a move" "[ \"\$(global cursor mode)\" = $MODE_MOVE ]"
-		do_input key Right
-		do_input key Return
-		geometry_is "moved from the keyboard, it keeps its size" xspoof$how 110 100 300 200
-	fi
-	stop xspoof$how
-done
 
 wayland wopaque size=300x200
 refresh
@@ -612,15 +427,15 @@ stop_mwc
 
 echo 'Mwm*moveOpaque: true' >"$RC"
 export MWC_MOVE_OPAQUE=0
-start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display2"; exec sleep 300'
-wait_for "the startup command ran" test -s "$SMOKE_DIR/display2"
-X_DISPLAY=$(cat "$SMOKE_DIR/display2")
+start_mwc 'exec sleep 300'
 start_vinput
-x11 envwins pos=100,100 size=300x200
+wayland envwins size=300x200
+refresh
+X=$(get envwins x) Y=$(get envwins y)
 settle
-do_input move 250 $((100 + B + T / 2))
+do_input move $((X + 150)) $((Y + B + T / 2))
 do_input down left
-do_input move 300 200
+do_input move $((X + 200)) $((Y + 100))
 check "MWC_MOVE_OPAQUE=0 beats the file" "[ \"\$(global outline shown)\" = 1 ]"
 do_input key Escape
 do_input up left
@@ -631,17 +446,16 @@ stop_mwc
 
 # Something that is no boolean is reported, and the file decides.
 export MWC_MOVE_OPAQUE=maybe
-rm -f "$SMOKE_DIR/display2"
-start_mwc 'echo "$DISPLAY" > "$SMOKE_DIR/display2"; exec sleep 300'
-wait_for "the startup command ran" test -s "$SMOKE_DIR/display2"
-X_DISPLAY=$(cat "$SMOKE_DIR/display2")
+start_mwc 'exec sleep 300'
 start_vinput
-x11 nonsense pos=100,100 size=300x200
+wayland nonsense size=300x200
+refresh
+X=$(get nonsense x) Y=$(get nonsense y)
 settle
-do_input move 250 $((100 + B + T / 2))
+do_input move $((X + 150)) $((Y + B + T / 2))
 do_input down left
-do_input move 300 200
-check "a value that is no boolean falls back to the file" "[ \"\$(get nonsense x)\" != 100 ]"
+do_input move $((X + 200)) $((Y + 100))
+check "a value that is no boolean falls back to the file" "[ \"\$(get nonsense x)\" != $X ]"
 do_input up left
 grep -q 'ignoring MWC_MOVE_OPAQUE value maybe' "$LOG" || fail "the bad value is not reported"
 echo "ok: the bad value is reported"

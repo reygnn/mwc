@@ -23,7 +23,7 @@ jobs:
       - name: make lint, build with -Werror, make analyze, make check
         run: |
           mkdir -m 777 logs
-          docker run --rm --network=none --tmpfs /tmp/.X11-unix:mode=1777 \
+          docker run --rm --network=none \
             -v "$PWD:/src/mwc:ro" -v "$PWD/logs:/logs" mwc-test sh -c '
               cp -r /src/mwc /tmp/mwc && cd /tmp/mwc && make clean &&
               make lint && make CFLAGS="-O2 -g -Werror" && make analyze &&

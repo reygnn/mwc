@@ -1,18 +1,17 @@
 #!/bin/bash
-# Headless smoke test: start mwc, connect a Wayland client (foot) and an X11
-# client (xterm via XWayland), take a screenshot, quit.
+# Headless smoke test: start mwc, connect a Wayland client (foot), take a
+# screenshot, quit.
 # Output goes to build/smoke.log and build/smoke.png. Exits non-zero on failure.
 LOG=build/smoke.log
 PNG=build/smoke.png
 . "$(dirname "$0")/lib.sh"
 
-require_tools foot xterm Xwayland grim
+require_tools foot grim
 
 marker='touch "$SMOKE_DIR/$0"; exec sleep 120'
-start_mwc "foot sh -c '$marker' foot-up & exec xterm -e sh -c '$marker' xterm-up"
+start_mwc "exec foot sh -c '$marker' foot-up"
 
 wait_for "foot connected (Wayland)" test -e "$SMOKE_DIR/foot-up"
-wait_for "xterm connected (XWayland)" test -e "$SMOKE_DIR/xterm-up"
 
 # Give the frames a moment to be drawn before the screenshot.
 sleep 1

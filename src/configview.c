@@ -1,19 +1,16 @@
 /*
- * configview.c - mwmrc applied to windows: by their instance, class or app_id
- * through config.c's client rules, and the reload that applies it all again.
+ * configview.c - mwmrc applied to windows: by their app_id through config.c's client
+ * rules, and the reload that applies it all again.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
-#include <wlr/xwayland.h>
 #include "mwc.h"
 
-/* X11 windows go by instance or class, Wayland ones by app_id. */
+/* The app_id is both the name and the class mwmrc's rules go by. */
 static void view_names(struct view *view, const char **name, const char **class)
 {
 	*name = *class = view_app_id(view);
-	if (view->type == VIEW_XWAYLAND && view->xsurface->instance)
-		*name = view->xsurface->instance;
 }
 
 /* Dialogs belong with their window, not in the program's corner or the dock. */

@@ -535,8 +535,8 @@ static void dd_selection(void *data, struct wl_data_device *dd, struct wl_data_o
 	wl_data_offer_receive(o, mime, fds[1]);
 	close(fds[1]);
 	if (paste_reads) {
-		/* The owner writes through mwc (Xwayland's selection bridge), not through
-		 * this connection: reading here doesn't hold it up. */
+		/* The owner writes to the pipe directly, not through this connection:
+		 * reading here doesn't hold it up. */
 		wl_display_flush(display);
 		char buf[65536];
 		size_t total = 0;
