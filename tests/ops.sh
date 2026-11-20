@@ -46,10 +46,13 @@ owner() {
 focused_app() { awk '$1 == "view" && / active=1 / { sub("app=", "", $2); print $2; exit }' \
 	"$MWC_TEST_STATE"; }
 
-# Running, not a zombie bash has yet to reap.
+# Running, not a zombie bash has yet to reap. The state follows the name in brackets,
+# which may hold spaces.
 alive() {
-	local p=${PIDS[$1]-}
-	[ -n "$p" ] && [ -r "/proc/$p/stat" ] && [ "$(cut -d' ' -f3 "/proc/$p/stat")" != Z ]
+	local p=${PIDS[$1]-} s
+	[ -n "$p" ] && s=$(<"/proc/$p/stat") 2>/dev/null || return 1
+	s=${s##*) }
+	[ "${s%% *}" != Z ]
 }
 
 # Clients that ended, as when their last window was closed: forgotten.
@@ -198,7 +201,7 @@ op_app() {
 }
 op_size() {
 	target || return 0
-	local s=$((150 + R % 400))x$((100 + R / 400 % 300))
+	local s=$((150 + R % 400))x$((100 + R / 7 % 300))
 	trace size "$TARGET" "$s"
 	cmd "$TARGET" "size $s"
 }

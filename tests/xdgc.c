@@ -22,6 +22,7 @@
  *     grow=WxH     after mapping, take that size of its own accord; says "grown"
  *     grow_ms=MS   wait that long before, default 1000
  *     dialog=NAME  also open a child toplevel with this app_id
+ *     subdialog=NAME  and a child of that one
  *     dialog_after=FILE  open it only once FILE exists, after all else below; says
  *                  "dialog opened"
  *     dialog_minimize_after=FILE  then, once FILE exists, the dialog asks to be
@@ -108,7 +109,7 @@ static int popup_x, popup_y, popup_w, popup_h;
 static const char *popup_after, *fixed_after;
 static const char *dialog_after, *minimize_after, *rehide_after, *reshow_after;
 static const char *unframe_after, *dialog_minimize_after, *control;
-static const char *dialog;
+static const char *dialog, *subdialog;
 static struct window *main_win, *dialog_win;
 static int sub_x, sub_y, sub_w, sub_h;
 static struct wl_subcompositor *subcompositor;
@@ -587,6 +588,11 @@ static void open_dialog(struct wl_display *display)
 	if (!alive(main_win))
 		return;
 	dialog_win = open_window(dialog, main_win, 120, 80, false);
+	if (subdialog) {
+		wl_display_roundtrip(display);
+		wl_display_roundtrip(display);
+		open_window(subdialog, dialog_win, 100, 60, false);
+	}
 	if (unparent) {
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
@@ -814,6 +820,8 @@ int main(int argc, char *argv[])
 			dialog_minimize_after = v;
 		else if (!strcmp(argv[i], "control"))
 			control = v;
+		else if (!strcmp(argv[i], "subdialog"))
+			subdialog = v;
 		else if (!strcmp(argv[i], "sub"))
 			sscanf(v, "%d,%d,%d,%d", &sub_x, &sub_y, &sub_w, &sub_h);
 	}

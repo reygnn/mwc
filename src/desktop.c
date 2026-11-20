@@ -235,10 +235,14 @@ static void recheck_all(struct server *server, bool always)
 void desktop_config_changed(struct server *server)
 {
 	struct view *v;
-	/* Windows in sight stay in sight: one that is no longer everywhere stays here. */
-	wl_list_for_each(v, &server->views, link) {
-		if (v->mapped && !v->off_desktop)
-			v->desktop = desktop_for(v);
+	/* Windows in sight stay in sight: one that is no longer everywhere stays here.
+	 * The windows first, whose desktop their dialogs then take. */
+	for (int dialogs = 0; dialogs <= 1; dialogs++) {
+		wl_list_for_each(v, &server->views, link) {
+			if (v->mapped && !v->off_desktop &&
+					(view_transient_root(v) != v) == dialogs)
+				v->desktop = desktop_for(v);
+		}
 	}
 	recheck_all(server, true);
 }

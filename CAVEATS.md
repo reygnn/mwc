@@ -96,6 +96,9 @@ and only the shell's message ("not found") is in mwc's log.
 Clients aren't told about desktops, and a capture of a monitor sees the current desktop
 only.
 
+The icon of a window on all desktops takes a slot no icon of any desktop has, so on one
+desktop its row may show a gap where an icon of another desktop sits.
+
 
 ## The first monitor
 

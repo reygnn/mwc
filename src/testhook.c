@@ -140,10 +140,12 @@ static int dump_state(int signal, void *data)
 		fprintf(f, "output_%s x=%d y=%d w=%d h=%d scale=%d\n", each->wlr_output->name,
 			b.x, b.y, b.width, b.height, (int)(each->wlr_output->scale * 100));
 	}
-	struct wlr_box ta = output_first(server) ? tile_layout_area(server) :
-		(struct wlr_box){ 0 };
-	fprintf(f, "tiling on=%d area=%d,%d,%d,%d gap=%d\n", server->tiling, ta.x, ta.y,
-		ta.width, ta.height, MWC_GAP);
+	struct output *first = output_first(server);
+	struct wlr_box ta = first ? tile_layout_area(server) : (struct wlr_box){ 0 };
+	struct wlr_box fu = first ? first->usable : (struct wlr_box){ 0 };
+	fprintf(f, "tiling on=%d area=%d,%d,%d,%d usable=%d,%d,%d,%d gap=%d\n",
+		server->tiling, ta.x, ta.y, ta.width, ta.height, fu.x, fu.y, fu.width,
+		fu.height, MWC_GAP);
 	fprintf(f, "desktop current=%d\n", server->desktop + 1);
 	int focused = 0;
 	wl_list_for_each(v, &server->views, link)

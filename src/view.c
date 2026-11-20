@@ -1552,6 +1552,17 @@ static void view_handle_map(struct view *view)
 	}
 }
 
+/* Whether a window v belongs to, other than going, is hidden itself. */
+static bool hidden_above(struct view *v, struct view *going)
+{
+	struct view *p = view_parent(v);
+	for (int i = 0; p && i < 16; i++, p = view_parent(p)) {
+		if (p != going && view_hidden_by_state(p))
+			return true;
+	}
+	return false;
+}
+
 static void view_handle_unmap(struct view *view)
 {
 	struct server *server = view->server;
@@ -1565,10 +1576,12 @@ static void view_handle_unmap(struct view *view)
 	free(view->known_title);
 	view->known_title = NULL;
 	tabs_view_gone(view);
-	/* Dialogs hidden with it have nothing left to come back with. */
+	/* Dialogs hidden with it have nothing left to come back with, unless a window
+	 * further up is hidden as well. */
 	struct view *v, *shown = NULL;
 	wl_list_for_each(v, &server->views, link) {
-		if (v->hidden_with_parent && view_is_transient_of(v, view)) {
+		if (v->hidden_with_parent && view_is_transient_of(v, view) &&
+				!hidden_above(v, view)) {
 			v->hidden_with_parent = false;
 			view_show(v, true);
 			shown = v;

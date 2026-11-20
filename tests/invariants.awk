@@ -37,16 +37,15 @@ $1 == "view" {
 $1 == "desktop" { current = field($0, "current") + 0 }
 $1 == "focus" { layer = field($0, "layer") + 0 }
 $1 == "iconbox" { iconfocus = field($0, "focused") + 0; iconbox = field($0, "on") + 0 }
+# The layout's area and the usable area of the output it is on, the first one.
 $1 == "tiling" {
 	tiling = field($0, "on") + 0; gap = field($0, "gap") + 0
 	split(field($0, "area"), a, ",")
 	ax = a[1] + 0; ay = a[2] + 0; aw = a[3] + 0; ah = a[4] + 0
+	split(field($0, "usable"), u, ",")
+	ux = u[1] + 0; uy = u[2] + 0; uw = u[3] + 0; uh = u[4] + 0
 }
 $1 == "seat" { seatkb = field($0, "keyboard") }
-$1 == "output" && !ux_set {
-	ux = field($0, "ux") + 0; uy = field($0, "uy") + 0
-	uw = field($0, "uw") + 0; uh = field($0, "uh") + 0; ux_set = 1
-}
 
 END {
 	active = 0; kb = 0
@@ -110,6 +109,8 @@ END {
 		# A dialog: hidden only with a window, and on its window's desktop.
 		if (v[i, "hidden"] && r == i)
 			bad(app[i] " is hidden with its window but has none")
+		if (r && r != i && v[i, "visible"] && (v[r, "min"] || v[r, "tab_hidden"]))
+			bad(app[i] " is in sight, its window " app[r] " an icon or a hidden tab")
 		if (r && r != i && !v[i, "everywhere"] && v[i, "desktop"] != v[r, "desktop"])
 			bad(app[i] " is on desktop " v[i, "desktop"] ", its window " app[r] \
 				" on " v[r, "desktop"])
@@ -184,8 +185,8 @@ END {
 	if (mains == 1 && (cx[main] + cw[main] != x1 || cy[main] != y0 ||
 			cy[main] + ch[main] != y1))
 		bad(app[main] ", the main window, isn't on the right at full height")
-	# The stack, top to bottom: one column, a gap between, the last open one to the
-	# bottom.
+	# The stack, top to bottom: one column, a gap between, its last cell to the bottom
+	# if any of it is rolled out.
 	s = 0
 	for (p = 1; p <= m; p++)
 		if (!v[tl[p], "tile_main"])

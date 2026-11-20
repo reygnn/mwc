@@ -185,6 +185,29 @@ do_input key alt+F4
 check "the dialog closes" "[ -z \"\$(get orphan x)\" ]"
 wait "$PID_orphanmain" 2>/dev/null
 
+# A dialog of a dialog, hidden with their window: the dialog between going away doesn't
+# bring it back while the window is an icon.
+mkfifo "$SMOKE_DIR/nest.ctl"
+exec {nestfd}<>"$SMOKE_DIR/nest.ctl"
+wayland nest dialog=nestmid subdialog=nestkid control="$SMOKE_DIR/nest.ctl"
+check "a window, its dialog and the dialog's dialog" "[ -n \"\$(get nestkid x)\" ]"
+do_input move $(($(get nest x) + 30)) $(($(get nest y) + $(get nest th) + 30))
+do_input click left
+check "the window has the focus" "[ \"\$(get nest active)\" = 1 ]"
+do_input key alt+F9
+check "an icon, both dialogs hidden with it" "[ \"\$(get nest min)\" = 1 ] && \
+	[ \"\$(get nestmid hidden)\" = 1 ] && [ \"\$(get nestkid hidden)\" = 1 ]"
+echo undialog >&$nestfd
+saw "the dialog between goes" nest '^did 1'
+check "the dialog between is gone" "[ -z \"\$(get nestmid x)\" ]"
+check "the other stays hidden while its window is an icon" \
+	"[ \"\$(get nestkid hidden)\" = 1 ] && [ \"\$(get nestkid visible)\" = 0 ]"
+do_input move $(($(get nest icon_x) + 30)) $(($(get nest icon_y) + 30))
+do_input dclick left
+check "and comes back with it" "[ \"\$(get nest min)\" = 0 ] && [ \"\$(get nestkid visible)\" = 1 ]"
+stop nest
+exec {nestfd}>&-
+
 # A dialog appearing while its window is an icon waits for it.
 wayland kidp dialog=kid dialog_after="$SMOKE_DIR/kidp.open"
 mapped kidp

@@ -32,7 +32,7 @@ OPS=(spawn spawn minimize restore restore maximize fullscreen group group ungrou
 
 for ((i = 1; i <= STEPS; i++)); do
 	FAIL_NOTE="WALK_SEED=$SEED, step $i; again: make walk WALK_SEED=$SEED WALK_STEPS=$i"
-	# Two numbers each step, whatever is done with them: the same seed, the same walk.
+	# Three numbers each step, whatever is done with them: the same seed, the same walk.
 	r1=$RANDOM r2=$RANDOM R=$RANDOM
 	prune
 	if [ ${#CLIENTS[@]} = 0 ]; then

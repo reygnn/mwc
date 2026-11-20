@@ -358,6 +358,24 @@ done
 echo 'Mwm*outputManagement: true' >"$RC"
 reload_mwc
 
+# A reload takes a window off all desktops: its dialog goes where it goes, here, not
+# to the desktop both were mapped on, which they still say while on all of them.
+printf 'Mwm*outputManagement: true\nMwm*evr*allDesktops: true\n' >"$RC"
+reload_mwc
+switch_to 2
+wayland evr size=300x200 dialog=evrkid
+check "a window with its dialog, mapped on desktop 2" \
+	"[ \"\$(get evrkid desktop)\" = 2 ] && [ \"\$(get evr desktop)\" = 2 ]"
+switch_to 1
+check "both in sight here, still of desktop 2" "[ \"\$(get evrkid visible)\" = 1 ] && \
+	[ \"\$(get evr desktop)\" = 2 ] && [ \$(stack_pos evrkid) -lt \$(stack_pos evr) ]"
+echo 'Mwm*outputManagement: true' >"$RC"
+reload_mwc
+check "after the reload both are on this desktop, in sight" \
+	"[ \"\$(get evr desktop)\" = 1 ] && [ \"\$(get evrkid desktop)\" = 1 ] && \
+	 [ \"\$(get evr visible)\" = 1 ] && [ \"\$(get evrkid visible)\" = 1 ]"
+stop evr
+
 # Icons of two windows on all desktops, mapped on different ones: each takes a slot of
 # its own, on every desktop.
 printf 'Mwm*outputManagement: true\nMwm*ev1*allDesktops: true\nMwm*ev2*allDesktops: true\n' >"$RC"

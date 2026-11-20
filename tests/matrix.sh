@@ -30,7 +30,8 @@ icon_x=0 icon_y=0 cell=0,0,0,0 id=$(id "$1") root=$(id "$1")"
 }
 tail_lines() { printf '%s\n' "output ux=0 uy=0 uw=1280 uh=720 on=1" \
 	"iconbox on=${ICONBOX:-0} focused=${ICON:-0}" \
-	"tiling on=${TILING:-0} area=0,0,1280,720 gap=8" "desktop current=1" \
+	"tiling on=${TILING:-0} area=0,0,1280,720 usable=0,0,1280,720 gap=8" \
+	"desktop current=1" \
 	"focus any=1 layer=${LAYER:-0}" "seat keyboard=${KB:-a}"; }
 # sound <view lines...>, breaks <expected message> <view lines...>
 sound() {
@@ -76,6 +77,8 @@ TILING=1 breaks "a is shaded and the main window" "$(view a shaded=1 tiled=1 til
 breaks "a is tiled here but out of sight" "$(view a tiled=1 min=1 visible=0 icon_shown=1 \
 	cell=8,8,1264,704)"
 breaks "a is hidden with its window but has none" "$(view a hidden=1 visible=0)"
+breaks "d is in sight, its window s an icon" "$(view s min=1 visible=0 icon_shown=1)" \
+	"$(view d root=$(id s))"
 breaks "d is on desktop 2, its window s" "$(view s)" "$(view d root=$(id s) desktop=2 visible=0)"
 breaks "group 3 shows 2 tabs" "$(view a group=3 tab=0)" "$(view b group=3 tab=1)"
 breaks "group 3 has 1 window" "$(view a group=3 tab=0)"
