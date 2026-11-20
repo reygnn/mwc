@@ -27,7 +27,7 @@ SRC = src/main.c src/view.c src/xwayland.c src/frame.c src/menu.c \
 	src/hints.c src/outline.c src/snap.c src/tile.c src/tabs.c src/testhook.c \
 	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c src/iconbox.c \
 	src/dock.c src/outputrc.c src/sizehints.c src/snaprules.c src/configview.c \
-	src/tilelayout.c
+	src/tilelayout.c src/sentplace.c
 # Protocols mwc implements itself, not through wlroots: their glue code too.
 PROTO_CODE = build/fifo-v1-protocol.c build/ext-workspace-v1-protocol.c
 OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)
@@ -122,7 +122,7 @@ check: build/mwc-asan
 # logic kept apart from the display code: real data and libraries, fakes the test
 # fills where needed, no mocks. Always with the sanitizers: an overflow fails the
 # test. Fast, and the first step of make test.
-UNIT = outputrc sizehints snaprules config draw tilelayout
+UNIT = outputrc sizehints snaprules config draw tilelayout sentplace
 # What a module needs of another: also linked, real.
 UNIT_WITH_config = src/draw.c
 UNIT_WITH_draw = src/config.c

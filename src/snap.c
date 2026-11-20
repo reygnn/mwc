@@ -109,8 +109,9 @@ void snap_step(struct view *view, enum snap_dir dir)
 	if (m.minimize)
 		view_minimize(view);
 	else if (m.snap)
-		view_snap(view, m.to, view->x + (view->width + frame_extra_w(view)) / 2.0,
-			view->y + (view->height + frame_extra_h(view)) / 2.0);
+		view_snap(view, m.to,
+			view_drawn_x(view) + (view->width + frame_extra_w(view)) / 2.0,
+			view_drawn_y(view) + (view->height + frame_extra_h(view)) / 2.0);
 }
 
 /* Super+Shift+arrow: push a floating window flush against that edge of its output's
@@ -120,8 +121,9 @@ void view_move_to_edge(struct view *view, enum snap_dir dir)
 	if (!view || view->minimized || view->fullscreen || view->maximized ||
 			view->snap != SNAP_NONE || !(view->funcs & FUNC_MOVE))
 		return;
-	struct wlr_box f = { view->x, view->y, view->width + frame_extra_w(view),
-		view->height + frame_extra_h(view) };
+	/* The size last sent: the one it is placed for. */
+	struct wlr_box f = { view->x, view->y, view->requested_w + frame_extra_w(view),
+		view->requested_h + frame_extra_h(view) };
 	double cx = f.x + f.width / 2.0, cy = f.y + f.height / 2.0;
 	struct wlr_box b = snap_edge_place(output_at(view->server, cx, cy),
 		output_usable_area(view->server, cx, cy), dir, f);

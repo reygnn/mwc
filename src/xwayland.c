@@ -28,15 +28,13 @@ static void um_destroy(struct wl_listener *listener, void *data);
 
 /* ---- managed windows -------------------------------------------------- */
 
-/* Its new size, kept where a resize from the left or top anchors it. */
+/* Its new size, its frame where that size was sent: a resize from the left or top
+ * keeps the opposite edge, also for the last size of a grab that has just ended. */
 static void xw_size_committed(struct view *view, struct wlr_surface *s)
 {
 	view->width = s->current.width;
 	view->height = s->current.height;
-	/* As the xdg path does: the opposite edge stays, also for the last size of a
-	 * grab that has just ended. */
-	if (view->anchor_edges)
-		view_place_x11_frame(view);
+	view_place_x11_frame(view);
 	frame_render(view);
 	tabs_sync_sizes(view);
 	dock_view_resized(view);
@@ -58,14 +56,6 @@ static void xw_commit(struct wl_listener *listener, void *data)
 		view->configure_pending = false;
 		grab_resize_caught_up(view);
 	}
-	/* The grab is over and the window has the last size it was given, so its frame
-	 * is where view->x says. Not on configure_pending: a commit at the old size,
-	 * drawn before the configure, clears that too. */
-	struct server *server = view->server;
-	bool grabbed = server->cursor_mode == CURSOR_RESIZE && server->grabbed_view == view;
-	if (view->anchor_edges && !grabbed && s->current.width == view->requested_w &&
-			s->current.height == view->requested_h)
-		view->anchor_edges = 0;
 }
 
 /* wlroots parses only the decoration part of _MOTIF_WM_HINTS. Reading it here
@@ -169,6 +159,7 @@ static void xw_map(struct wl_listener *listener, void *data)
 
 	view->content_tree = wlr_scene_subsurface_tree_create(view->tree,
 		xs->surface);
+	sent_places_clear(&view->sent);
 	view->width = xs->surface->current.width ?
 		xs->surface->current.width : xs->width;
 	view->height = xs->surface->current.height ?

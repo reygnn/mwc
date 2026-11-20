@@ -406,6 +406,7 @@ do_input move $((RX + 10)) $((RY + 10))
 geometry_is "moveOpaque, X11: resizing" xspoof 100 100 310 210
 touch "$SMOKE_DIR/spoof"
 wait_for "a ConfigureNotify saying 1x1 is sent" grep -q '^spoofed' "$SMOKE_DIR/xspoof.events"
+check "wlroots has it" "[ \"\$(get xspoof xw)\" = 1 ]"
 do_input move $((RX + 40)) $((RY + 30))
 geometry_is "moveOpaque, X11: it still follows the pointer" xspoof 100 100 340 230
 do_input up left
@@ -427,7 +428,7 @@ stop xsame
 # From the left edge the right one stays, also before the window has the new size: with
 # Xwayland stopped, none comes. The frame (nx, its scene node) moves with the commit.
 # CONT_ON_EXIT continues it should the test fail meanwhile.
-x11 xleft pos=200,100 size=300x200
+x11 xleft pos=200,100 size=300x200 geom=1
 settle
 refresh
 R0=$(($(get xleft nx) + $(get xleft w)))
@@ -439,31 +440,72 @@ do_input move $((LX - 10)) "$LY"
 check "moveOpaque, X11: it grows to the left" \
 	"[ \"\$(get xleft w)\" = 310 ] && [ \"\$(right)\" = $R0 ]"
 XW=$(pgrep -f "^Xwayland $X_DISPLAY ") || fail "no Xwayland for $X_DISPLAY"
-# A step taken while Xwayland is stopped; sets $right to the right edge after it.
+# A step taken while Xwayland is stopped; sets $right to the right edge after it and
+# $cname to the pointer's shape. Nothing in it may need an answer from X: a grab or a
+# menu reads _MOTIF_WM_HINTS and would wait.
 stopped() {
 	CONT_ON_EXIT=$XW
 	kill -STOP $XW
 	eval "$1"
 	check "the pointer is there" "[ \"\$(global cursor x)\" = $2 ]"
 	right=$(right)
+	cname=$(global cursor name)
 	kill -CONT $XW
 	CONT_ON_EXIT=
+}
+# Where X has the window is where its frame is drawn (no reparenting: root coordinates).
+x_is() {
+	[ "$(grep '^geom' "$SMOKE_DIR/$1.events" | tail -n1)" = "geom $(($(get "$1" nx) + \
+		B)),$(($(get "$1" ny) + B + $(global theme title))) $(get "$1" w)x$(get "$1" h)" ]
 }
 stopped 'do_input move $((LX - 50)) "$LY"' $((LX - 50))
 [ "$right" = "$R0" ] || fail "before the commit the right edge went from $R0 to $right"
 echo "ok: before the commit the right edge stays"
 check "moveOpaque, X11: then it has the size, the right edge where it was" \
 	"[ \"\$(get xleft w)\" = 350 ] && [ \"\$(right)\" = $R0 ]"
-# Released with a size still waiting: the one applied at the end is anchored too.
-stopped 'do_input move $((LX - 70)) "$LY"; do_input move $((LX - 90)) "$LY"; do_input up left' \
-	$((LX - 90))
+# Released with a size still waiting: the one applied at the end is anchored too. Its
+# right border, where it is drawn, is one to resize by before the commit as well.
+stopped 'do_input move $((LX - 70)) "$LY"; do_input move $((LX - 90)) "$LY"; do_input up left
+	do_input move $((R0 + 2 * B - 2)) "$LY"' $((R0 + 2 * B - 2))
 [ "$right" = "$R0" ] || fail "released, before the commit the right edge went from $R0 to $right"
 echo "ok: released, before the commit the right edge stays"
+[ "$cname" = e-resize ] || fail "before the commit, its right border shows '$cname'"
+echo "ok: before the commit, its right border is one"
 check "moveOpaque, X11: released, it has the last size, the right edge where it was" \
 	"[ \"\$(get xleft w)\" = 390 ] && [ \"\$(right)\" = $R0 ] && \
 	 [ \"\$(get xleft nx)\" = \"\$(get xleft x)\" ]"
+check "X has it where its frame is" "x_is xleft"
 no_grab_left "nothing is left of the grab"
 stop xleft
+
+# The frame changes size while a size from the top is on its way: a reload with a larger
+# title. The window ends where X was told, its frame with it.
+x11 xtop pos=200,200 size=300x200 geom=1
+settle
+refresh
+TX=$(($(get xtop x) + OW / 2)) TY=$(($(get xtop y) + 1))
+T0=$(global theme title)
+do_input move "$TX" "$TY"
+do_input down left
+do_input move "$TX" $((TY - 10))
+check "moveOpaque, X11: it grows to the top" "[ \"\$(get xtop h)\" = 210 ]"
+CONT_ON_EXIT=$XW
+kill -STOP $XW
+do_input move "$TX" $((TY - 50))
+check "the pointer is there" "[ \"\$(global cursor y)\" = $((TY - 50)) ]"
+printf 'Mwm*moveOpaque: true\nMwm*fontList: Sans Bold 24\n' >"$RC"
+reload_mwc
+kill -CONT $XW
+CONT_ON_EXIT=
+check "the title is larger" "[ \"\$(global theme title)\" -gt $T0 ]"
+check "moveOpaque, X11: it has the size, its frame where mwc has it" \
+	"[ \"\$(get xtop h)\" = 250 ] && [ \"\$(get xtop ny)\" = \"\$(get xtop y)\" ]"
+check "X has it where its frame is" "x_is xtop"
+do_input up left
+no_grab_left "nothing is left of the grab"
+stop xtop
+echo 'Mwm*moveOpaque: true' >"$RC"
+reload_mwc
 
 # A reload in the middle of a resize: the outputs are as they were, so the grab goes on,
 # with the size it may be waiting to send.
@@ -502,8 +544,15 @@ for how in F8 F7; do
 	touch "$SMOKE_DIR/spoof$how"
 	wait_for "a ConfigureNotify saying 1x1 is sent" \
 		grep -q '^spoofed' "$SMOKE_DIR/xspoof$how.events"
+	check "wlroots has it" "[ \"\$(get xspoof$how xw)\" = 1 ]"
 	do_input key alt+$how
 	if [ $how = F8 ]; then
+		check "Alt+F8 starts a resize" "[ \"\$(global cursor mode)\" = $MODE_RESIZE ]"
+		# Escape goes back to the size mwc has, not to what the ConfigureNotify said.
+		do_input key Right
+		do_input key Escape
+		geometry_is "Escape puts it back to its own size" xspoof$how 100 100 300 200
+		do_input key alt+$how
 		check "Alt+F8 starts a resize" "[ \"\$(global cursor mode)\" = $MODE_RESIZE ]"
 		do_input key Right
 		do_input key Return

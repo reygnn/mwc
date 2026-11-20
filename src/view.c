@@ -116,7 +116,8 @@ static void view_update_content_pos(struct view *view)
 	if (view->fullscreen && view->mapped) {
 		struct wlr_box a = output_full_area(view->server, view->x + 1, view->y + 1);
 		wlr_scene_rect_set_size(backdrop, a.width, a.height);
-		wlr_scene_node_set_position(&backdrop->node, a.x - view->x, a.y - view->y);
+		wlr_scene_node_set_position(&backdrop->node, a.x - view_drawn_x(view),
+			a.y - view_drawn_y(view));
 		wlr_scene_node_set_enabled(&backdrop->node, true);
 		/* Smaller than the output: in its middle (xdg-shell). An X11 window is where
 		 * its configure put it, which has to agree with this. */
@@ -157,12 +158,23 @@ static void xwayland_configure(struct view *view)
 		view->requested_w, view->requested_h);
 }
 
+/* An X11 frame keeps its distance to view->x while a size is on its way. */
+static void view_move_to(struct view *view, int x, int y)
+{
+	if (view->type == VIEW_XWAYLAND)
+		sent_places_move(&view->sent, x - view->x, y - view->y);
+	view->x = x;
+	view->y = y;
+	if (view->type == VIEW_XWAYLAND)
+		view_place_x11_frame(view);
+	else
+		wlr_scene_node_set_position(&view->tree->node, x, y);
+}
+
 void view_set_position(struct view *view, int x, int y)
 {
 	view->anchor_edges = 0;
-	view->x = x;
-	view->y = y;
-	wlr_scene_node_set_position(&view->tree->node, x, y);
+	view_move_to(view, x, y);
 	xwayland_configure(view);
 }
 
@@ -174,24 +186,28 @@ void view_send_size(struct view *view, int w, int h)
 		view->requested_w = w;
 		view->requested_h = h;
 	} else {
-		/* Not from a resize: what is left of one doesn't hold. */
-		struct server *server = view->server;
-		if (server->grabbed_view != view || server->cursor_mode != CURSOR_RESIZE)
-			view->anchor_edges = 0;
 		view_send_geometry(view, view->x, view->y, w, h);
 	}
 }
 
 /* view->x and y are where the size last sent goes, as X is told. Until the window has
- * it, an anchored frame stays at the place of the size it has, the opposite edge kept. */
+ * it, its frame stays where the size it has was sent to: a resize from the left keeps
+ * the right edge. */
 void view_place_x11_frame(struct view *view)
 {
 	int x = view->x, y = view->y;
-	if (view->anchor_edges & WLR_EDGE_LEFT)
-		x = view->anchor_right - (view->width + frame_extra_w(view));
-	if (view->anchor_edges & WLR_EDGE_TOP)
-		y = view->anchor_bottom - (view->height + frame_extra_h(view));
+	sent_places_find(&view->sent, view->width, view->height, &x, &y);
 	wlr_scene_node_set_position(&view->tree->node, x, y);
+}
+
+int view_drawn_x(const struct view *view)
+{
+	return view->tree->node.x;
+}
+
+int view_drawn_y(const struct view *view)
+{
+	return view->tree->node.y;
 }
 
 void view_send_geometry(struct view *view, int x, int y, int w, int h)
@@ -204,6 +220,7 @@ void view_send_geometry(struct view *view, int x, int y, int w, int h)
 	 * another client sends. */
 	view->requested_w = w;
 	view->requested_h = h;
+	sent_places_add(&view->sent, x, y, w, h);
 	/* Only a new size brings a commit: at the old one X changes nothing. */
 	view->configure_pending |= w != view->width || h != view->height;
 	view_place_x11_frame(view);
@@ -212,6 +229,8 @@ void view_send_geometry(struct view *view, int x, int y, int w, int h)
 void view_set_geometry(struct view *view, int x, int y, int w, int h)
 {
 	view->anchor_edges = 0;
+	/* Here, whatever size it draws until it has this one. */
+	sent_places_clear(&view->sent);
 	view->x = x;
 	view->y = y;
 	wlr_scene_node_set_position(&view->tree->node, x, y);
@@ -571,8 +590,8 @@ static void view_fit_state(struct view *view, double px, double py)
  * a scale or a mode moves its neighbours under windows that stay on it. */
 static void view_state_point(struct view *view, double *px, double *py)
 {
-	*px = view->x + view->width / 2.0;
-	*py = view->y + view->height / 2.0;
+	*px = view_drawn_x(view) + view->width / 2.0;
+	*py = view_drawn_y(view) + view->height / 2.0;
 	struct output *o = view->fit_output;
 	if (!o || !output_in_layout(o) || output_at(view->server, *px, *py) == o)
 		return;
@@ -754,8 +773,9 @@ void view_set_maximized(struct view *view, bool maximized)
 {
 	/* Not on any output yet, it goes where the pointer is, as a new window does. */
 	struct wlr_cursor *c = view->server->cursor;
-	view_maximize_at(view, maximized, view->mapped ? view->x + view->width / 2.0 : c->x,
-		view->mapped ? view->y + view->height / 2.0 : c->y);
+	view_maximize_at(view, maximized,
+		view->mapped ? view_drawn_x(view) + view->width / 2.0 : c->x,
+		view->mapped ? view_drawn_y(view) + view->height / 2.0 : c->y);
 }
 
 /* An xdg surface takes no configures before its first commit, or after a null
@@ -928,8 +948,8 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 				view_save_free(view);
 			}
 			struct wlr_cursor *c = view->server->cursor;
-			double px = view->mapped ? view->x + view->width / 2.0 : c->x;
-			double py = view->mapped ? view->y + view->height / 2.0 : c->y;
+			double px = view->mapped ? view_drawn_x(view) + view->width / 2.0 : c->x;
+			double py = view->mapped ? view_drawn_y(view) + view->height / 2.0 : c->y;
 			if (asked_output)
 				fullscreen_output_point(view, &px, &py);
 			struct wlr_box a = output_full_area(view->server, px, py);
@@ -1161,7 +1181,8 @@ void views_clear_dock(struct output *output)
 	wl_list_for_each(v, &output->server->views, link) {
 		if (!v->mapped || v->minimized || view_docked(v) || !view_left_alone(v))
 			continue;
-		struct wlr_box b = { v->x, v->y, v->width + frame_extra_w(v), frame_height(v) };
+		struct wlr_box b = { view_drawn_x(v), view_drawn_y(v),
+			v->width + frame_extra_w(v), frame_height(v) };
 		if (output_dock_in_the_way(output, b))
 			view_place_within(v, output->usable, v->x, v->y);
 	}
@@ -1217,13 +1238,13 @@ void views_layout_changed(struct server *server)
 		v->icon_placed = false;
 		if (!v->mapped || v->tab_hidden)
 			continue;
-		struct wlr_box box = { v->x, v->y, v->width + frame_extra_w(v),
-			frame_height(v) };
+		struct wlr_box box = { view_drawn_x(v), view_drawn_y(v),
+			v->width + frame_extra_w(v), frame_height(v) };
 		bool reachable = wlr_output_layout_intersects(server->output_layout, NULL,
 			&box);
 		/* output_at() falls back to an existing output for any other point. */
-		struct wlr_box a = output_usable_area(server, v->x + box.width / 2.0,
-			v->y + box.height / 2.0);
+		struct wlr_box a = output_usable_area(server, box.x + box.width / 2.0,
+			box.y + box.height / 2.0);
 		/* What it goes back to may have been on that output, whether or not the window
 		 * itself still was: tiling, a maximized state or fullscreen may have brought it
 		 * over here. */
@@ -1283,9 +1304,7 @@ static void view_frame_gravity(struct view *view)
 		view->height + dh, &x, &y);
 	if (x == view->x && y == view->y)
 		return;
-	view->x = x;
-	view->y = y;
-	wlr_scene_node_set_position(&view->tree->node, x, y);
+	view_move_to(view, x, y);
 }
 
 void view_frame_changed(struct view *view)
@@ -1423,17 +1442,19 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 		server->grab_y = server->cursor->y - view->y;
 		cursor_set_name(server, "move");
 	} else {
-		double bx = view->x + ((edges & WLR_EDGE_RIGHT) ?
-			server->grab_geobox.width : 0);
-		double by = view->y + ((edges & WLR_EDGE_BOTTOM) ?
-			server->grab_geobox.height : 0);
+		/* The edge where it is drawn stays under the pointer, also while an X11
+		 * window has yet to get the size last sent. */
+		double bx = view_drawn_x(view) + ((edges & WLR_EDGE_RIGHT) ?
+			view->width + frame_extra_w(view) : 0);
+		double by = view_drawn_y(view) + ((edges & WLR_EDGE_BOTTOM) ?
+			view->height + frame_extra_h(view) : 0);
 		server->grab_x = server->cursor->x - bx;
 		server->grab_y = server->cursor->y - by;
 		server->resize_edges = edges;
-		view->anchor_edges = edges;
-		view->anchor_right = view->x + server->grab_geobox.width;
-		view->anchor_bottom = view->y + server->grab_geobox.height;
 		if (view->type == VIEW_XDG) {
+			view->anchor_edges = edges;
+			view->anchor_right = view->x + server->grab_geobox.width;
+			view->anchor_bottom = view->y + server->grab_geobox.height;
 			if (!server->grab_outline)
 				wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, true);
 			view->anchor_serial = view->xdg_toplevel->base->
@@ -1447,7 +1468,7 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 void view_drag_free(struct view *view)
 {
 	struct server *server = view->server;
-	double frac = (server->cursor->x - view->x) /
+	double frac = (server->cursor->x - view_drawn_x(view)) /
 		(double)(view->width + frame_extra_w(view));
 	/* Maximized since its first commit, it has no size of its own yet, and will
 	 * choose one. Until then the outline needs something to show. */
@@ -1508,8 +1529,8 @@ struct view *view_at(struct server *server, double lx, double ly,
 	bool frame = node == &view->frame_fill->node;
 	for (int i = 0; i < 4; i++)
 		frame |= node == &view->frame_nodes[i]->node;
-	*part = frame ? frame_hit(view, (int)(lx - view->x), (int)(ly - view->y), edges) :
-		PART_CLIENT;
+	*part = frame ? frame_hit(view, (int)(lx - view_drawn_x(view)),
+		(int)(ly - view_drawn_y(view)), edges) : PART_CLIENT;
 	return view;
 }
 
@@ -1587,8 +1608,8 @@ void view_place(struct view *view)
 	int x, y;
 	struct view *parent = view_parent(view);
 	if (parent && parent->mapped && !parent->minimized) {
-		x = parent->x + (parent->width + frame_extra_w(parent) - w) / 2;
-		y = parent->y + (parent->height + frame_extra_h(parent) - h) / 2;
+		x = view_drawn_x(parent) + (parent->width + frame_extra_w(parent) - w) / 2;
+		y = view_drawn_y(parent) + (parent->height + frame_extra_h(parent) - h) / 2;
 	} else if (view->wtype == WT_DIALOG || view->wtype == WT_SPLASH) {
 		x = a.x + (a.width - w) / 2;
 		y = a.y + (a.height - h) / 2;

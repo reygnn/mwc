@@ -139,7 +139,7 @@ static void update_feedback(struct server *server)
 			h = (h - view->base_h) / view->inc_h;
 		snprintf(buf, sizeof(buf), "%d x %d", w, h);
 	}
-	feedback_show(server, buf, view->x + 1, view->y + 1);
+	feedback_show(server, buf, view_drawn_x(view) + 1, view_drawn_y(view) + 1);
 }
 
 static void show_outline(struct server *server)
@@ -210,9 +210,9 @@ void grab_give_way(struct view *view)
 
 static void resize_to(struct view *view, const struct wlr_box *b)
 {
-	/* The client answers later, and its anchor keeps the opposite edge in place
-	 * then: an X window gets the new place with the size, its frame follows the
-	 * commit, also for the size applied as the grab ends. */
+	/* The client answers later. An xdg anchor keeps the opposite edge until then; an
+	 * X window gets the new place with the size and its frame follows the commit,
+	 * also for the size applied as the grab ends. */
 	if (view->type == VIEW_XWAYLAND)
 		view_send_geometry(view, b->x, b->y, b->width, b->height);
 	else
@@ -540,8 +540,8 @@ static void process_cursor_motion(struct server *server, uint32_t time)
 			return;
 		}
 		uint32_t edges;
-		bool inside = frame_hit(v, server->cursor->x - v->x,
-			server->cursor->y - v->y, &edges) == v->pressed;
+		bool inside = frame_hit(v, server->cursor->x - view_drawn_x(v),
+			server->cursor->y - view_drawn_y(v), &edges) == v->pressed;
 		if (inside != v->pressed_inside) {
 			v->pressed_inside = inside;
 			frame_render(v);
@@ -703,7 +703,7 @@ static bool handle_press(struct server *server, uint32_t button,
 	 * its minimize button doesn't roll it right up again; only maximize goes on to
 	 * make it the main window. */
 	bool was_shaded = view->shaded;
-	int tab = part == PART_TAB ? frame_tab_at(view, cx - view->x) : -1;
+	int tab = part == PART_TAB ? frame_tab_at(view, cx - view_drawn_x(view)) : -1;
 	view_focus(view);
 	if (was_shaded && part != PART_MAXIMIZE_BUTTON) {
 		if (tab >= 0)
@@ -718,9 +718,9 @@ static bool handle_press(struct server *server, uint32_t button,
 		}
 		if (button == BTN_RIGHT && !view->maximized) {
 			/* Resize from the nearest corner. */
-			double mx = view->x + (view->width +
+			double mx = view_drawn_x(view) + (view->width +
 				frame_extra_w(view)) / 2.0;
-			double my = view->y + (view->height +
+			double my = view_drawn_y(view) + (view->height +
 				frame_extra_h(view)) / 2.0;
 			uint32_t e = (cx < mx ? WLR_EDGE_LEFT : WLR_EDGE_RIGHT) |
 				(cy < my ? WLR_EDGE_TOP : WLR_EDGE_BOTTOM);
@@ -786,8 +786,8 @@ static bool handle_press(struct server *server, uint32_t button,
 			return true;
 		/* The menu takes the grab; its own press handling sees the second click
 		 * of a double click and closes the window. */
-		menu_open_window(server, view, view->x + frame_border(view),
-			view->y + frame_top(view));
+		menu_open_window(server, view, view_drawn_x(view) + frame_border(view),
+			view_drawn_y(view) + frame_top(view));
 		server->menu.from_button = true;
 		return true;
 	case PART_MINIMIZE_BUTTON:
@@ -1145,8 +1145,8 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	}
 	if (shift && !alt && !ctrl && sym == XKB_KEY_Escape && view) {
 		/* mwm: Shift+Escape posts the window menu */
-		menu_open_window(server, view, view->x + frame_border(view),
-			view->y + frame_top(view));
+		menu_open_window(server, view, view_drawn_x(view) + frame_border(view),
+			view_drawn_y(view) + frame_top(view));
 		return true;
 	}
 	if (!alt || ctrl)
@@ -1165,8 +1165,8 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 	case XKB_KEY_space:
 		if (view)
 			menu_open_window(server, view,
-				view->x + frame_border(view),
-				view->y + frame_top(view));
+				view_drawn_x(view) + frame_border(view),
+				view_drawn_y(view) + frame_top(view));
 		return true;
 	case XKB_KEY_F3:
 		run_action(server, ACT_LOWER, view);

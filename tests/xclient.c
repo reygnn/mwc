@@ -43,6 +43,8 @@
  *     report=1            print _NET_FRAME_EXTENTS as it changes, and whether a Motif
  *                         window manager can be found, as XmIsMotifWMRunning looks
  *     sizes=1             print "size WxH" for each ConfigureNotify of the main window
+ *     geom=1              print "geom X,Y WxH" for each real ConfigureNotify of the main
+ *                         window: where X has it, in root coordinates (no reparenting)
  *     moveto=X,Y          once mapped, XMoveWindow there
  *     grow=WxH            1 s after mapping, XResizeWindow to that size; says "grown"
  *     iconic=1            WM_HINTS with the initial state iconic
@@ -176,7 +178,7 @@ struct options {
 	int iconify_ms;
 	bool iconify_dialog;
 	int moveresize;
-	bool has_moveto, iconic, normalize, report, netstate, sizes;
+	bool has_moveto, iconic, normalize, report, netstate, sizes, geom;
 	int activate_ms;
 	int moveto_x, moveto_y;
 	int grow_w, grow_h;
@@ -668,6 +670,8 @@ int main(int argc, char *argv[])
 			o.report = atoi(v);
 		else if (!strcmp(k, "sizes"))
 			o.sizes = atoi(v);
+		else if (!strcmp(k, "geom"))
+			o.geom = atoi(v);
 		else if (!strcmp(k, "netstate"))
 			o.netstate = atoi(v);
 		else if (!strcmp(k, "moveto"))
@@ -1202,6 +1206,9 @@ int main(int argc, char *argv[])
 		case ConfigureNotify:
 			if (o.sizes && e.xconfigure.window == main_win)
 				printf("size %dx%d\n", e.xconfigure.width, e.xconfigure.height);
+			if (o.geom && e.xconfigure.window == main_win && !e.xconfigure.send_event)
+				printf("geom %d,%d %dx%d\n", e.xconfigure.x, e.xconfigure.y,
+					e.xconfigure.width, e.xconfigure.height);
 			fflush(stdout);
 			break;
 		case FocusIn:

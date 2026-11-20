@@ -30,7 +30,9 @@ kill_leftovers() {
 		[ "${p#/proc/}" = "$MAIN_SHELL" ] && continue
 		while IFS= read -r -d '' line; do
 			if [ "$line" = "SMOKE_DIR=$SMOKE_DIR" ]; then
+				# A stopped one acts on the TERM only once continued.
 				kill "${p#/proc/}" 2>/dev/null
+				kill -CONT "${p#/proc/}" 2>/dev/null
 				break
 			fi
 		done 2>/dev/null <"$p/environ"

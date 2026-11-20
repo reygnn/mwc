@@ -104,6 +104,25 @@ void throttle_call(struct throttle *t, struct wl_event_loop *loop);
 /* Drops a call that waits, and the timer. */
 void throttle_cancel(struct throttle *t);
 
+/* ---- sentplace.c ---------------------------------------------------------- */
+
+#define SENT_PLACES 8
+
+struct sent_place {
+	int x, y, w, h;
+};
+
+/* Oldest first, one per size. */
+struct sent_places {
+	struct sent_place p[SENT_PLACES];
+	int n;
+};
+
+void sent_places_clear(struct sent_places *s);
+void sent_places_add(struct sent_places *s, int x, int y, int w, int h);
+bool sent_places_find(const struct sent_places *s, int w, int h, int *x, int *y);
+void sent_places_move(struct sent_places *s, int dx, int dy);
+
 /* ---- views -------------------------------------------------------------- */
 
 enum view_type {
@@ -249,7 +268,7 @@ struct view {
 	struct wlr_box saved;  /* before maximize, snap, fullscreen */
 	double fit_px, fit_py; /* on the output its state fills */
 	struct output *fit_output; /* that output, while it exists */
-	/* Edges kept until the client has its new size: an xdg ack, an X11 commit. */
+	/* xdg: edges kept until the client has acked its new size. */
 	uint32_t anchor_edges;
 	int anchor_right, anchor_bottom;
 	uint32_t anchor_serial;
@@ -259,6 +278,7 @@ struct view {
 	int gravity_extra_w, gravity_extra_h; /* the frame's size then */
 	int requested_w, requested_h; /* the size last sent, not what X last said */
 	bool configure_pending; /* X11: a new size configured since its last commit */
+	struct sent_places sent; /* X11: where its frame goes for a size it commits */
 	int icon_x, icon_y;
 	bool icon_placed;
 	long icon_seq;   /* order of becoming an icon */
@@ -612,9 +632,12 @@ void view_handle_map(struct view *view, bool focus);
 void view_handle_unmap(struct view *view);
 void view_handle_destroy(struct view *view);
 void view_send_size(struct view *view, int w, int h);
-/* X11: place and size for the window; an anchored frame follows with its commit. */
+/* X11: place and size for the window; the frame follows with its commit. */
 void view_send_geometry(struct view *view, int x, int y, int w, int h);
 void view_place_x11_frame(struct view *view);
+/* Where its frame is: X11's view->x is where the size last sent goes. */
+int view_drawn_x(const struct view *view);
+int view_drawn_y(const struct view *view);
 void view_set_activated(struct view *view, bool activated);
 struct view *view_at(struct server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy,

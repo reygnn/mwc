@@ -42,6 +42,8 @@ static void move_place(struct view *to, struct view *from)
 {
 	to->x = from->x;
 	to->y = from->y;
+	/* Where its own sizes went is no longer its place. */
+	sent_places_clear(&to->sent);
 	to->saved = from->saved;
 	to->fit_px = from->fit_px;
 	to->fit_py = from->fit_py;
