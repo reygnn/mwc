@@ -1,6 +1,6 @@
 # All of make test, headless, with nothing installed on the host but Podman.
 # The packages are the ones in distrobox.ini, and what a bare image lacks for the
-# tests (keymaps, a font, ps).
+# tests (keymaps, a font, a cursor theme, ps).
 #
 #   podman build -t mwc-test -f tests/Containerfile tests
 #   podman run --rm --network=none -v "$PWD:/src/mwc:ro" mwc-test \
@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential pkg-config libwlroots-0.19-dev \
     wayland-protocols libwayland-dev libxkbcommon-dev \
     libpixman-1-dev libcairo2-dev libpango1.0-dev \
-    foot grim xkb-data fonts-dejavu-core procps valgrind \
+    foot grim xkb-data fonts-dejavu-core adwaita-icon-theme procps valgrind \
     clang libclang-rt-dev \
     && rm -rf /var/lib/apt/lists/*
 RUN useradd -m tester
