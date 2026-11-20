@@ -56,7 +56,7 @@ void config_reload(struct server *server)
 	}
 	theme_init();
 	iconbox_config_changed(server);
-	wallpaper_init(server);
+	bool wallpaper = wallpaper_init(server);
 	input_config_changed(server);
 	outputs_config_changed(server);
 
@@ -66,7 +66,7 @@ void config_reload(struct server *server)
 		wlr_scene_rect_set_color(output->background, c);
 		wlr_scene_node_set_enabled(&output->background->node,
 			!theme.root_none);
-		wallpaper_place(output, true);
+		wallpaper_place(output, wallpaper);
 	}
 	wl_list_for_each(view, &server->views, link) {
 		view_theme_changed(view);

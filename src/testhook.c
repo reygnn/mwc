@@ -158,6 +158,7 @@ static int dump_state(int signal, void *data)
 	for (char *p = label; *p; p++)
 		*p = *p == ' ' ? '_' : *p;
 	fprintf(f, "feedback text=%s x=%d y=%d draws=%d\n", label, box.x, box.y, draws);
+	fprintf(f, "wallpaper decodes=%d\n", server->wallpaper_decodes);
 	fprintf(f, "theme border=%d title=%d\n", theme.border,
 		theme.title_height);
 	/* A client's own cursor image, while it is shown: its buffer and scale. */

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/util/log.h>
@@ -20,28 +21,54 @@ void wallpaper_fini(struct server *server)
 	server->wallpaper = NULL;
 }
 
-void wallpaper_init(struct server *server)
+static cairo_surface_t *decode(struct server *server, const char *path)
 {
-	wallpaper_fini(server);
+	server->wallpaper_decodes++;
+	return cairo_image_surface_create_from_png(path);
+}
+
+bool wallpaper_init(struct server *server)
+{
+	bool had = server->wallpaper != NULL;
 	const char *value = getenv("MWC_WALLPAPER");
 	if (!value || !*value)
 		value = config_get("wallpaper");
-	if (!value || !*value)
-		return;
+	if (!value || !*value) {
+		wallpaper_fini(server);
+		return had;
+	}
 
 	char path[4096];
 	config_expand_home(value, path, sizeof(path));
+	struct stat st;
+	if (stat(path, &st) != 0) {
+		wlr_log_errno(WLR_ERROR, "cannot load wallpaper %s", path);
+		wallpaper_fini(server);
+		return had;
+	}
+	struct wallpaper_file file = { st.st_dev, st.st_ino, st.st_size, st.st_mtim };
+	const struct wallpaper_file *was = &server->wallpaper_file;
+	/* A reload for a colour: a large photo isn't decoded again for each output. */
+	if (had && !strcmp(server->wallpaper, path) && file.dev == was->dev &&
+			file.ino == was->ino && file.size == was->size &&
+			file.mtime.tv_sec == was->mtime.tv_sec &&
+			file.mtime.tv_nsec == was->mtime.tv_nsec)
+		return false;
 
 	/* Only the path is kept: decoded, a large image would stay in memory for the
 	 * whole session. It is read again when an output needs it. */
-	cairo_surface_t *image = cairo_image_surface_create_from_png(path);
+	wallpaper_fini(server);
+	cairo_surface_t *image = decode(server, path);
 	cairo_status_t status = cairo_surface_status(image);
-	if (status != CAIRO_STATUS_SUCCESS)
+	if (status != CAIRO_STATUS_SUCCESS) {
 		wlr_log(WLR_ERROR, "cannot load wallpaper %s: %s", path,
 			cairo_status_to_string(status));
-	else
+	} else {
 		server->wallpaper = strdup(path);
+		server->wallpaper_file = file;
+	}
 	cairo_surface_destroy(image);
+	return true;
 }
 
 void wallpaper_place(struct output *output, bool force)
@@ -81,7 +108,7 @@ void wallpaper_place(struct output *output, bool force)
 			h == output->wallpaper_h))
 		return;
 
-	cairo_surface_t *image = cairo_image_surface_create_from_png(path);
+	cairo_surface_t *image = decode(output->server, path);
 	if (cairo_surface_status(image) != CAIRO_STATUS_SUCCESS) {
 		wlr_log(WLR_ERROR, "cannot load wallpaper %s: %s", path,
 			cairo_status_to_string(cairo_surface_status(image)));

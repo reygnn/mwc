@@ -369,7 +369,7 @@ build/fifoc: tests/fifoc.c $(FIFOC_GEN)
 		build/xdg-decoration-unstable-v1-code.c \
 		$(shell $(PKG_CONFIG) --libs wayland-client)
 
-fifo-test: mwc build/fifoc build/powerc build/workspacec
+fifo-test: mwc build/fifoc build/powerc build/workspacec build/vinput
 	tests/fifo.sh
 
 # Lists and switches the desktops, as a pager does.

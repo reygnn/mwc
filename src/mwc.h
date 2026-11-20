@@ -8,6 +8,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <time.h>
+#include <sys/types.h>
 #include <cairo.h>
 #include <pango/pango.h>
 #include <wayland-server-core.h>
@@ -469,6 +471,14 @@ struct server {
 	/* output_manager_configure(): one layout change at the end, not per output. */
 	bool layout_batch, layout_dirty;
 	char *wallpaper; /* a readable PNG, or NULL */
+	/* The file as it was when read: a reload reads only a changed one. */
+	struct wallpaper_file {
+		dev_t dev;
+		ino_t ino;
+		off_t size;
+		struct timespec mtime;
+	} wallpaper_file;
+	int wallpaper_decodes; /* for the tests */
 };
 
 struct output {
@@ -808,8 +818,9 @@ bool layer_root_coords(struct wlr_surface *surface, int *lx, int *ly);
 
 /* ---- wallpaper.c -------------------------------------------------------- */
 
-/* MWC_WALLPAPER or Mwm*wallpaper. */
-void wallpaper_init(struct server *server);
+/* MWC_WALLPAPER or Mwm*wallpaper. True if it is another than before, or the file
+ * changed. */
+bool wallpaper_init(struct server *server);
 void wallpaper_fini(struct server *server);
 /* force: also at the same size. */
 void wallpaper_place(struct output *output, bool force);

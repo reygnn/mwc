@@ -150,11 +150,11 @@ static void watch_output(void *data)
 	 * switched-off scene node, 0.20 keeps them on purpose (9c3bfbe). It is on none. */
 	struct view *view = view_from_surface(fifo->surface);
 	bool hidden = view && (view_hidden(view) || view->shaded);
+	/* On several, the fastest: a strip on a slower monitor doesn't slow the window. */
 	wl_list_for_each(so, &fifo->surface->current_outputs, link) {
-		if (so->output->enabled && !hidden) {
+		if (so->output->enabled && !hidden &&
+				(!output || so->output->refresh > output->refresh))
 			output = so->output;
-			break;
-		}
 	}
 	if (!output) {
 		if (!fifo->surface->mapped)

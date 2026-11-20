@@ -46,7 +46,27 @@ do_input click right
 check "btn3 on the wallpaper opens the root menu" "[ \"\$(global menu open)\" = 1 ]"
 do_input key Escape
 stop_vinput
+
+# A reload for a colour doesn't decode the image again; a changed file does.
+refresh
+decodes=$(global wallpaper decodes)
+RC=$XDG_CONFIG_HOME/mwc/mwmrc
+mkdir -p "$(dirname "$RC")"
+echo 'Mwm*background: #808080' >"$RC"
+reload_mwc
+refresh
+[ "$(global wallpaper decodes)" = "$decodes" ] ||
+	fail "a reload for a colour decoded the wallpaper again: $decodes, now $(global wallpaper decodes)"
+echo "ok: a reload for a colour leaves the wallpaper alone"
+pixel_is "and it is still there" 100 360 "$RED"
+build/pngtool stripes "$SMOKE_DIR/fit.png" 2560 1440 "$BLUE" "$RED"
+reload_mwc
+refresh
+[ "$(global wallpaper decodes)" -gt "$decodes" ] || fail "a changed file wasn't read again"
+pixel_is "the changed file is shown" 100 360 "$BLUE"
+rm "$RC"
 stop_mwc
+build/pngtool stripes "$SMOKE_DIR/fit.png" 2560 1440 "$RED" "$BLUE" # for the cases below
 unset MWC_TEST_STATE
 
 # ---- wider than the output --------------------------------------------------

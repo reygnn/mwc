@@ -45,20 +45,6 @@ TODO
   Abnahme: session.sh fängt den Zeiger nach einer Aufnahme mit "cursors"
   und bekommt ein Bild; ein Upstream-Bericht an wlroots.
 
-* FIFO über zwei Monitore (Review des Branches teil3): watch_output() nimmt den
-  ersten Output in current_outputs, also den zuletzt betretenen. Ein Spiel,
-  das mit einem Streifen auf einen 60-Hz-Monitor ragt, läuft dann mit 60 statt
-  144 Hz. Den Output mit der höchsten Rate oder den primary_output des
-  Scene-Buffers nehmen; Test mit zwei Outputs verschiedener Rate.
-
-* Wallpaper beim Reload nur neu laden, wenn es sich geändert hat (Review
-  2026-11-17). Jetzt dekodiert ein Reload das PNG einmal zur Prüfung und
-  einmal pro Output, auch wenn nur eine Farbe geändert wurde; bei einem
-  großen Foto auf zwei 4K-Monitoren steht die Session dabei spürbar.
-  Pfad, mtime und Größe merken und nur bei einer Änderung neu zeichnen; die
-  Prüf-Dekodierung in wallpaper_init() entfällt.
-  Abnahme: ein Test in tests/wallpaper.sh, der zählt, wie oft dekodiert wird.
-
 * wlroots 0.19.3 (Review 2026-11-18). Wartet auf das Ubuntu-Paket: apt hat
   libwlroots-0.19-dev 0.19.3 noch nicht (2026-11-19); ab und zu mit
   apt policy libwlroots-0.19-dev nachsehen. Selbst bauen lohnt nicht: das

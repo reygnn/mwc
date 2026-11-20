@@ -5,7 +5,7 @@
 LOG=build/fifo.log
 . "$(dirname "$0")/lib.sh"
 
-for tool in build/fifoc build/powerc build/workspacec; do
+for tool in build/fifoc build/powerc build/workspacec build/vinput; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 fifoc() { WAYLAND_DISPLAY=wayland-0 timeout 10 build/fifoc "$@" 2>&1; }
@@ -109,6 +109,44 @@ kill -0 "$pid" || fail "mwc died when the monitor of held updates went"
 echo "ok: a monitor can go while a fullscreen window's updates wait for it"
 kill "$hold" 2>/dev/null
 wait "$hold" 2>/dev/null
+stop_mwc
 
+# Across two monitors the faster one paces it: a game reaching into a 60 Hz monitor
+# with a strip keeps the 144 Hz of the one it is on. Moved there last, the 60 Hz one is
+# the first of its outputs in wlroots.
+export WLR_HEADLESS_OUTPUTS=2
+RC=$XDG_CONFIG_HOME/mwc/mwmrc
+mkdir -p "$(dirname "$RC")"
+printf '%s\n' 'Mwm*HEADLESS-1*outputMode: 1280x720@60' 'Mwm*HEADLESS-1*outputPosition: 0,0' \
+	'Mwm*HEADLESS-2*outputMode: 1280x720@144' 'Mwm*HEADLESS-2*outputPosition: 1280,0' \
+	'Mwm*moveOpaque: true' >"$RC"
+start_mwc 'exec sleep 300'
+start_vinput 2560 720
+do_input move 1900 300
+rm -f "$SMOKE_DIR/go"
+FIFOC_GO=$SMOKE_DIR/go WAYLAND_DISPLAY=wayland-0 timeout 15 build/fifoc cued 30 \
+	>"$SMOKE_DIR/across.out" 2>&1 &
+across=$!
+wait_for "a window on the 144 Hz monitor" grep -q '^mapped' "$SMOKE_DIR/across.out"
+check "it is there" "[ \"\$(get fifoc x)\" -ge 1280 ] 2>/dev/null"
+# Alt+drag on the client: the title of so small a window is mostly buttons. The pointer
+# ends away from the monitors' edges, where the window would snap.
+TX=$(($(get fifoc x) + 60)) TY=$(($(get fifoc y) + $(get fifoc bw) + $(get fifoc th) + 30))
+do_input move "$TX" "$TY"
+do_input hold alt
+do_input down left
+do_input move $((TX - $(get fifoc x) + 1250)) "$TY"
+do_input up left
+do_input release alt
+check "a strip of it on the 60 Hz monitor" \
+	"[ \"\$(get fifoc x)\" -lt 1280 ] && [ \$((\$(get fifoc x) + \$(get fifoc w))) -gt 1280 ]"
+touch "$SMOKE_DIR/go"
+wait "$across" || fail "fifoc across: $(cat "$SMOKE_DIR/across.out")"
+t=$(sed -n 's/^seconds=\([0-9.]*\).*/\1/p' "$SMOKE_DIR/across.out")
+# 28 refreshes: 0.19 s at 144 Hz, 0.47 s at 60.
+awk -v t="${t:-1}" 'BEGIN { exit !(t >= 0.1 && t <= 0.33) }' ||
+	fail "across two monitors: ${t:-no result} s for 30 updates, expected 0.1 to 0.33 (144 Hz)"
+echo "ok: across two monitors the faster one paces it ($t s)"
+stop_vinput
 stop_mwc
 echo "PASS: fifo"
