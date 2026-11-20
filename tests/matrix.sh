@@ -2,8 +2,9 @@
 # Headless test of combinations: each starting point (floating, tabs, tiling, shading,
 # tiling with tabs; each also on all desktops) takes each operation once, and after
 # every step tests/invariants.awk checks that what mwc says of its windows fits
-# together. One mwc, a reset between the cases. Output goes to build/matrix.log, the
-# operations to build/matrix-ops.log.
+# together; each case runs twice and leaves the scene as it found it. One mwc, a reset
+# between the cases. Output goes to build/matrix.log, the operations to
+# build/matrix-ops.log.
 LOG=build/matrix.log
 OPS_LOG=build/matrix-ops.log
 . "$(dirname "$0")/lib.sh"
@@ -133,31 +134,41 @@ setup_tiled_tabs() { setup_tiled; op_group; in_group c3; tiled c3; }
 OPS=(minimize "minimize restore" maximize fullscreen group ungroup tab "desktop 2"
 	close reload title app size dialog cfull cmin)
 
+# Each case twice: what it added to the scene must have gone with its windows. The
+# first run creates what mwc makes once and keeps (a menu, the outline), so the
+# second must end with the same nodes.
 cases=0
 for setup in floating tabs tiled shaded tiled_tabs; do
 	for sticky in 0 1; do
 		for op in "${OPS[@]}"; do
 			label="$setup$([ $sticky = 1 ] && echo /sticky): $op"
 			R=$cases # title and size: the same every run
-			"setup_$setup"
-			inv "$label: set up"
-			if [ $sticky = 1 ]; then
-				op_sticky
-				check "a window is sticky" "grep -q ' sticky=1 ' \"\$MWC_TEST_STATE\""
-				inv "$label: sticky"
-			fi
-			for step in $op; do
-				if [ "$step" = 2 ]; then continue; fi
-				if [ "$step" = desktop ]; then op_desktop 2; else "op_$step"; fi
-				inv "$label"
+			nodes=()
+			for run in 1 2; do
+				"setup_$setup"
+				inv "$label: set up"
+				if [ $sticky = 1 ]; then
+					op_sticky
+					check "a window is sticky" \
+						"grep -q ' sticky=1 ' \"\$MWC_TEST_STATE\""
+					inv "$label: sticky"
+				fi
+				for step in $op; do
+					if [ "$step" = 2 ]; then continue; fi
+					if [ "$step" = desktop ]; then op_desktop 2; else "op_$step"; fi
+					inv "$label"
+				done
+				ops_reset
+				inv "$label: reset"
+				nodes+=("$(grep '^scene ' "$MWC_TEST_STATE")")
 			done
-			ops_reset
-			inv "$label: reset"
+			[ "${nodes[0]}" = "${nodes[1]}" ] ||
+				fail "$label: nodes left in the scene: ${nodes[0]}, again ${nodes[1]}"
 			cases=$((cases + 1))
 		done
 	done
 done
-echo "ok: $cases cases, the invariants held after every step"
+echo "ok: $cases cases twice, the invariants held after every step, the scene kept no node"
 
 stop_vinput
 stop_mwc

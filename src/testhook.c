@@ -19,6 +19,7 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/log.h>
 #include "mwc.h"
@@ -75,6 +76,18 @@ static const char *surface_owner(struct server *server, struct wlr_surface *surf
 
 /* One line per window, front to back. Written to a temporary file first, so
  * a test never reads a half-written state. */
+/* The scene's nodes by type, for tests that what a window adds goes with it. */
+static void count_nodes(struct wlr_scene_node *node, int n[3])
+{
+	n[node->type]++;
+	if (node->type != WLR_SCENE_NODE_TREE)
+		return;
+	struct wlr_scene_tree *tree = wlr_scene_tree_from_node(node);
+	struct wlr_scene_node *child;
+	wl_list_for_each(child, &tree->children, link)
+		count_nodes(child, n);
+}
+
 static int dump_state(int signal, void *data)
 {
 	struct server *server = test_server;
@@ -176,6 +189,10 @@ static int dump_state(int signal, void *data)
 		cs ? cs->current.buffer_width : 0, cs ? cs->current.buffer_height : 0,
 		cs ? cs->current.scale : 0,
 		server->cursor_name ? server->cursor_name : "client");
+	int nodes[3] = { 0 };
+	count_nodes(&server->scene->tree.node, nodes);
+	fprintf(f, "scene trees=%d rects=%d buffers=%d\n", nodes[WLR_SCENE_NODE_TREE],
+		nodes[WLR_SCENE_NODE_RECT], nodes[WLR_SCENE_NODE_BUFFER]);
 	fprintf(f, "seat pointer=%s keyboard=%s caps=%u\n",
 		surface_owner(server, server->seat->pointer_state.focused_surface),
 		surface_owner(server, server->seat->keyboard_state.focused_surface),
