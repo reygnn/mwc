@@ -378,8 +378,7 @@ build/workspacec: tests/workspacec.c build/ext-workspace-v1-client.h build/ext-w
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/workspacec.c \
 		build/ext-workspace-v1-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
 
-desktop-test: mwc build/vinput build/xdgc build/workspacec build/outputc \
-		build/layerc
+desktop-test: mwc build/vinput build/xdgc build/workspacec build/outputc
 	tests/desktop.sh
 
 # What an RDP server such as wayrdp does: devices that go mid-press, fresh captures,
@@ -391,11 +390,11 @@ rdp-test: mwc build/vinput build/xdgc build/outputc build/capturec build/powerc 
 tabs-test: mwc build/vinput build/pngtool build/xdgc build/layerc
 	tests/tabs.sh
 
-session-test: mwc build/vinput build/pngtool build/powerc build/outputc \
+session-test: mwc build/vinput build/pngtool build/xdgc build/powerc build/outputc \
 		build/capturec build/idlec
 	tests/session.sh
 
-misc-test: mwc build/vinput build/pngtool build/xdgc build/badclient
+misc-test: mwc build/vinput build/pngtool build/xdgc
 	tests/misc.sh
 
 state-test: mwc build/vinput build/pngtool build/xdgc build/badclient build/layerc
@@ -407,15 +406,15 @@ pointer-test: mwc build/vinput build/pngtool build/badclient build/xdgc
 crash-test: mwc build/vinput build/xdgc build/badclient build/layerc
 	tests/crash.sh
 
-outputs-test: mwc build/vinput build/pngtool build/layerc build/badclient \
+outputs-test: mwc build/vinput build/pngtool build/xdgc build/layerc build/badclient \
 	build/outputc
 	tests/outputs.sh
 
-tile-test: mwc build/vinput build/pngtool build/xdgc build/outputc \
+tile-test: mwc build/vinput build/pngtool build/xdgc build/layerc build/outputc \
 	build/fifoc
 	tests/tile.sh
 
-snap-test: mwc build/vinput build/pngtool build/xdgc
+snap-test: mwc build/vinput build/pngtool build/xdgc build/layerc
 	tests/snap.sh
 
 move-test: mwc build/vinput build/pngtool build/xdgc

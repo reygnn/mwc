@@ -51,7 +51,7 @@ void config_view_tiling(struct view *view)
 	view->no_tile = view_docked(view) || !config_client_tiles(name, class);
 }
 
-/* Pick the frame colours for a window from its class or app_id. */
+/* Pick the frame colours for a window from its app_id. */
 void config_view_shades(struct view *view)
 {
 	const char *name, *class;

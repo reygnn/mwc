@@ -250,6 +250,23 @@ check "shown again, it is in its corner again" \
 	"[ \"\$(right gplain)\" = 1280 ] && [ \"\$(bottom gplain)\" = 720 ]"
 stop gplain
 
+# Hidden as an icon or snapped, it comes back as a plain window, with its title drawn.
+for how in alt+F9 super+Left; do
+	rm -f "$SMOKE_DIR/remap.hide" "$SMOKE_DIR/remap.show"
+	wayland remap rehide_after="$SMOKE_DIR/remap.hide" reshow_after="$SMOKE_DIR/remap.show"
+	mapped remap
+	do_input key $how
+	check "$how: an icon or snapped" \
+		"[ \"\$(get remap min)\" = 1 ] || [ \"\$(get remap snap)\" != 0 ]"
+	touch "$SMOKE_DIR/remap.hide"
+	check "$how: hidden" "[ -z \"\$(get remap x)\" ]"
+	touch "$SMOKE_DIR/remap.show"
+	check "$how: shown again, neither" \
+		"[ \"\$(get remap min)\" = 0 ] && [ \"\$(get remap snap)\" = 0 ] && \
+		 [ \"\$(get remap visible)\" = 1 ] && [ \"\$(get remap tdrawn)\" = 5 ]"
+	stop remap
+done
+
 wayland gleft
 mapped gleft
 check "+20+30 counts from the left and top" \

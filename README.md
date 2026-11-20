@@ -101,7 +101,8 @@ cannot restart and keep its windows, so a reload applies the file to what is run
 
 Lines starting with `!` are comments; a `!` after a value belongs to the value. Later
 lines win. Colours are `#rrggbb`, names such as `gold`, or `rgb:rr/gg/bb`. Programs are
-matched by their `app_id`, ignoring case; it may contain dots. Unknown resources are logged and ignored.
+matched by their `app_id`, ignoring case; it may contain dots. Unknown resources are
+logged and ignored.
 
 Global resources:
 
@@ -186,9 +187,8 @@ place.
 
 As in mwm, a window being moved or resized is shown as an outline, and changes once
 when the button is released. A box in the middle of the monitor shows the position or
-the size. `moveOpaque` drags the
-window itself. Escape during a drag also restores a window that was dragged out of its
-maximized state.
+the size. `moveOpaque` drags the window itself. Escape during a drag also restores a
+window that was dragged out of its maximized state.
 
 
 ## Snapping
@@ -391,8 +391,8 @@ switched off leaves the layout and stays off until such a client switches it on.
 ## Window behaviour
 
 Dialogs stay above their window, open centred over it and minimize with it. A window's
-minimum and maximum size hold while resizing. A window of a fixed size gets a thin border
-and no Size or Maximize; functions a window lacks are grey in its menu.
+minimum and maximum size hold while resizing. A window of a fixed size gets a thin
+border and no Size or Maximize; functions a window lacks are grey in its menu.
 
 A fullscreen window smaller than the monitor sits in its middle, on black.
 

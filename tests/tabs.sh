@@ -6,7 +6,7 @@ LOG=build/tabs.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools grim
-for tool in build/vinput build/xdgc build/layerc; do
+for tool in build/vinput build/pngtool build/xdgc build/layerc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -472,6 +472,38 @@ do_input key super+t
 stop s1
 stop s2
 stop s3
+
+# The layout moves a group while one of its tabs is hidden: shown, that tab is drawn in
+# the group's cell, not where it was hidden.
+do_input key super+t
+check "tiling" "[ \"\$(global tiling on)\" = 1 ]"
+wayland c1 size=300x200
+wayland c2 size=300x200
+wayland c3 size=300x200
+check "three cells" "[ \"\$(get c3 tile_main)\" = 1 ]"
+do_input key super+g
+shown "joined in the layout" c3
+refresh
+X=$(get c3 x) Y=$(get c2 y)
+wayland c4 size=300x200
+wayland c5 size=300x200
+check "newcomers lead, the group moves into the stack, not where its hidden tab was" \
+	"[ \"\$(get c5 tile_main)\" = 1 ] && [ \"\$(get c3 x)\" != $X ] && \
+	 [ \"\$(get c3 y)\" != $Y ]"
+do_input move $(($(get c3 x) + $(get c3 w) / 2)) $(($(get c3 y) + $(get c3 h) / 2))
+do_input click left
+shown "the group again" c3
+do_input key super+Tab
+shown "the other tab" c2
+refresh
+pixel_is "drawn in the group's cell" $(($(get c2 x) + $(get c2 bw) + $(get c2 w) / 2)) \
+	$(($(get c2 y) + $(get c2 bw) + $(get c2 th) + $(get c2 h) / 2)) 808080
+do_input key super+t
+stop c1
+stop c2
+stop c3
+stop c4
+stop c5
 
 # Its place in the layout goes with the shown tab: the group took the place of the older
 # window, below the other one in the stack, though the newer window is what shows.

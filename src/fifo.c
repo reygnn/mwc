@@ -4,8 +4,8 @@
  * A client marks an update with set_barrier, and the next one with wait_barrier:
  * the second is applied only once the first was on the screen for a refresh. That
  * is vsync for a client that doesn't want to wait for frame callbacks, which stop
- * when its window is hidden. SDL 3 takes Wayland only where a compositor offers
- * this; elsewhere it prefers X11, which mwc doesn't run.
+ * when its window is hidden. SDL 3 prefers Wayland only where a compositor offers
+ * this.
  *
  * wlroots has no implementation, 0.20.2 neither; this one is built on the surface's
  * synced state and its cached-state locks:
@@ -401,5 +401,5 @@ void fifo_init(struct server *server)
 {
 	if (!wl_global_create(server->display, &wp_fifo_manager_v1_interface, 1, NULL,
 			manager_bind))
-		wlr_log(WLR_ERROR, "no wp_fifo_manager_v1: SDL 3 programs may find no display");
+		wlr_log(WLR_ERROR, "no wp_fifo_manager_v1");
 }

@@ -20,10 +20,7 @@ Mwm*mwt*activeBackground:              #2e5e3e
 ! Tiling: only these tile, everything else floats.
 Mwm*TileOnly:                          mwt, indigo, dracula, amber, paper
 
-! Firefox: chocolate brown.
-! Navigator is its WM_CLASS under X11. Natively on Wayland it goes by its app_id
-! instead, and that is firefox_firefox for the snap.
-Mwm*Navigator*activeBackground:        #7b3f00
+! Firefox: chocolate brown. Its app_id is firefox_firefox for the snap.
 Mwm*firefox_firefox*activeBackground:  #7b3f00
 Mwm*firefox*activeBackground:          #7b3f00
 Mwm*mfm*activeBackground:              gold

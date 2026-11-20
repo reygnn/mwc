@@ -100,8 +100,8 @@ static struct wlr_box area_for(struct server *server, struct wlr_box b)
 	return output_dock_in_the_way(o, b) ? o->usable : o->open;
 }
 
-/* Position of the client content inside the window tree: for xdg its window geometry,
- * as wlroots' scene tree puts the surface, a shadow drawn around it, at -geometry.
+/* Position of the client content inside the window tree: its window geometry, as
+ * wlroots' scene tree puts the surface, a shadow drawn around it, at -geometry.
  * In mwc's frame that shadow is cut off: it would lie over the frame and take its
  * clicks. */
 static void view_update_content_pos(struct view *view)
@@ -274,13 +274,10 @@ void views_update_layers(struct server *server)
 	 * a fullscreen one and its dialog, keep their order. */
 	wl_list_for_each_reverse(v, &server->views, link) {
 		enum view_layer layer = own_layer(v, focus);
-		/* Dialogs follow the window they belong to into its layer, at
-		 * least the normal one. */
+		/* Dialogs follow the window they belong to into its layer. */
 		struct view *root = view_transient_root(v);
 		if (root != v) {
 			enum view_layer r = own_layer(root, focus);
-			if (r < VL_NORMAL)
-				r = VL_NORMAL;
 			if (r > layer)
 				layer = r;
 		}
@@ -363,7 +360,7 @@ void view_focus(struct view *view)
 		view_restore(view);
 		return;
 	}
-	/* A panel or a window without input focus only comes to the front. */
+	/* Still out of sight, a tab that couldn't come to the front: only raised. */
 	if (!view_focusable(view)) {
 		view_raise(view);
 		if (view->shaded)
@@ -785,22 +782,15 @@ static bool fullscreen_output_point(struct view *view, double *px, double *py)
 	return true;
 }
 
-static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output,
-	bool focus);
+static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output);
 
 void view_set_fullscreen(struct view *view, bool fullscreen)
 {
-	view_fullscreen_at(view, fullscreen, false, true);
-}
-
-void view_set_fullscreen_asked(struct view *view, bool fullscreen, bool focus)
-{
-	view_fullscreen_at(view, fullscreen, false, focus);
+	view_fullscreen_at(view, fullscreen, false);
 }
 
 /* asked_output: on the output the client named with its request, if any. */
-static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output,
-	bool focus)
+static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output)
 {
 	if (view_docked(view))
 		fullscreen = false; /* its place is the dock */
@@ -834,8 +824,7 @@ static void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_ou
 			view_set_geometry(view, a.x, a.y, a.width, a.height);
 			/* At its new place: the backdrop is placed relative to it. */
 			view_update_content_pos(view);
-			if (focus)
-				view_focus(view);
+			view_focus(view);
 		} else {
 			view->fullscreen = false;
 			views_update_layers(view->server);
@@ -1253,8 +1242,6 @@ void view_begin_interactive(struct view *view, enum cursor_mode mode,
 		return;
 	if (view->fullscreen)
 		return;
-	/* The client's limits may have changed since it was mapped. */
-	view_update_properties(view);
 	if (mode == CURSOR_RESIZE &&
 			(view->maximized || !(view->funcs & FUNC_RESIZE)))
 		return;
@@ -1509,15 +1496,15 @@ static void view_place_mapped(struct view *view)
 		pos.from_bottom ? a.y + a.height - h - pos.y : a.y + pos.y);
 }
 
-void view_handle_map(struct view *view, bool focus)
+void view_handle_map(struct view *view)
 {
 	view->mapped = true;
 	/* view_place_mapped() sets it from the entry; until then a frame that changes
 	 * moves nothing. */
 	view->gravity_edges = 0;
-	config_view_shades(view); /* the class or app_id is known by now */
+	config_view_shades(view); /* the app_id is known by now */
 	view->tile_seq = --view->server->tile_front; /* a new window leads the layout */
-	view_update_properties(view); /* the window type, for desktop_view_mapped() */
+	view_update_properties(view); /* dialog or not, for docking */
 	/* Docking needs the type, the functions need docking. */
 	view->dock_order = config_view_dock(view);
 	view_update_decorations(view);
@@ -1530,12 +1517,8 @@ void view_handle_map(struct view *view, bool focus)
 	/* A prompt must not stay out of sight in a hidden tab, unless the group is an icon:
 	 * then it waits, as any dialog of a window that is an icon by now. */
 	struct view *root = view_transient_root(view);
-	if (root != view && root->tab_hidden && !root->group->shown->minimized) {
-		if (focus)
-			tabs_bring(root);
-		else
-			tabs_bring_instead(root);
-	}
+	if (root != view && root->tab_hidden && !root->group->shown->minimized)
+		tabs_bring(root);
 	struct view *parent = view_parent(view);
 	/* Hidden with it, not for being on another desktop: it goes there too, and
 	 * shows when that one does. */
@@ -1560,18 +1543,6 @@ void view_handle_map(struct view *view, bool focus)
 	/* A dialog of a window on another desktop: there, and that desktop is marked. */
 	if (view->off_desktop) {
 		desktop_attention(view);
-		return;
-	}
-	/* In sight, the keyboard where it is: the user decides. A dialog of the window
-	 * with the focus has it next, when the panel above lets go. */
-	if (!focus) {
-		struct view *focused = view_focused(view->server);
-		if (root != view && focused && view_transient_root(focused) == root &&
-				!view_docked(view))
-			view_focus_instead(view);
-		else
-			view_raise(view);
-		input_pointer_changed(view->server);
 		return;
 	}
 	if (!view_docked(view)) {
@@ -1804,7 +1775,7 @@ static void xdg_map(struct wl_listener *listener, void *data)
 	struct wlr_box *g = &view->xdg_toplevel->base->geometry;
 	view->width = view->requested_w = size_cap(g->width);
 	view->height = view->requested_h = size_cap(g->height);
-	view_handle_map(view, true);
+	view_handle_map(view);
 }
 
 static void xdg_unmap(struct wl_listener *listener, void *data)
@@ -1888,7 +1859,7 @@ static void xdg_request_maximize(struct wl_listener *listener, void *data)
 static void xdg_request_fullscreen(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_fullscreen);
-	view_fullscreen_at(view, view->xdg_toplevel->requested.fullscreen, true, true);
+	view_fullscreen_at(view, view->xdg_toplevel->requested.fullscreen, true);
 }
 
 static void xdg_request_minimize(struct wl_listener *listener, void *data)

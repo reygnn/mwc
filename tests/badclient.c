@@ -9,8 +9,6 @@
  *   badclient popup       destroy the toplevel, then get_popup with its xdg_surface
  *   badclient nested      popup of a popup whose toplevel is gone
  *   badclient remap       map, unmap with a null buffer, ask to maximize, map again
- *   badclient paste-close on every selection: receive it, and close the pipe at once
- *   badclient paste       on every selection: read all of it, say "pasted N" (bytes)
  *
  * These map a window, and log what the pointer and keyboard do to it:
  *
@@ -466,15 +464,8 @@ static struct xdg_surface *make_popup(struct xdg_surface *parent)
 
 /* ---- the clipboard --------------------------------------------------------- */
 
-static char *mime;
-static bool paste_closes, paste_reads;
-
 static void offer_mime(void *data, struct wl_data_offer *o, const char *type)
 {
-	if (!mime || !strcmp(type, "text/plain;charset=utf-8")) {
-		free(mime);
-		mime = strdup(type);
-	}
 }
 
 static void offer_source_actions(void *data, struct wl_data_offer *o, uint32_t actions)
@@ -491,8 +482,6 @@ static const struct wl_data_offer_listener offer_listener = {
 
 static void dd_offer(void *data, struct wl_data_device *dd, struct wl_data_offer *o)
 {
-	free(mime);
-	mime = NULL;
 	wl_data_offer_add_listener(o, &offer_listener, NULL);
 }
 
@@ -527,29 +516,6 @@ static void dd_drop(void *data, struct wl_data_device *dd)
 
 static void dd_selection(void *data, struct wl_data_device *dd, struct wl_data_offer *o)
 {
-	if (!o || !mime || (!paste_closes && !paste_reads))
-		return;
-	int fds[2];
-	if (pipe(fds) != 0)
-		return;
-	wl_data_offer_receive(o, mime, fds[1]);
-	close(fds[1]);
-	if (paste_reads) {
-		/* The owner writes to the pipe directly, not through this connection:
-		 * reading here doesn't hold it up. */
-		wl_display_flush(display);
-		char buf[65536];
-		size_t total = 0;
-		ssize_t n;
-		while ((n = read(fds[0], buf, sizeof(buf))) > 0)
-			total += n;
-		close(fds[0]);
-		printf("pasted %zu\n", total);
-		fflush(stdout);
-		return;
-	}
-	close(fds[0]);
-	printf("done\n");
 }
 
 static const struct wl_data_device_listener dd_listener = {
@@ -698,14 +664,6 @@ int main(int argc, char *argv[])
 		wl_surface_attach(surface, make_buffer(config_w > 0 ? config_w : 200,
 			config_h > 0 ? config_h : 100), 0, 0);
 		wl_surface_commit(surface);
-	} else if (!strcmp(mode, "paste-close") || !strcmp(mode, "paste")) {
-		paste_closes = !strcmp(mode, "paste-close");
-		paste_reads = !paste_closes;
-		wl_surface_attach(surface, make_buffer(200, 100), 0, 0);
-		wl_surface_commit(surface);
-		struct wl_data_device *dd =
-			wl_data_device_manager_get_data_device(ddm, seat);
-		wl_data_device_add_listener(dd, &dd_listener, NULL);
 	} else {
 		if (!strcmp(mode, "move"))
 			xdg_toplevel_move(top, seat, 0);

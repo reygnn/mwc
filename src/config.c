@@ -25,7 +25,7 @@
  *   Mwm*outputManagement:          true       offer wlr-output-management (startup)
  *   Mwm*tiling:                    true       start in tiling mode
  *   Mwm*tileMainWidth:             60         the main window's share, in %
- *   Mwm*DoNotTile:                 Navigator  Firefox floats in tiling mode
+ *   Mwm*DoNotTile:                 firefox    Firefox floats in tiling mode
  *   Mwm*TileOnly:                  foot, mfm  only these tile
  *   Mwm*firefox*activeBackground:  #8a0303    per client, also background
  *   Mwm*foot*activeBackground:     gold
@@ -38,10 +38,10 @@
  *   Mwm*useIconBox:                true       icons in a box, see iconbox.c
  *   Mwm*iconBoxSize:               10         its length at most, in icons
  *
- * The client part matches a client's app_id, ignoring case: mwm-x11's instance and
- * class name are both the app_id. Colours are #rrggbb, colour names
- * or rgb:rr/gg/bb. Lines starting with ! are comments; there are no comments
- * after a value. Later lines win.
+ * The client part matches a client's app_id, ignoring case; it stands for both the
+ * instance and the class name of mwm-x11's rules. Colours are #rrggbb, colour names
+ * or rgb:rr/gg/bb. Lines starting with ! are comments; there are no comments after a
+ * value. Later lines win.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <ctype.h>

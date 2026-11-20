@@ -487,11 +487,6 @@ bool input_pointer_on(struct server *server, struct wlr_surface *surface)
 	return surface && focus && wlr_surface_get_root_surface(focus) == surface;
 }
 
-bool input_button_held(struct server *server)
-{
-	return server->n_forwarded > 0;
-}
-
 static void process_cursor_motion(struct server *server, uint32_t time)
 {
 	/* Only while a drag runs: wlroots walks the whole scene for each move of a

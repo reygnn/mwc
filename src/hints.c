@@ -109,8 +109,6 @@ void view_update_properties(struct view *view)
 	view->wtype = view->xdg_toplevel->parent ? WT_DIALOG : WT_NORMAL;
 	view_update_decorations(view);
 	xdg_publish_caps(view);
-	if (view->wtype != old_type)
-		views_update_layers(view->server);
 	/* Whether it fits the layout, or takes part at all, may have changed. */
 	if (view->mapped && view->server->tiling && (view->wtype != old_type ||
 			view_fixed(view) != old_fixed ||

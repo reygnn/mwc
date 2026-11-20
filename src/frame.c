@@ -144,7 +144,7 @@ void draw_text(cairo_t *cr, const char *text, const char *font,
 	cairo_clip(cr);
 	cairo_set_antialias(cr, CAIRO_ANTIALIAS_DEFAULT);
 
-	/* WM_NAME is Latin-1 by the book, and wlroots passes on its bytes. */
+	/* A title that isn't UTF-8, as a careless client sends, is taken as Latin-1. */
 	char *converted = NULL;
 	if (!g_utf8_validate(text, -1, NULL)) {
 		converted = g_convert(text, -1, "UTF-8", "ISO-8859-1", NULL, NULL, NULL);

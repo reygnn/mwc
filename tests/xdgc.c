@@ -110,6 +110,7 @@ struct window {
 	int w, h;
 	int natural_w, natural_h; /* what it takes when the choice is its own */
 	bool framed;
+	bool hidden; /* unmapped: a configure sent before mwc saw it is stale */
 	struct zxdg_toplevel_decoration_v1 *deco;
 	struct wp_viewport *viewport;
 	const char *app;
@@ -311,6 +312,8 @@ static const struct wl_seat_listener seat_listener = {
 static void xdg_configure(void *data, struct xdg_surface *xdg, uint32_t serial)
 {
 	struct window *win = data;
+	if (win->hidden)
+		return;
 	xdg_surface_ack_configure(xdg, serial);
 	if (pre_late) {
 		if (!strcmp(pre_late, "max"))
@@ -791,6 +794,7 @@ int main(int argc, char *argv[])
 	if (rehide_after) {
 		while (access(rehide_after, F_OK) != 0)
 			wait_dispatching(display, 50);
+		main_win->hidden = true;
 		wl_surface_attach(main_win->surface, NULL, 0, 0);
 		wl_surface_commit(main_win->surface);
 		wl_display_roundtrip(display);
@@ -806,6 +810,7 @@ int main(int argc, char *argv[])
 		 * without a buffer, then the configure. */
 		xdg_toplevel_set_app_id(main_win->toplevel, main_win->app);
 		xdg_toplevel_set_title(main_win->toplevel, main_win->app);
+		main_win->hidden = false;
 		wl_surface_commit(main_win->surface);
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);

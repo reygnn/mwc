@@ -43,12 +43,10 @@ does, and comes back the same way.
 
 ### Hiding a member
 
-`view_show(view, false)` does what is needed: the scene tree is disabled, and an X window
-is marked minimized. That gives X programs `WM_STATE` Iconic and `_NET_WM_STATE_HIDDEN`,
-which is true enough, and is what they already handle. `view->minimized` stays false, so
-no icon appears.
+`view_show(view, false)` does what is needed: the scene tree is disabled.
+`view->minimized` stays false, so no icon appears.
 
-xdg clients additionally get `wlr_xdg_toplevel_set_suspended(true)`. Without a frame
+The client additionally gets `wlr_xdg_toplevel_set_suspended(true)`. Without a frame
 callback most stop drawing anyway, and this says why.
 
 `hidden_with_parent` is checked in about 20 places today, nearly all of which need
@@ -65,8 +63,7 @@ behaviour.
    `shaded`, `auto_shaded`, `tile_back`.
 2. **Place in the stack moves over.** Its `server.views` link and scene node go where the
    old view's were, or it would jump in the stacking order.
-3. **The client is told.** Maximized and tiled states go to the new view's xdg toplevel,
-   or to the X window together with its position.
+3. **The client is told.** Maximized and tiled states go to the new view's xdg toplevel.
 4. **Visibility changes.** Old hidden and suspended, new shown and unsuspended.
 5. **Focus follows,** if the old view had it. A grab or menu on the old view ends first.
 6. **The frame is drawn** for the new view.
@@ -193,9 +190,8 @@ A title change on a hidden member redraws the group's frame.
 | **Closing the shown tab** | Alt+F4 closes that one window only. The tab to its right takes over, or else the one to its left. |
 | **A member unmaps or dies** | Shown: as above, with the state moved over first, in `view_handle_unmap()`. Hidden: it just leaves. If one is left, the group dissolves and its frame is redrawn as an ordinary title. |
 | **Dialog of a hidden member** | Its tab is shown, and the dialog takes the focus: a new window takes the focus today, and a prompt must not stay out of sight. While the group is an icon, it stays hidden and comes back with it, as today. |
-| **Focus requests** | `view_focus()` on a hidden member shows it first, in the same way as it restores a minimized window. That covers `_NET_ACTIVE_WINDOW`, `focus_in` and X `WM_CHANGE_STATE` alike. |
+| **Focus requests** | `view_focus()` on a hidden member shows it first, in the same way as it restores a minimized window. That covers a request to activate it as well. |
 | **Output unplugged** | Only the shown view is rescued; the others take its place at the next switch. |
-| **X stacking** | A hidden X window stays somewhere in the X stack. Input follows the scene, so it can't catch clicks. Tests must show this. |
 | **Menus and grabs on a member** | End when it stops being shown. |
 | **Reload** | Colours and frames of all members are renewed, and groups stay. |
 
@@ -206,17 +202,17 @@ member. A minimum tab width setting can wait until someone needs one.
 
 ## Tests
 
-`tests/tabs.sh` with `make tabs-test`, using both `xdgc` and `xclient`. The state dump
+`tests/tabs.sh` with `make tabs-test`, using `xdgc`. The state dump
 gets `group=`, `tab=`, `tab_hidden=` per view, so tests don't need screenshots except for
 drawing. As for all recent work, each fix or feature gets a mutation probe, and everything
 runs under ASan/UBSan.
 
 - **Forming:** Super+G, a group of three, no resize, no group of one, what cannot join.
 - **Switching:** keys, click, wheel. Position, size and stacking stay, only the shown view
-  receives pointer and keyboard, and hidden X windows catch no clicks.
+  receives pointer and keyboard, and hidden windows catch no clicks.
 - **Sizes:** resize the group, then switch: the new tab already has the size.
-- **Leaving:** close the shown tab, close a hidden one, kill a client, null buffer, X
-  withdraw, Super+Shift+G, down to dissolving.
+- **Leaving:** close the shown tab, close a hidden one, kill a client, null buffer,
+  Super+Shift+G, down to dissolving.
 - **Dragging:** moves the group, no switch; middle and Ctrl+left drag join, tear out, Escape.
   A middle click still lowers.
 - **Interplay:** each row of the table above, including tiling and shading.

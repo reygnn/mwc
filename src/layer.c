@@ -56,7 +56,7 @@ static void arrange_pass(struct output *output, const struct wlr_box *full,
 	}
 }
 
-/* What a panel has to leave of a monitor, in either direction, to count there. */
+/* What panels have to leave of a monitor, in either direction, to be believed. */
 #define MIN_ROOM 100
 
 void layer_arrange(struct output *output)
@@ -269,14 +269,6 @@ bool layer_surface_is_desktop(struct wlr_surface *surface)
 }
 
 /* ---- surface lifecycle ---------------------------------------------------- */
-
-bool layer_keyboard_back(struct server *server)
-{
-	if (!server->focused_layer)
-		return false;
-	give_keyboard(server->focused_layer->data);
-	return true;
-}
 
 bool layer_root_coords(struct wlr_surface *surface, int *lx, int *ly)
 {

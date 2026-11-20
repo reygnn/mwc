@@ -264,7 +264,6 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 	m->n_items = 0;
 	m->target = view;
 	m->from_button = false;
-	view_update_properties(view);
 	bool normal = !view->minimized && !view->maximized && !view->fullscreen &&
 		view->snap == SNAP_NONE;
 	unsigned f = view->funcs;

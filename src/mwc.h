@@ -186,13 +186,13 @@ struct view {
 	struct throttle title_redraw;
 	int title_draws;       /* for the tests, */
 	size_t title_drawn_len; /* and the length of the title the strip shows */
-	char *known_app_id;    /* the names mwmrc's rules were last applied for */
+	char *known_app_id;    /* the one mwmrc's rules were last applied for */
 	struct wlr_scene_buffer *icon_node;
 
 	/* x, y: the frame's top left in the layout; width, height: the client's. */
 	int x, y, width, height;
 	bool mapped;
-	bool placed;    /* by the client: no cascading */
+	bool placed;    /* by a state asked for before mapping: no cascading */
 	bool ssd;
 	enum window_type wtype;
 	unsigned decor, funcs; /* see view_update_properties() */
@@ -519,8 +519,6 @@ void view_close(struct view *view);
 void view_lower(struct view *view);
 void view_set_maximized(struct view *view, bool maximized);
 void view_set_fullscreen(struct view *view, bool fullscreen);
-/* As asked for by a client; focus: false leaves the keyboard where it is. */
-void view_set_fullscreen_asked(struct view *view, bool fullscreen, bool focus);
 void view_minimize(struct view *view);
 void view_restore(struct view *view);
 void view_begin_interactive(struct view *view, enum cursor_mode mode,
@@ -540,8 +538,7 @@ struct wlr_surface *view_surface(struct view *view);
 void view_cycle(struct server *server, bool backwards);
 /* After the xdg part has set the client. */
 void view_init_common(struct view *view);
-/* focus: false raises it, but leaves the keyboard and a hidden tab as they are. */
-void view_handle_map(struct view *view, bool focus);
+void view_handle_map(struct view *view);
 void view_handle_unmap(struct view *view);
 void view_handle_destroy(struct view *view);
 void view_send_size(struct view *view, int w, int h);
@@ -665,8 +662,6 @@ void tabs_leave(struct view *view);
 void tabs_show(struct view *view);
 /* Also out of an icon or fullscreen. */
 void tabs_bring(struct view *view);
-/* The same without taking the keys: from an on-demand layer surface, or from elsewhere. */
-void tabs_bring_instead(struct view *view);
 void tabs_step(struct view *view, bool forward);
 void tabs_show_nth(struct view *view, int n);
 /* Unmapping: the next takes over without its help. */
@@ -710,8 +705,6 @@ void cursor_set_name(struct server *server, const char *name);
 void input_pointer_changed(struct server *server);
 /* The same once wlroots is through: a surface going may still be in the scene. */
 void input_pointer_changed_soon(struct server *server);
-/* A button down that a client got: it may start a move. */
-bool input_button_held(struct server *server);
 /* Over it or its subsurfaces. */
 bool input_pointer_on(struct server *server, struct wlr_surface *surface);
 /* Without the keys mwc kept. */
@@ -819,7 +812,6 @@ void layer_arrange_soon(struct output *output);
 void layer_output_gone(struct output *output);
 void layer_handle_click(struct server *server, struct wlr_surface *surface);
 bool layer_surface_is_desktop(struct wlr_surface *surface);
-bool layer_keyboard_back(struct server *server);
 /* Where a top-layer surface has the keyboard: no fullscreen window covers it there. */
 struct output *layer_keyboard_output(struct server *server);
 /* Raises that surface above the windows sharing the top layer with it. */

@@ -6,7 +6,7 @@ LOG=build/session.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools grim
-for tool in build/vinput build/pngtool build/xdgc build/powerc build/outputc build/capturec; do
+for tool in build/vinput build/pngtool build/xdgc build/powerc build/outputc build/capturec build/idlec; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 

@@ -796,6 +796,10 @@ static void export_activation_environment(struct server *server)
 	if (in_path("dbus-update-activation-environment"))
 		spawn("dbus-update-activation-environment --systemd WAYLAND_DISPLAY "
 			"XDG_CURRENT_DESKTOP XDG_SESSION_TYPE");
+	/* Left there by an X session before: services would open on a display that
+	 * is gone. */
+	if (in_path("systemctl"))
+		spawn("systemctl --user unset-environment DISPLAY");
 }
 
 static void run_autostart(const char *startup_cmd)
