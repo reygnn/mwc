@@ -299,6 +299,39 @@ switch_to 1
 kill "$PID_fam"
 wait "$PID_fam" 2>/dev/null
 check "it is gone" "[ -z \"\$(get lateall x)\" ] && [ -z \"\$(get famdlg x)\" ]"
+# A tab group is on all desktops as a whole: one of its tabs taking such a name late
+# takes the others along, and each tab can be shown on any desktop.
+wayland plain size=300x200
+wayland tabbed size=300x200 late_app=lateall late_after="$SMOKE_DIR/tabbed"
+do_input key super+g
+check "a tab group" "[ \"\$(get plain tab)\" != -1 ] && [ \"\$(get tabbed tab)\" != -1 ]"
+touch "$SMOKE_DIR/tabbed"
+wait_for "one of them takes its name" said tabbed "late app"
+check "the whole group is everywhere" \
+	"[ \"\$(get lateall everywhere)\" = 1 ] && [ \"\$(get plain everywhere)\" = 1 ]"
+switch_to 2
+check "in sight on desktop 2" \
+	"[ \$((\$(get plain visible) + \$(get lateall visible))) = 1 ]"
+shown=$( [ "$(get plain visible)" = 1 ] && echo plain || echo lateall )
+other=$( [ "$shown" = plain ] && echo lateall || echo plain )
+do_input move $(($(get $shown x) + 30)) $(($(get $shown y) + $(get $shown th) + 30))
+do_input click left
+check "it has the focus" "[ \"\$(get $shown active)\" = 1 ]"
+do_input key super+Tab
+check "the other tab is shown here too" \
+	"[ \"\$(get $other visible)\" = 1 ] && [ \"\$(get $shown visible)\" = 0 ]"
+# Out of the group, the plain one is everywhere no more: it stays where it is in sight.
+do_input key super+shift+g
+check "out of the group" "[ \"\$(get plain tab)\" = -1 ] && [ \"\$(get lateall tab)\" = -1 ]"
+check "the plain one is on desktop 2 only" \
+	"[ \"\$(get plain everywhere)\" = 0 ] && [ \"\$(get plain desktop)\" = 2 ] && \
+	 [ \"\$(get plain visible)\" = 1 ] && [ \"\$(get lateall everywhere)\" = 1 ]"
+switch_to 1
+on "and out of sight on desktop 1" plain 2 0
+stop plain
+kill "$PID_tabbed"
+wait "$PID_tabbed" 2>/dev/null
+check "it is gone" "[ -z \"\$(get lateall x)\" ]"
 echo 'Mwm*outputManagement: true' >"$RC"
 reload_mwc
 

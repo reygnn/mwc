@@ -245,7 +245,10 @@ static void remove_member(struct view *view)
 	wl_list_remove(&view->tab_link);
 	view->group = NULL;
 	view->tab_hidden = false;
+	/* What made the group be on all desktops may have gone with it, or been its own. */
+	desktop_recheck(view);
 	if (wl_list_length(&g->members) > 1) {
+		desktop_recheck(g->shown);
 		frame_render(g->shown);
 		return;
 	}
@@ -253,6 +256,7 @@ static void remove_member(struct view *view)
 	last->group = NULL;
 	last->tab_hidden = false;
 	free(g);
+	desktop_recheck(last);
 	back_to_own_size(last);
 	frame_render(last);
 }
@@ -323,6 +327,8 @@ bool tabs_join(struct view *view, struct view *target)
 	view->desktop = target->desktop;
 	wl_list_insert(g->members.prev, &view->tab_link);
 	switch_to(g, view, g->shown, false, false);
+	/* A rule of either window now holds for both. */
+	desktop_recheck(view);
 	return true;
 }
 

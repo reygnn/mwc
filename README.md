@@ -264,9 +264,9 @@ There are four desktops, shared by all monitors. mwc binds no keys to them: a pa
 switches through ext-workspace-v1, where they are workspaces 1 to 4 of one group. A
 window opens on the current desktop, a dialog on its window's. "To Desktop" in the
 window menu moves a window with its dialogs and tab group; "On All Desktops" keeps it
-on every one. Panels, desktop windows, notifications, splash screens and programs with
-`allDesktops` are on all desktops. A window on another desktop that asks for the focus
-marks its desktop urgent instead.
+on every one. Docked programs and programs with `allDesktops` are on all desktops,
+with their dialogs and, if one of them is in a tab group, the whole group. A dialog
+that opens on another desktop marks that desktop urgent.
 
 
 ## Icons

@@ -28,18 +28,6 @@ TODO
   Abnahme: Matrix in make test, make walk mit 1000 Schritten ohne Befund oder
   mit den Befunden als eigene Tests.
 
-* allDesktops in einer Tab-Gruppe (zweites Review des Branches
-  fix/review-2026-11-18-low). Ob ein Fenster auf allen Desktops ist, gilt für
-  das Fenster und seine Dialoge, nicht für seine Gruppe: tabs_fit_together()
-  mischt ein allDesktops-Fenster mit einem gewöhnlichen, und eine späte app_id
-  macht nur eine Karte allgegenwärtig. Auf einem anderen Desktop zeigt die
-  Gruppe dann nichts, oder eine Karte, die außer Sicht bleibt, wenn man sie
-  wählt. Entweder gilt es für die ganze Gruppe (view_on_all_desktops() fragt
-  die Gruppe), oder solche Fenster gruppieren sich nicht, und eine späte
-  Änderung löst die Karte aus der Gruppe.
-  Abnahme: desktop.sh, zwei Karten, eine bekommt spät eine allDesktops-app_id;
-  auf Desktop 2 ist die Gruppe zu sehen und jede Karte zeigbar.
-
 * Zeigerbild nach einer Aufnahme mit eingemaltem Zeiger. wlroots zeichnet den
   Zeiger nach jeder Aufnahme, die ihn eingemalt haben will
   (ext-image-copy-capture mit paint_cursors, wlr-screencopy mit

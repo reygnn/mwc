@@ -35,14 +35,29 @@ static bool everywhere(const struct view *view)
 	return view->sticky || by_rule(view);
 }
 
+/* A tab group by a rule of any of its windows, as "On All Desktops" makes it one as a
+ * whole: it is on one desktop or on all of them. */
+static bool group_by_rule(struct view *root)
+{
+	if (!root->group)
+		return by_rule(root);
+	struct view *m;
+	wl_list_for_each(m, &root->group->members, tab_link) {
+		if (by_rule(m))
+			return true;
+	}
+	return false;
+}
+
 bool view_on_all_desktops(struct view *view)
 {
-	return everywhere(view) || everywhere(view_transient_root(view));
+	struct view *root = view_transient_root(view);
+	return everywhere(view) || root->sticky || group_by_rule(root);
 }
 
 bool view_sticky_by_rule(struct view *view)
 {
-	return by_rule(view) || by_rule(view_transient_root(view));
+	return by_rule(view) || group_by_rule(view_transient_root(view));
 }
 
 /* After off_desktop changed: the window and its icon as its other states say. */
@@ -170,15 +185,26 @@ static bool recheck_one(struct view *v, bool *lost)
 	return true;
 }
 
+/* The window, its tab group and their dialogs. */
+static bool in_family(struct view *v, struct view *root)
+{
+	struct view *r = view_transient_root(v);
+	return r == root || (root->group && r->group == root->group);
+}
+
 void desktop_recheck(struct view *view)
 {
-	/* Its dialogs depend on whether it is everywhere: the window first, which they
-	 * follow. A tab group doesn't share it yet (TODO). */
+	/* Dialogs depend on whether their window is everywhere: the windows first, which
+	 * they follow. */
 	struct view *root = view_transient_root(view);
-	bool lost = false, changed = recheck_one(root, &lost);
+	bool lost = false, changed = false;
 	struct view *v;
 	wl_list_for_each(v, &view->server->views, link) {
-		if (v != root && view_transient_root(v) == root)
+		if (view_transient_root(v) == v && in_family(v, root))
+			changed |= recheck_one(v, &lost);
+	}
+	wl_list_for_each(v, &view->server->views, link) {
+		if (view_transient_root(v) != v && in_family(v, root))
 			changed |= recheck_one(v, &lost);
 	}
 	if (changed)
