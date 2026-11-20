@@ -22,8 +22,8 @@
  *     grow=WxH     after mapping, take that size of its own accord; says "grown"
  *     grow_ms=MS   wait that long before, default 1000
  *     dialog=NAME  also open a child toplevel with this app_id
- *     dialog_after=FILE  open it only once FILE exists, after all else below, while
- *                  hidden if rehide_after is given; says "dialog opened"
+ *     dialog_after=FILE  open it only once FILE exists, after all else below; says
+ *                  "dialog opened"
  *     dialog_minimize_after=FILE  then, once FILE exists, the dialog asks to be
  *                  minimized; says "dialog minimize asked"
  *     minimize_after=FILE  once FILE exists, ask to be minimized; says "minimize asked"
@@ -560,17 +560,40 @@ static void open_popup(struct window *parent)
 	wl_surface_commit(win->surface);
 }
 
-/* dialog_after's dialog, once its file exists. */
-static void open_late_dialog(struct wl_display *display)
+static void wait_for_file(struct wl_display *display, const char *path)
 {
-	if (!dialog || !dialog_after || dialog_win || !main_win->toplevel)
-		return;
-	while (access(dialog_after, F_OK) != 0)
+	while (access(path, F_OK) != 0)
 		wait_dispatching(display, 50);
+}
+
+/* Not closed by mwc meanwhile: a closed window's objects are gone. */
+static bool alive(const struct window *win)
+{
+	return win && win->toplevel;
+}
+
+static void open_dialog(struct wl_display *display)
+{
+	/* Its window mapped first: wlroots takes only a mapped parent. */
+	wl_display_roundtrip(display);
+	wl_display_roundtrip(display);
+	if (dialog_after)
+		wait_for_file(display, dialog_after);
+	if (!alive(main_win))
+		return;
 	dialog_win = open_window(dialog, main_win, 120, 80, false);
+	if (unparent) {
+		wl_display_roundtrip(display);
+		wl_display_roundtrip(display);
+		wait_dispatching(display, 1500);
+		if (alive(dialog_win))
+			xdg_toplevel_set_parent(dialog_win->toplevel, NULL);
+	}
 	wl_display_flush(display);
-	printf("dialog opened\n");
-	fflush(stdout);
+	if (dialog_after) {
+		printf("dialog opened\n");
+		fflush(stdout);
+	}
 }
 
 static void add_subsurface(struct window *parent)
@@ -705,18 +728,8 @@ int main(int argc, char *argv[])
 	}
 	main_win = open_window(app, NULL, default_w, default_h, true);
 	menu_toplevel = main_win->toplevel;
-	if (dialog && !dialog_after) {
-		wl_display_roundtrip(display);
-		wl_display_roundtrip(display);
-		dialog_win = open_window(dialog, main_win, 120, 80, false);
-		if (unparent) {
-			wl_display_roundtrip(display);
-			wl_display_roundtrip(display);
-			usleep(1500000);
-			xdg_toplevel_set_parent(dialog_win->toplevel, NULL);
-			wl_display_flush(display);
-		}
-	}
+	if (dialog && !dialog_after)
+		open_dialog(display);
 	if (late_frame && !strcmp(late_frame, "kde")) {
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
@@ -731,14 +744,14 @@ int main(int argc, char *argv[])
 	if (late_app) {
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
-		if (late_after) {
-			while (access(late_after, F_OK) != 0)
-				wait_dispatching(display, 50);
-		} else {
+		if (late_after)
+			wait_for_file(display, late_after);
+		else
 			wait_dispatching(display, late_ms);
+		if (alive(main_win)) {
+			xdg_toplevel_set_app_id(main_win->toplevel, late_app);
+			wl_surface_commit(main_win->surface);
 		}
-		xdg_toplevel_set_app_id(main_win->toplevel, late_app);
-		wl_surface_commit(main_win->surface);
 		wl_display_flush(display);
 		printf("late app\n");
 		fflush(stdout);
@@ -747,7 +760,8 @@ int main(int argc, char *argv[])
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
 		wait_dispatching(display, 500);
-		xdg_toplevel_set_fullscreen(main_win->toplevel, outputs[fs_output]);
+		if (alive(main_win))
+			xdg_toplevel_set_fullscreen(main_win->toplevel, outputs[fs_output]);
 		wl_display_flush(display);
 		printf("fullscreen asked\n");
 		fflush(stdout);
@@ -758,7 +772,8 @@ int main(int argc, char *argv[])
 		wait_dispatching(display, grow_ms);
 		main_win->natural_w = main_win->w = grow_w;
 		main_win->natural_h = main_win->h = grow_h;
-		draw(main_win);
+		if (alive(main_win))
+			draw(main_win);
 		wl_display_flush(display);
 		printf("grown\n");
 		fflush(stdout);
@@ -767,33 +782,34 @@ int main(int argc, char *argv[])
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
 		char t[32];
-		for (int i = 1; i < titles; i++) {
+		for (int i = 1; i < titles && alive(main_win); i++) {
 			snprintf(t, sizeof(t), "title %d", i);
 			xdg_toplevel_set_title(main_win->toplevel, t);
 		}
-		xdg_toplevel_set_title(main_win->toplevel, "last");
+		if (alive(main_win))
+			xdg_toplevel_set_title(main_win->toplevel, "last");
 		wl_display_flush(display);
 		printf("titles sent\n");
 		fflush(stdout);
 	}
 	if (popup_w > 0 && popup_after) {
-		while (access(popup_after, F_OK) != 0)
-			wait_dispatching(display, 50);
-		open_popup(main_win);
+		wait_for_file(display, popup_after);
+		if (alive(main_win))
+			open_popup(main_win);
 		wl_display_flush(display);
 	}
 	if (sub_w > 0 && sub_h > 0 && subcompositor) {
 		wl_display_roundtrip(display);
 		wl_display_roundtrip(display);
-		add_subsurface(main_win);
+		if (alive(main_win))
+			add_subsurface(main_win);
 		wl_display_flush(display);
 		printf("sub added\n");
 		fflush(stdout);
 	}
 	if (fixed_after) {
-		while (access(fixed_after, F_OK) != 0)
-			wait_dispatching(display, 50);
-		if (main_win->toplevel) {
+		wait_for_file(display, fixed_after);
+		if (alive(main_win)) {
 			xdg_toplevel_set_min_size(main_win->toplevel, main_win->w, main_win->h);
 			xdg_toplevel_set_max_size(main_win->toplevel, main_win->w, main_win->h);
 			wl_surface_commit(main_win->surface);
@@ -803,59 +819,57 @@ int main(int argc, char *argv[])
 		fflush(stdout);
 	}
 	if (minimize_after) {
-		while (access(minimize_after, F_OK) != 0)
-			wait_dispatching(display, 50);
-		if (main_win->toplevel)
+		wait_for_file(display, minimize_after);
+		if (alive(main_win))
 			xdg_toplevel_set_minimized(main_win->toplevel);
 		wl_display_flush(display);
 		printf("minimize asked\n");
 		fflush(stdout);
 	}
-	if (rehide_after && main_win->toplevel) {
-		while (access(rehide_after, F_OK) != 0)
-			wait_dispatching(display, 50);
-		main_win->hidden = true;
-		wl_surface_attach(main_win->surface, NULL, 0, 0);
-		wl_surface_commit(main_win->surface);
-		wl_display_roundtrip(display);
-		printf("hidden\n");
-		fflush(stdout);
-		/* A dialog of a window that isn't there. */
-		open_late_dialog(display);
-		if (reshow_after) {
-			while (access(reshow_after, F_OK) != 0)
-				wait_dispatching(display, 50);
-		} else {
-			wait_dispatching(display, 500);
+	if (rehide_after) {
+		wait_for_file(display, rehide_after);
+		if (alive(main_win)) {
+			main_win->hidden = true;
+			wl_surface_attach(main_win->surface, NULL, 0, 0);
+			wl_surface_commit(main_win->surface);
+			wl_display_roundtrip(display);
+			printf("hidden\n");
+			fflush(stdout);
 		}
+		if (reshow_after)
+			wait_for_file(display, reshow_after);
+		else
+			wait_dispatching(display, 500);
 		/* Unmapped, it starts over, as wlroots forgets its app_id and title: a commit
 		 * without a buffer, then the configure. */
-		xdg_toplevel_set_app_id(main_win->toplevel, main_win->app);
-		xdg_toplevel_set_title(main_win->toplevel, main_win->app);
-		main_win->hidden = false;
-		wl_surface_commit(main_win->surface);
-		wl_display_roundtrip(display);
-		wl_display_roundtrip(display);
-		printf("shown\n");
-		fflush(stdout);
+		if (alive(main_win)) {
+			xdg_toplevel_set_app_id(main_win->toplevel, main_win->app);
+			xdg_toplevel_set_title(main_win->toplevel, main_win->app);
+			main_win->hidden = false;
+			wl_surface_commit(main_win->surface);
+			wl_display_roundtrip(display);
+			wl_display_roundtrip(display);
+			printf("shown\n");
+			fflush(stdout);
+		}
 	}
 	if (unframe_after) {
-		while (access(unframe_after, F_OK) != 0)
-			wait_dispatching(display, 50);
-		if (main_win->deco)
+		wait_for_file(display, unframe_after);
+		if (alive(main_win) && main_win->deco) {
 			zxdg_toplevel_decoration_v1_destroy(main_win->deco);
-		main_win->deco = NULL;
-		if (main_win->toplevel)
+			main_win->deco = NULL;
 			wl_surface_commit(main_win->surface);
+		}
 		wl_display_flush(display);
 		printf("unframed\n");
 		fflush(stdout);
 	}
-	open_late_dialog(display);
-	if (dialog_minimize_after && dialog_win && dialog_win->toplevel) {
-		while (access(dialog_minimize_after, F_OK) != 0)
-			wait_dispatching(display, 50);
-		xdg_toplevel_set_minimized(dialog_win->toplevel);
+	if (dialog && dialog_after)
+		open_dialog(display);
+	if (dialog_minimize_after && dialog_win) {
+		wait_for_file(display, dialog_minimize_after);
+		if (alive(dialog_win))
+			xdg_toplevel_set_minimized(dialog_win->toplevel);
 		wl_display_flush(display);
 		printf("dialog minimize asked\n");
 		fflush(stdout);
