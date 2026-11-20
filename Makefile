@@ -82,7 +82,19 @@ build/logo.h: data/logo.png | build
 
 build/iconbox.o: build/logo.h
 
-build/main.o: src/version.h
+# The commit a build is from, after the version: +DATE.TIME.HASH, its commit time in
+# UTC, and .dirty for changes not committed. Rewritten only when it changes, so main.o
+# is built again only then; empty without git.
+build/gitversion.h: FORCE | build
+	@v=$$(TZ=UTC0 git log -1 --format=%cd.%h --date=format-local:%Y%m%d.%H%M 2>/dev/null); \
+	if [ -n "$$v" ] && ! git diff --quiet HEAD 2>/dev/null; then v=$$v.dirty; fi; \
+	line="#define MWC_GIT \"$${v:++$$v}\""; \
+	[ "$$(cat $@ 2>/dev/null)" = "$$line" ] || echo "$$line" >$@
+
+FORCE:
+.PHONY: FORCE
+
+build/main.o: src/version.h build/gitversion.h
 
 mwc: $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(MWC_LIBS) $(LDLIBS)
@@ -107,7 +119,7 @@ build/asan/%-protocol.o: build/%-protocol.c | build/asan
 
 build/asan/iconbox.o: build/logo.h
 
-build/asan/main.o: src/version.h
+build/asan/main.o: src/version.h build/gitversion.h
 
 build/mwc-asan: $(SAN_OBJ)
 	$(CC) $(SAN_FLAGS) -o $@ $(SAN_OBJ) $(MWC_LIBS)
@@ -156,7 +168,7 @@ unit: $(UNIT:%=build/unit/%)
 # new finding stops it. At -O0: optimizing first lets GCC drop the very paths that
 # dereference NULL. clang's analyzer is left out: wayland's list macros make it
 # report what isn't there.
-analyze: $(PROTO) build/logo.h
+analyze: $(PROTO) build/logo.h build/gitversion.h
 	@for f in $(SRC); do \
 		echo "analyze $$f"; \
 		$(CC) $(MWC_CFLAGS) $(CPPFLAGS) -O0 -fanalyzer -Werror -c $$f -o /dev/null || exit 1; \

@@ -270,9 +270,16 @@ export PATH=$PLAIN_PATH
 
 # ---- the version -------------------------------------------------------------------------------
 
-version=$(sed -n 's/^#define MWC_VERSION "\(.*\)"$/\1/p' src/version.h)
+# The version from version.h, then the commit the build is from where git knows it.
+version=$(sed -n 's/^#define MWC_VERSION "\([^"]*\)".*/\1/p' src/version.h)
 [ -n "$version" ] || fail "no MWC_VERSION in src/version.h"
-[ "$("$MWC" -v)" = "mwc $version" ] || fail "mwc -v should print: mwc $version"
+fmt=--date=format-local:%Y%m%d.%H%M
+if commit=$(TZ=UTC0 git log -1 --format=%cd.%h $fmt 2>/dev/null); then
+	git diff --quiet HEAD || commit=$commit.dirty
+	version=$version+$commit
+fi
+[ "$("$MWC" -v)" = "mwc $version" ] ||
+	fail "mwc -v should print: mwc $version, not $("$MWC" -v)"
 echo "ok: mwc -v prints mwc $version"
 
 # ---- the hooks are off unless asked for --------------------------------------------------------

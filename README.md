@@ -31,7 +31,9 @@ Nested in a running session, as a window:
 As a session: choose "Mwc (Motif)" in GDM, or start `mwc` from a TTY.
 `~/.config/mwc/autostart`, if executable, runs at startup unless `-s` is given.
 
-`-d` logs debug output. `-v` prints the version, which is set in `src/version.h`.
+`-d` logs debug output. `-v` prints the version, which is set in `src/version.h`, and the
+commit built, as `0.5.0+DATE.TIME.HASH` with its commit time in UTC and `.dirty` for
+changes not committed.
 
 To serve mwc headless over RDP with [wayrdp](https://github.com/reygnn/wayrdp), see
 [docs/WAYLAND-RDP.md](docs/WAYLAND-RDP.md);
