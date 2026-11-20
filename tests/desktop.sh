@@ -332,6 +332,29 @@ stop plain
 kill "$PID_tabbed"
 wait "$PID_tabbed" 2>/dev/null
 check "it is gone" "[ -z \"\$(get lateall x)\" ]"
+# The window with the rule joins a plain one, and leaves it again on desktop 2: the one
+# left alone is on that desktop only. With three, the two left are.
+for n in 1 2; do
+	wayland p1 size=300x200
+	[ $n = 2 ] && { wayland p2 size=300x200; do_input key super+g; }
+	wayland lateall size=300x200
+	do_input key super+g
+	check "$n plain, the one with the rule joins" \
+		"[ \"\$(get lateall tab)\" != -1 ] && [ \"\$(get p1 everywhere)\" = 1 ]"
+	switch_to 2
+	check "the group is in sight on desktop 2, its new tab shown" \
+		"[ \"\$(get lateall visible)\" = 1 ] && [ \"\$(get lateall active)\" = 1 ]"
+	do_input key super+shift+g
+	check "the one with the rule leaves" "[ \"\$(get lateall tab)\" = -1 ]"
+	check "the plain ones are on desktop 2 only, in sight" \
+		"[ \"\$(get p1 everywhere)\" = 0 ] && [ \"\$(get p1 desktop)\" = 2 ] && \
+		 { [ $n = 1 ] || { [ \"\$(get p2 everywhere)\" = 0 ] && [ \"\$(get p2 desktop)\" = 2 ]; }; } && \
+		 [ \$((\$(get p1 visible) + 0\$(get p2 visible))) = 1 ]"
+	switch_to 1
+	stop p1
+	[ $n = 2 ] && stop p2
+	stop lateall
+done
 echo 'Mwm*outputManagement: true' >"$RC"
 reload_mwc
 

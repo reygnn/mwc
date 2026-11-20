@@ -891,7 +891,7 @@ void desktop_switch(struct server *server, int n);
 void view_set_desktop(struct view *view, int n);
 /* It asked for the focus on another desktop. */
 void desktop_attention(struct view *view);
-/* Its type or parent changed. */
+/* What decides its desktop changed: parent, app_id, docking, tab group. */
 void desktop_recheck(struct view *view);
 bool desktop_urgent(struct server *server, int n);
 void view_toggle_sticky(struct view *view);

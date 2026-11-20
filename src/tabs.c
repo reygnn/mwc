@@ -326,9 +326,9 @@ bool tabs_join(struct view *view, struct view *target)
 	view->sticky = target->sticky;
 	view->desktop = target->desktop;
 	wl_list_insert(g->members.prev, &view->tab_link);
+	/* Both are in sight: a rule of either one, holding for both now, changes nothing
+	 * of that. */
 	switch_to(g, view, g->shown, false, false);
-	/* A rule of either window now holds for both. */
-	desktop_recheck(view);
 	return true;
 }
 

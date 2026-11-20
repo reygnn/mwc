@@ -265,8 +265,8 @@ switches through ext-workspace-v1, where they are workspaces 1 to 4 of one group
 window opens on the current desktop, a dialog on its window's. "To Desktop" in the
 window menu moves a window with its dialogs and tab group; "On All Desktops" keeps it
 on every one. Docked programs and programs with `allDesktops` are on all desktops,
-with their dialogs and, if one of them is in a tab group, the whole group. A dialog
-that opens on another desktop marks that desktop urgent.
+with their dialogs; a program with `allDesktops` in a tab group takes the whole group
+there. A dialog that opens on another desktop marks that desktop urgent.
 
 
 ## Icons

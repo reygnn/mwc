@@ -8,7 +8,7 @@
  *
  * - Docked windows are on all of them, as are programs with Mwm*NAME*allDesktops,
  *   windows put there through "On All Desktops" in their window menu, and their
- *   dialogs.
+ *   dialogs. A tab group is on all of them if one of its windows is.
  * - A dialog goes where its window is, a tab group as a whole.
  * - Icons belong to their window's desktop and are only seen there; each desktop
  *   has its own icon slots.
@@ -16,8 +16,8 @@
  *   the layout for when their desktop comes back.
  * - Hiding is the scene's alone: clients aren't told, and a capture of the output
  *   sees the current desktop.
- * - A window there that asks for the focus doesn't switch: it is marked
- *   (view.attention), and its desktop is urgent while one there is.
+ * - A window there that would take the focus, a dialog opening, doesn't switch: it
+ *   is marked (view.attention), and its desktop is urgent while one there is.
  *
  * Switching is for other programs to ask for, through ext-workspace-v1
  * (workspace.c); mwc binds no keys to it. A window moves through its window menu.
