@@ -495,12 +495,18 @@ do_input move "$TX" $((TY - 50))
 check "the pointer is there" "[ \"\$(global cursor y)\" = $((TY - 50)) ]"
 printf 'Mwm*moveOpaque: true\nMwm*fontList: Sans Bold 24\n' >"$RC"
 reload_mwc
+check "the reload came first" "[ \"\$(get xtop h)\" = 210 ]"
 kill -CONT $XW
 CONT_ON_EXIT=
 check "the title is larger" "[ \"\$(global theme title)\" -gt $T0 ]"
 check "moveOpaque, X11: it has the size, its frame where mwc has it" \
 	"[ \"\$(get xtop h)\" = 250 ] && [ \"\$(get xtop ny)\" = \"\$(get xtop y)\" ]"
 check "X has it where its frame is" "x_is xtop"
+# The resize goes on from that frame: its bottom stays.
+bottom=$(($(get xtop ny) + $(get xtop h)))
+do_input move "$TX" $((TY - 60))
+check "moveOpaque, X11: after the reload the bottom stays" \
+	"[ \"\$(get xtop h)\" = 260 ] && [ \$((\$(get xtop ny) + \$(get xtop h))) = $bottom ]"
 do_input up left
 no_grab_left "nothing is left of the grab"
 stop xtop
@@ -550,6 +556,7 @@ for how in F8 F7; do
 		check "Alt+F8 starts a resize" "[ \"\$(global cursor mode)\" = $MODE_RESIZE ]"
 		# Escape goes back to the size mwc has, not to what the ConfigureNotify said.
 		do_input key Right
+		geometry_is "resizing from the keyboard" xspoof$how 100 100 310 200
 		do_input key Escape
 		geometry_is "Escape puts it back to its own size" xspoof$how 100 100 300 200
 		do_input key alt+$how

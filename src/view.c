@@ -116,8 +116,9 @@ static void view_update_content_pos(struct view *view)
 	if (view->fullscreen && view->mapped) {
 		struct wlr_box a = output_full_area(view->server, view->x + 1, view->y + 1);
 		wlr_scene_rect_set_size(backdrop, a.width, a.height);
-		wlr_scene_node_set_position(&backdrop->node, a.x - view_drawn_x(view),
-			a.y - view_drawn_y(view));
+		/* view->x: on a map the node gets there only after this. Fullscreen, an
+		 * X11 frame is at view->x too. */
+		wlr_scene_node_set_position(&backdrop->node, a.x - view->x, a.y - view->y);
 		wlr_scene_node_set_enabled(&backdrop->node, true);
 		/* Smaller than the output: in its middle (xdg-shell). An X11 window is where
 		 * its configure put it, which has to agree with this. */
@@ -348,8 +349,8 @@ void views_update_layers(struct server *server)
 	struct output *keys = layer_keyboard_output(server);
 	if (keys && focus) {
 		struct view *root = view_transient_root(focus);
-		if (output_at(server, root->x + root->width / 2.0,
-				root->y + root->height / 2.0) == keys)
+		if (output_at(server, view_drawn_x(root) + root->width / 2.0,
+				view_drawn_y(root) + root->height / 2.0) == keys)
 			focus = NULL;
 	}
 	/* Bottom first: a node goes on top of its new layer, so windows moving together,
@@ -1312,6 +1313,14 @@ void view_frame_changed(struct view *view)
 	/* The client keeps its size and the frame around it changes, except
 	 * where the frame's size is fixed. */
 	view_update_content_pos(view);
+	/* A resize goes on from the frame the size last sent will have: X is told
+	 * view->x. */
+	struct server *server = view->server;
+	if (view->type == VIEW_XWAYLAND && server->grabbed_view == view &&
+			server->cursor_mode == CURSOR_RESIZE)
+		server->grab_geobox = (struct wlr_box){ view->x, view->y,
+			view->requested_w + frame_extra_w(view),
+			view->requested_h + frame_extra_h(view) };
 	view_frame_gravity(view);
 	if ((view->maximized || view->snap != SNAP_NONE) && !view->fullscreen &&
 			!view->tiled)
@@ -1580,8 +1589,9 @@ static struct wlr_box place_in(struct wlr_box a, int x, int y, int w, int h)
 /* Inside the usable area a; beside the dock, its strip may be used as well. */
 static void view_place_within(struct view *view, struct wlr_box a, int x, int y)
 {
-	int w = view->width + frame_extra_w(view);
-	int h = view->height + frame_extra_h(view);
+	/* The size last sent: the one it is placed for. */
+	int w = view->requested_w + frame_extra_w(view);
+	int h = view->requested_h + frame_extra_h(view);
 	struct output *o = output_at(view->server, a.x + a.width / 2.0,
 		a.y + a.height / 2.0);
 	struct wlr_box b;

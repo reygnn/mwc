@@ -389,7 +389,8 @@ static void process_move(struct server *server)
 		if (drop != server->grab_drop) {
 			server->grab_drop = drop;
 			if (drop)
-				snap_preview_box(view, (struct wlr_box){ drop->x, drop->y,
+				snap_preview_box(view, (struct wlr_box){
+					view_drawn_x(drop), view_drawn_y(drop),
 					drop->width + frame_extra_w(drop), frame_height(drop) });
 			else
 				snap_preview_hide();

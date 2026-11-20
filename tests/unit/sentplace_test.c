@@ -51,6 +51,11 @@ TEST(oldest_dropped)
 	CHECK(!sent_places_find(&s, 102, 100, &x, &y));
 	CHECK(at(&s, 103, 100, -3, 0));
 	CHECK(at(&s, 100 + SENT_PLACES + 2, 100, -(SENT_PLACES + 2), 0));
+	/* A size sent again takes its own entry's room, not the oldest's. */
+	sent_places_add(&s, 50, 0, 105, 100);
+	CHECK_INT(s.n, SENT_PLACES);
+	CHECK(at(&s, 105, 100, 50, 0));
+	CHECK(at(&s, 103, 100, -3, 0));
 }
 
 /* Moved while sizes are on their way: each frame moves with it. */
