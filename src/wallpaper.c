@@ -46,13 +46,16 @@ bool wallpaper_init(struct server *server)
 		wallpaper_fini(server);
 		return had;
 	}
-	struct wallpaper_file file = { st.st_dev, st.st_ino, st.st_size, st.st_mtim };
+	struct wallpaper_file file = { st.st_dev, st.st_ino, st.st_size, st.st_mtim,
+		st.st_ctim };
 	const struct wallpaper_file *was = &server->wallpaper_file;
 	/* A reload for a colour: a large photo isn't decoded again for each output. */
 	if (had && !strcmp(server->wallpaper, path) && file.dev == was->dev &&
 			file.ino == was->ino && file.size == was->size &&
 			file.mtime.tv_sec == was->mtime.tv_sec &&
-			file.mtime.tv_nsec == was->mtime.tv_nsec)
+			file.mtime.tv_nsec == was->mtime.tv_nsec &&
+			file.ctime.tv_sec == was->ctime.tv_sec &&
+			file.ctime.tv_nsec == was->ctime.tv_nsec)
 		return false;
 
 	/* Only the path is kept: decoded, a large image would stay in memory for the

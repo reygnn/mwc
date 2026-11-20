@@ -80,6 +80,8 @@ struct fifo {
 	struct wl_listener output_destroy;
 };
 
+static struct server *fifo_server;
+
 static void unwatch_output(struct fifo *fifo)
 {
 	if (!fifo->output)
@@ -135,6 +137,30 @@ static int timer_fired(void *data)
 	return 0;
 }
 
+struct surface_buffer {
+	struct wlr_surface *surface;
+	struct wlr_scene_buffer *buffer;
+};
+
+static void find_buffer(struct wlr_scene_buffer *buffer, int sx, int sy, void *data)
+{
+	struct surface_buffer *sb = data;
+	struct wlr_scene_surface *s = wlr_scene_surface_try_from_buffer(buffer);
+	if (s && s->surface == sb->surface)
+		sb->buffer = buffer;
+}
+
+/* The output wlroots paces it by: frame callbacks and presentation feedback come from
+ * the one most of it is on. */
+static struct wlr_output *primary_output(struct wlr_surface *surface, struct view *view)
+{
+	struct surface_buffer sb = { surface, NULL };
+	wlr_scene_node_for_each_buffer(view ? &view->tree->node :
+		&fifo_server->scene->tree.node, find_buffer, &sb);
+	struct wlr_scene_output *so = sb.buffer ? sb.buffer->primary_output : NULL;
+	return so && so->output->enabled ? so->output : NULL;
+}
+
 /* After the commit that raised the barrier: by now a newly mapped window is in the
  * scene, and the surface knows its outputs. */
 static void watch_output(void *data)
@@ -150,10 +176,11 @@ static void watch_output(void *data)
 	 * switched-off scene node, 0.20 keeps them on purpose (9c3bfbe). It is on none. */
 	struct view *view = view_from_surface(fifo->surface);
 	bool hidden = view && (view_hidden(view) || view->shaded);
-	/* On several, the fastest: a strip on a slower monitor doesn't slow the window. */
+	if (!hidden)
+		output = primary_output(fifo->surface, view);
+	/* No buffer in the scene yet: any output it is on. */
 	wl_list_for_each(so, &fifo->surface->current_outputs, link) {
-		if (so->output->enabled && !hidden &&
-				(!output || so->output->refresh > output->refresh))
+		if (!output && so->output->enabled && !hidden)
 			output = so->output;
 	}
 	if (!output) {
@@ -399,6 +426,7 @@ static void manager_bind(struct wl_client *client, void *data, uint32_t version,
 
 void fifo_init(struct server *server)
 {
+	fifo_server = server;
 	if (!wl_global_create(server->display, &wp_fifo_manager_v1_interface, 1, NULL,
 			manager_bind))
 		wlr_log(WLR_ERROR, "no wp_fifo_manager_v1");

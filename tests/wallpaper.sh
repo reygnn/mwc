@@ -64,6 +64,11 @@ reload_mwc
 refresh
 [ "$(global wallpaper decodes)" -gt "$decodes" ] || fail "a changed file wasn't read again"
 pixel_is "the changed file is shown" 100 360 "$BLUE"
+# Made unreadable, its content the same: on a reload it goes.
+chmod 000 "$SMOKE_DIR/fit.png"
+reload_mwc
+pixel_is "unreadable now, the desktop has its colour" 100 360 "$ROOT"
+chmod 644 "$SMOKE_DIR/fit.png"
 rm "$RC"
 stop_mwc
 build/pngtool stripes "$SMOKE_DIR/fit.png" 2560 1440 "$RED" "$BLUE" # for the cases below

@@ -476,7 +476,7 @@ struct server {
 		dev_t dev;
 		ino_t ino;
 		off_t size;
-		struct timespec mtime;
+		struct timespec mtime, ctime; /* ctime: also made unreadable */
 	} wallpaper_file;
 	int wallpaper_decodes; /* for the tests */
 };
