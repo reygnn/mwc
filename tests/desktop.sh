@@ -358,6 +358,30 @@ done
 echo 'Mwm*outputManagement: true' >"$RC"
 reload_mwc
 
+# Icons of two windows on all desktops, mapped on different ones: each takes a slot of
+# its own, on every desktop.
+printf 'Mwm*outputManagement: true\nMwm*ev1*allDesktops: true\nMwm*ev2*allDesktops: true\n' >"$RC"
+reload_mwc
+switch_to 2
+wayland ev1 size=200x100
+switch_to 3
+wayland ev2 size=200x100
+do_input key alt+F9
+check "ev2 is an icon" "[ \"\$(get ev2 min)\" = 1 ]"
+do_input move $(($(get ev1 x) + 30)) $(($(get ev1 y) + $(get ev1 th) + 30))
+do_input click left
+check "ev1 has the focus" "[ \"\$(get ev1 active)\" = 1 ]"
+do_input key alt+F9
+check "ev1 is an icon" "[ \"\$(get ev1 min)\" = 1 ]"
+switch_to 1
+check "on desktop 1 both icons, in two slots" \
+	"[ \"\$(get ev1 icon_shown)\" = 1 ] && [ \"\$(get ev2 icon_shown)\" = 1 ] && \
+	 [ \"\$(get ev1 icon_x),\$(get ev1 icon_y)\" != \"\$(get ev2 icon_x),\$(get ev2 icon_y)\" ]"
+stop ev1
+stop ev2
+echo 'Mwm*outputManagement: true' >"$RC"
+reload_mwc
+
 # ---- On All Desktops from the window menu -------------------------------------------------
 
 wayland stick size=200x100 dialog=stickkid

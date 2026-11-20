@@ -1361,6 +1361,8 @@ struct view *view_at(struct server *server, double lx, double ly,
 static void view_init_common(struct view *view)
 {
 	struct server *server = view->server;
+	static unsigned ids;
+	view->id = ++ids;
 	view->title_redraw = (struct throttle){ .ms = 16, .run = title_redraw, .data = view };
 	view->tree = wlr_scene_tree_create(server->layer_views);
 	view->tree->node.data = view;

@@ -6,6 +6,7 @@
  *   glide X Y N        N steps from where the pointer is to X Y, all sent at once,
  *                      as a fast mouse does
  *   down|up|click B    B is left, middle or right
+ *   dclick B           a double click, both clicks sent at once
  *   key COMBO          press and release, e.g. "alt+F4", "shift+Escape", "q"
  *   press KEY          press a key and keep it down, until vinput goes
  *   lift KEY           let a pressed key go up again
@@ -281,6 +282,10 @@ static const char *run_command(char *line)
 		return do_button(a, false, true);
 	if (strcmp(cmd, "click") == 0)
 		return do_button(a, true, true);
+	if (strcmp(cmd, "dclick") == 0) {
+		const char *err = do_button(a, true, true);
+		return err ? err : do_button(a, true, true);
+	}
 	if (strcmp(cmd, "key") == 0)
 		return do_key(a);
 	if (strcmp(cmd, "press") == 0 || strcmp(cmd, "lift") == 0) {

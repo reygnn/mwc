@@ -50,9 +50,11 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' TERM
 
-# Inside $(...) an exit only leaves the subshell, and the test would go on.
+# Inside $(...) an exit only leaves the subshell, and the test would go on. FAIL_NOTE,
+# if a script sets it, says how to get there again.
+FAIL_NOTE=
 fail() {
-	echo "FAIL: $1 (see $LOG)"
+	echo "FAIL: $1 (see $LOG)${FAIL_NOTE:+; $FAIL_NOTE}"
 	[ "$BASHPID" = "$MAIN_SHELL" ] || kill -TERM "$MAIN_SHELL"
 	exit 1
 }
@@ -179,7 +181,7 @@ refresh() {
 	rm -f "$MWC_TEST_STATE"
 	kill -USR1 "$pid" 2>/dev/null || fail "mwc died"
 	local i
-	for ((i = 0; i < 100; i++)); do
+	for ((i = 0; i < TIMEOUT * 50; i++)); do
 		[ -e "$MWC_TEST_STATE" ] && return 0
 		sleep 0.02
 	done

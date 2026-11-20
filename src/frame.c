@@ -529,9 +529,11 @@ static bool icon_slot_taken(struct server *server, struct view *self,
 {
 	struct view *v;
 	wl_list_for_each(v, &server->views, link) {
-		/* Each desktop has its own slots. */
+		/* Each desktop has its own slots; an icon on all of them takes its slot on
+		 * each. */
 		if (v != self && v->minimized && v->icon_placed &&
-				v->desktop == self->desktop &&
+				(v->desktop == self->desktop || view_on_all_desktops(v) ||
+				view_on_all_desktops(self)) &&
 				v->icon_x == x && v->icon_y == y)
 			return true;
 	}

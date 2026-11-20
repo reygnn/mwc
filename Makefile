@@ -112,10 +112,13 @@ build/asan/main.o: src/version.h
 build/mwc-asan: $(SAN_OBJ)
 	$(CC) $(SAN_FLAGS) -o $@ $(SAN_OBJ) $(MWC_LIBS)
 
-# A short walk too, from a new seed each time; the log says which.
+# A short walk too, after the tests (not beside them under -j), from a new seed each
+# time; its output and build/walk-ops.log say which.
+CHECK_ENV = MWC=build/mwc-asan MWC_SANITIZED=1 ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 \
+	UBSAN_OPTIONS=print_stacktrace=1
 check: build/mwc-asan
-	MWC=build/mwc-asan MWC_SANITIZED=1 ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 \
-		UBSAN_OPTIONS=print_stacktrace=1 $(MAKE) test walk WALK_STEPS=150
+	$(CHECK_ENV) $(MAKE) test; status=$$?; \
+		$(CHECK_ENV) $(MAKE) walk WALK_STEPS=150 && exit $$status
 	@if command -v $(FUZZ_CC) >/dev/null; then $(MAKE) fuzz-replay; \
 	else echo "make check: no $(FUZZ_CC), the fuzz inputs in fuzz/ were not replayed"; fi
 

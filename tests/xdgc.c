@@ -700,10 +700,12 @@ static int control_loop(struct wl_display *display)
 		if (fd < 0 || !(p[1].revents & (POLLIN | POLLHUP)))
 			continue;
 		ssize_t n = read(fd, buf + len, sizeof(buf) - 1 - len);
-		if (n <= 0) {
-			/* No writer: wait for the next one without spinning. */
+		if (n < 0)
+			continue; /* EAGAIN, EINTR */
+		if (n == 0) {
+			/* No writer any more: no more commands, the windows stay. */
 			close(fd);
-			fd = open(control, O_RDONLY);
+			fd = -1;
 			continue;
 		}
 		len += n;
@@ -712,7 +714,11 @@ static int control_loop(struct wl_display *display)
 			*nl = '\0';
 			if (!command(display, buf))
 				return 0;
-			wl_display_roundtrip(display);
+			/* What the client answers to it (a new window's first buffer) goes out
+			 * before the test looks. */
+			if (wl_display_roundtrip(display) < 0 || wl_display_flush(display) < 0 ||
+					wl_display_roundtrip(display) < 0)
+				return 1;
 			printf("did %d\n", ++done);
 			fflush(stdout);
 			len -= nl + 1 - buf;

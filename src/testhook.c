@@ -96,7 +96,7 @@ static int dump_state(int signal, void *data)
 			"bw=%d th=%d snap=%d tiled=%d tile_main=%d shaded=%d "
 			"fh=%d tab=%d tab_hidden=%d visible=%d tab_first=%d desktop=%d "
 			"icon_shown=%d everywhere=%d rseq=%ld tlen=%zu tdraws=%d tdrawn=%zu "
-			"group=%u cell=%d,%d,%d,%d sticky=%d root=%s\n",
+			"group=%u cell=%d,%d,%d,%d sticky=%d id=%u root=%u\n",
 			view_app_id(v), v->x, v->y, v->width, v->height,
 			v->activated, kb_focus && kb_focus == view_surface(v),
 			v->maximized, v->minimized, v->fullscreen, view_decorated(v),
@@ -108,7 +108,7 @@ static int dump_state(int signal, void *data)
 			v->icon_node->node.enabled, view_on_all_desktops(v), v->raise_seq,
 			strlen(view_title(v)), v->title_draws, v->title_drawn_len,
 			v->group ? v->group->id : 0, v->tile.x, v->tile.y, v->tile.width,
-			v->tile.height, v->sticky, view_app_id(view_transient_root(v)));
+			v->tile.height, v->sticky, v->id, view_transient_root(v)->id);
 	}
 	/* The mnemonics of what can be chosen, without spaces for the parser. */
 	char sensitive[MENU_MAX_ITEMS + 1];

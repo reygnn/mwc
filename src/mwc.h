@@ -170,6 +170,7 @@ struct tab_group {
 
 struct view {
 	struct wl_list link; /* server.views, front to back */
+	unsigned id;         /* for the tests */
 	struct server *server;
 	struct wlr_xdg_toplevel *xdg_toplevel;
 
