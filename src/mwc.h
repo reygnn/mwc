@@ -165,6 +165,7 @@ struct tab_group {
 	struct view *shown;
 	bool busy;              /* switching */
 	int first_visible;      /* more than fit the title bar, see frame.c */
+	unsigned id;            /* for the tests */
 };
 
 struct view {
@@ -744,6 +745,8 @@ void tile_init(struct server *server);
 void tile_config_changed(struct server *server);
 void tile_toggle(struct server *server);
 void tile_arrange(struct server *server);
+/* What the layout fills: the first output's usable area, less the icons' strip. */
+struct wlr_box tile_layout_area(struct server *server);
 bool tile_can_shade(struct view *view);
 bool tile_has_stack(struct server *server);
 /* Main window: into the stack. Stack window: roll up or down. */

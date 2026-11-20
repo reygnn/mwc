@@ -307,6 +307,8 @@ bool tabs_join(struct view *view, struct view *target)
 		g = calloc(1, sizeof(*g));
 		if (!g)
 			return false;
+		static unsigned ids;
+		g->id = ++ids;
 		remember_own_size(target);
 		wl_list_init(&g->members);
 		wl_list_insert(&g->members, &target->tab_link);

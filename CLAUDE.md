@@ -19,6 +19,7 @@ test tools. `distrobox enter mwc-dev -- bash -lc 'cd ~/data/C-Projects/mwc && ..
 | `make lint` | C lines over 100 columns, tabs as 8 |
 | `make valgrind` | memcheck, slow, without the timing-dependent scripts |
 | `make fuzz` | libFuzzer on the mwmrc parser, `FUZZ_TIME` seconds |
+| `make walk` | random operations with invariants after each, `WALK_STEPS`, `WALK_SEED`; `make check` takes 150 |
 
 CI (`.github/workflows/ci.yml`) runs `make lint`, a `-Werror` build, `make analyze` and
 `make check` in `tests/Containerfile`'s image.
@@ -34,6 +35,10 @@ fontconfig (`tests/unit/lsan.supp`).
 Polling helpers: `check`, `wait_for`, `pixel_is`, `pixel_isnt`, `reload_mwc` in
 `tests/lib.sh`. When a test client can't do what a test needs, extend it
 (`tests/xdgc.c`, `layerc.c`, `badclient.c`, `vinput.c`, `idlec.c`).
+
+What must hold for the window state at any moment is in `tests/invariants.awk`, what
+users and clients do in `tests/ops.sh`; `matrix.sh` and `walk.sh` combine them. A new
+window state or way to change one goes there too.
 
 
 ## Rules

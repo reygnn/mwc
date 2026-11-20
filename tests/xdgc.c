@@ -31,6 +31,10 @@
  *                  again once reshow_after=FILE exists, or 500 ms later; says "shown"
  *     unframe_after=FILE  once FILE exists, drop its xdg-decoration: no frame asked
  *                  for any more; says "unframed"
+ *     control=FIFO  once all else is done, read commands from FIFO, one a line, and
+ *                  after each a roundtrip, say "did N" (N counts them): title T,
+ *                  app A, size WxH (of its own accord), dialog NAME, undialog,
+ *                  fullscreen, unfullscreen, maximize, unmaximize, minimize, quit
  *     caps=1       print the wm_capabilities each window is offered:
  *                  "caps NAME max=M min=N"
  *     fs_output=N  a moment after mapping, ask for fullscreen on the Nth wl_output,
@@ -63,6 +67,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <sys/mman.h>
 #include <time.h>
@@ -102,7 +107,7 @@ static int32_t geom_x, geom_y;
 static int popup_x, popup_y, popup_w, popup_h;
 static const char *popup_after, *fixed_after;
 static const char *dialog_after, *minimize_after, *rehide_after, *reshow_after;
-static const char *unframe_after, *dialog_minimize_after;
+static const char *unframe_after, *dialog_minimize_after, *control;
 static const char *dialog;
 static struct window *main_win, *dialog_win;
 static int sub_x, sub_y, sub_w, sub_h;
@@ -624,6 +629,101 @@ static void add_subsurface(struct window *parent)
 	wl_surface_commit(parent->surface);
 }
 
+/* One command of control=FIFO; false for quit. */
+static bool command(struct wl_display *display, char *line)
+{
+	char *arg = strchr(line, ' ');
+	if (arg)
+		*arg++ = '\0';
+	if (!strcmp(line, "quit"))
+		return false;
+	if (!strcmp(line, "dialog") && arg && dialog_win && dialog_win->toplevel)
+		; /* one is enough */
+	else if (!strcmp(line, "dialog") && arg && alive(main_win))
+		dialog_win = open_window(strdup(arg), main_win, 120, 80, false);
+	else if (!strcmp(line, "undialog") && dialog_win && dialog_win->toplevel)
+		toplevel_close(dialog_win, dialog_win->toplevel);
+	else if (!alive(main_win))
+		;
+	else if (!strcmp(line, "title") && arg)
+		xdg_toplevel_set_title(main_win->toplevel, arg);
+	else if (!strcmp(line, "app") && arg)
+		xdg_toplevel_set_app_id(main_win->toplevel, arg);
+	else if (!strcmp(line, "size") && arg &&
+			sscanf(arg, "%dx%d", &main_win->natural_w, &main_win->natural_h) == 2) {
+		main_win->w = main_win->natural_w;
+		main_win->h = main_win->natural_h;
+		draw(main_win);
+	} else if (!strcmp(line, "fullscreen"))
+		xdg_toplevel_set_fullscreen(main_win->toplevel, NULL);
+	else if (!strcmp(line, "unfullscreen"))
+		xdg_toplevel_unset_fullscreen(main_win->toplevel);
+	else if (!strcmp(line, "maximize"))
+		xdg_toplevel_set_maximized(main_win->toplevel);
+	else if (!strcmp(line, "unmaximize"))
+		xdg_toplevel_unset_maximized(main_win->toplevel);
+	else if (!strcmp(line, "minimize"))
+		xdg_toplevel_set_minimized(main_win->toplevel);
+	return true;
+}
+
+/* Answers mwc and takes commands until quit or no window is left. */
+static int control_loop(struct wl_display *display)
+{
+	int fd = open(control, O_RDONLY | O_NONBLOCK);
+	if (fd < 0) {
+		perror("xdgc: control");
+		return 1;
+	}
+	char buf[512];
+	size_t len = 0;
+	int done = 0;
+	while (open_windows > 0) {
+		while (wl_display_prepare_read(display) != 0)
+			wl_display_dispatch_pending(display);
+		wl_display_flush(display);
+		struct pollfd p[2] = {
+			{ .fd = wl_display_get_fd(display), .events = POLLIN },
+			{ .fd = fd, .events = POLLIN },
+		};
+		if (poll(p, fd >= 0 ? 2 : 1, -1) < 0) {
+			wl_display_cancel_read(display);
+			continue;
+		}
+		if (p[0].revents & POLLIN) {
+			if (wl_display_read_events(display) < 0)
+				return 1;
+			wl_display_dispatch_pending(display);
+		} else {
+			wl_display_cancel_read(display);
+		}
+		if (fd < 0 || !(p[1].revents & (POLLIN | POLLHUP)))
+			continue;
+		ssize_t n = read(fd, buf + len, sizeof(buf) - 1 - len);
+		if (n <= 0) {
+			/* No writer: wait for the next one without spinning. */
+			close(fd);
+			fd = open(control, O_RDONLY);
+			continue;
+		}
+		len += n;
+		char *nl;
+		while ((nl = memchr(buf, '\n', len))) {
+			*nl = '\0';
+			if (!command(display, buf))
+				return 0;
+			wl_display_roundtrip(display);
+			printf("did %d\n", ++done);
+			fflush(stdout);
+			len -= nl + 1 - buf;
+			memmove(buf, nl + 1, len);
+		}
+		if (len == sizeof(buf) - 1)
+			len = 0; /* a line too long: dropped */
+	}
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	const char *app = NULL;
@@ -706,6 +806,8 @@ int main(int argc, char *argv[])
 			unframe_after = v;
 		else if (!strcmp(argv[i], "dialog_minimize_after"))
 			dialog_minimize_after = v;
+		else if (!strcmp(argv[i], "control"))
+			control = v;
 		else if (!strcmp(argv[i], "sub"))
 			sscanf(v, "%d,%d,%d,%d", &sub_x, &sub_y, &sub_w, &sub_h);
 	}
@@ -874,6 +976,8 @@ int main(int argc, char *argv[])
 		printf("dialog minimize asked\n");
 		fflush(stdout);
 	}
+	if (control)
+		return control_loop(display);
 	while (open_windows > 0 && wl_display_dispatch(display) != -1) {
 	}
 	return 0;

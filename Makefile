@@ -112,9 +112,10 @@ build/asan/main.o: src/version.h
 build/mwc-asan: $(SAN_OBJ)
 	$(CC) $(SAN_FLAGS) -o $@ $(SAN_OBJ) $(MWC_LIBS)
 
+# A short walk too, from a new seed each time; the log says which.
 check: build/mwc-asan
 	MWC=build/mwc-asan MWC_SANITIZED=1 ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 \
-		UBSAN_OPTIONS=print_stacktrace=1 $(MAKE) test
+		UBSAN_OPTIONS=print_stacktrace=1 $(MAKE) test walk WALK_STEPS=150
 	@if command -v $(FUZZ_CC) >/dev/null; then $(MAKE) fuzz-replay; \
 	else echo "make check: no $(FUZZ_CC), the fuzz inputs in fuzz/ were not replayed"; fi
 
@@ -435,12 +436,23 @@ layer-test: mwc build/vinput build/pngtool build/layerc build/xdgc
 config-test: mwc build/vinput build/pngtool
 	tests/config.sh
 
+# Combinations: every starting point takes every operation, with invariants checked
+# after each step (tests/invariants.awk, operations in tests/ops.sh).
+matrix-test: mwc build/vinput build/xdgc build/workspacec
+	tests/matrix.sh
+
+# The same operations in a random order: WALK_STEPS (200), WALK_SEED (the time).
+WALK_STEPS ?= 200
+WALK_SEED ?=
+walk: mwc build/vinput build/xdgc build/workspacec
+	WALK_STEPS=$(WALK_STEPS) WALK_SEED=$(WALK_SEED) tests/walk.sh
+
 build-test: mwc
 	tests/build.sh
 
 test: unit smoke input-test wallpaper-test config-test layer-test window-test \
 	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test desktop-test iconbox-test dock-test \
-	build-test
+	matrix-test build-test
 
 clean:
 	rm -rf build mwc
@@ -448,4 +460,4 @@ clean:
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN) $(IDLEC_GEN) build/ext-workspace-v1-client.h \
 	build/ext-workspace-v1-code.c
-.PHONY: unit build-test lint analyze valgrind check fuzz fuzz-replay dock-test iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: matrix-test walk unit build-test lint analyze valgrind check fuzz fuzz-replay dock-test iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean

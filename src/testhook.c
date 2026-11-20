@@ -95,7 +95,8 @@ static int dump_state(int signal, void *data)
 			"max=%d min=%d full=%d frame=%d icon_x=%d icon_y=%d hidden=%d "
 			"bw=%d th=%d snap=%d tiled=%d tile_main=%d shaded=%d "
 			"fh=%d tab=%d tab_hidden=%d visible=%d tab_first=%d desktop=%d "
-			"icon_shown=%d everywhere=%d rseq=%ld tlen=%zu tdraws=%d tdrawn=%zu\n",
+			"icon_shown=%d everywhere=%d rseq=%ld tlen=%zu tdraws=%d tdrawn=%zu "
+			"group=%u cell=%d,%d,%d,%d sticky=%d root=%s\n",
 			view_app_id(v), v->x, v->y, v->width, v->height,
 			v->activated, kb_focus && kb_focus == view_surface(v),
 			v->maximized, v->minimized, v->fullscreen, view_decorated(v),
@@ -105,7 +106,9 @@ static int dump_state(int signal, void *data)
 			v->tab_hidden, v->tree->node.enabled,
 			v->group ? v->group->first_visible : 0, v->desktop + 1,
 			v->icon_node->node.enabled, view_on_all_desktops(v), v->raise_seq,
-			strlen(view_title(v)), v->title_draws, v->title_drawn_len);
+			strlen(view_title(v)), v->title_draws, v->title_drawn_len,
+			v->group ? v->group->id : 0, v->tile.x, v->tile.y, v->tile.width,
+			v->tile.height, v->sticky, view_app_id(view_transient_root(v)));
 	}
 	/* The mnemonics of what can be chosen, without spaces for the parser. */
 	char sensitive[MENU_MAX_ITEMS + 1];
@@ -137,7 +140,10 @@ static int dump_state(int signal, void *data)
 		fprintf(f, "output_%s x=%d y=%d w=%d h=%d scale=%d\n", each->wlr_output->name,
 			b.x, b.y, b.width, b.height, (int)(each->wlr_output->scale * 100));
 	}
-	fprintf(f, "tiling on=%d\n", server->tiling);
+	struct wlr_box ta = output_first(server) ? tile_layout_area(server) :
+		(struct wlr_box){ 0 };
+	fprintf(f, "tiling on=%d area=%d,%d,%d,%d gap=%d\n", server->tiling, ta.x, ta.y,
+		ta.width, ta.height, MWC_GAP);
 	fprintf(f, "desktop current=%d\n", server->desktop + 1);
 	int focused = 0;
 	wl_list_for_each(v, &server->views, link)

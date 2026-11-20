@@ -433,10 +433,14 @@ Podman and Distrobox:
 `make test` runs every script in `tests/`, each also on its own as `make NAME-test`
 (`make smoke` for the first): smoke, input, wallpaper, config, layer, window, move,
 snap, outputs, tile, crash, pointer, state, misc, session, tabs, fifo, rdp, desktop,
-iconbox, dock and build. All but build run mwc on a headless output with small clients
-in `tests/` that can ask for any hint, and check the state mwc writes and pixels in
-screenshots; build checks the Makefile with dry runs and an install into a scratch
-directory. None of this tests real input hardware, DRM/KMS or VT switching; use a VM or
+iconbox, dock, matrix and build. All but build run mwc on a headless output with small
+clients in `tests/` that can ask for any hint, and check the state mwc writes and pixels
+in screenshots; build checks the Makefile with dry runs and an install into a scratch
+directory. matrix takes each starting point (floating, tabs, tiling, rolled up,
+tiling with tabs, each also on all desktops) through each operation and checks after
+every step that the state fits together (`tests/invariants.awk`). `make walk` does the
+same operations in a random order, `WALK_STEPS` of them from `WALK_SEED`; `make check`
+takes a short walk too. None of this tests real input hardware, DRM/KMS or VT switching; use a VM or
 a free TTY for those.
 
 `make check` runs the same tests against a build with AddressSanitizer and

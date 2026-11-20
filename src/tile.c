@@ -109,7 +109,7 @@ static struct view **tiled_windows(struct server *server, int *n)
  * tile_arrange() doesn't start without one. Icons stay in view: the layout leaves out
  * the strip along the edge they pile up from, up to the innermost row or column of
  * them (they keep their own 8 px margin), or the icon box. */
-static struct wlr_box layout_area(struct server *server)
+struct wlr_box tile_layout_area(struct server *server)
 {
 	struct wlr_box a = output_first(server)->usable;
 	const struct config_placement *p = config_icon_placement();
@@ -156,7 +156,7 @@ static struct view *plan(struct server *server, struct view **list, int n,
 			.auto_shaded = v->auto_shaded, .cell = v->tile, .main = v->tile_main,
 		};
 	}
-	int misfit = tile_plan(w, n, layout_area(server), main_pct, overflow);
+	int misfit = tile_plan(w, n, tile_layout_area(server), main_pct, overflow);
 	for (int i = 0; i < n; i++) {
 		list[i]->shaded = w[i].shaded;
 		list[i]->auto_shaded = w[i].auto_shaded;
