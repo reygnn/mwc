@@ -67,10 +67,11 @@ TEST(contrast)
 	CHECK(black_text(0xb3b3b3));
 }
 
-/* An 8-bit channel, rounded from the shade. */
+/* An 8-bit channel as the screen shows it: the 16-bit value cut to its high byte, as
+ * the X server does for mwm and cairo does for mwc. */
 static int byte(float c)
 {
-	return (int)lroundf(c * 255);
+	return (int)lroundf(c * 65535) >> 8;
 }
 
 static bool shade_is(struct mwc_color c, uint32_t v)
@@ -79,18 +80,18 @@ static bool shade_is(struct mwc_color c, uint32_t v)
 		byte(c.b) == (int)(v & 0xff);
 }
 
-/* The values Motif 2.3.8's CalculateColorsRGB() gives, rounded to 8 bits. */
+/* The values Motif 2.3.8's CalculateColorsRGB() gives, as mwm shows them. */
 TEST(shades)
 {
 	struct mwc_color bg = rgb(0x7387ad), fg = rgb(0x123456);
 	struct mwc_shade s = shade_from(bg, fg);
 	CHECK(same(s.bg, bg) && same(s.fg, fg));
 	/* Medium: the top towards white, the bottom towards black. */
-	CHECK(shade_is(s.top, 0xc0c9da) && shade_is(s.bottom, 0x3a4457));
+	CHECK(shade_is(s.top, 0xc0c9da) && shade_is(s.bottom, 0x394356));
 	s = shade_from(rgb(0xaeb2c3), fg);
-	CHECK(shade_is(s.top, 0xdcdee5) && shade_is(s.bottom, 0x5e6069));
+	CHECK(shade_is(s.top, 0xdddee6) && shade_is(s.bottom, 0x5e6069));
 	s = shade_from(rgb(0x2e5e3e), fg);
-	CHECK(shade_is(s.top, 0x9bb2a2) && shade_is(s.bottom, 0x152a1c));
+	CHECK(shade_is(s.top, 0x9bb2a2) && shade_is(s.bottom, 0x142a1c));
 	/* Light, above 93%: both towards black, the top less. */
 	s = shade_from(rgb(0xf0f0f0), fg);
 	CHECK(shade_is(s.top, 0xc0c0c0) && shade_is(s.bottom, 0x909090));
@@ -98,7 +99,7 @@ TEST(shades)
 	CHECK(shade_is(w.top, 0xcccccc) && shade_is(w.bottom, 0x999999));
 	/* Dark, below 20%: both towards white, the bottom less. */
 	s = shade_from(rgb(0x202020), fg);
-	CHECK(shade_is(s.top, 0x8f8f8f) && shade_is(s.bottom, 0x636363));
+	CHECK(shade_is(s.top, 0x909090) && shade_is(s.bottom, 0x636363));
 	struct mwc_shade k = shade_from(rgb(0), fg);
 	CHECK(shade_is(k.top, 0x7f7f7f) && shade_is(k.bottom, 0x4c4c4c));
 	/* The edges of the medium range. */
