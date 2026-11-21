@@ -283,7 +283,7 @@ static bool parse_position(const char *s, struct config_position *out)
  * takes by its name. */
 static const char *const global_resources[] = {
 	"activeBackground", "activeForeground", "background", "foreground", "fontList",
-	"resizeBorderWidth", "frameBorderWidth",
+	"basicBackground", "textForeground", "resizeBorderWidth", "frameBorderWidth",
 	"rootBackground", "wallpaper", "terminal", "runDialog", "screenSaver",
 	"clipboardRectangleScreenshot", "clipboardScreenshot", "rectangleScreenshot",
 	"screenshot", "rootMenuItem", "moveOpaque", "keyboardLayout", "keyboardVariant",

@@ -170,7 +170,7 @@ unit: $(UNIT:%=build/unit/%)
 # the page in the repository is not what the generator writes.
 build/schemes-html: docs/schemes-html.c src/color.c src/color.h | build
 	$(CC) -std=c11 -Wall -Wextra $(CPPFLAGS) $(CFLAGS) -o $@ docs/schemes-html.c \
-		src/color.c $(LDFLAGS) $(LDLIBS)
+		src/color.c $(LDFLAGS) $(LDLIBS) -lm
 
 schemes: build/schemes-html
 	build/schemes-html docs/mwmrc.irix-schemes > docs/irix-schemes.html

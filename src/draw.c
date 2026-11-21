@@ -64,7 +64,7 @@ static struct mwc_color setting_color(const char *env, const char *resource,
 	return hex(fallback);
 }
 
-/* Title text colour from mwmrc, if it sets one that is a colour. */
+/* A colour from mwmrc, if it sets one that is a colour; one that is none is said. */
 static bool text_color(const char *resource, struct mwc_color *out)
 {
 	const char *s = config_get(resource);
@@ -203,6 +203,11 @@ void theme_init(void)
 		theme.active_fg : color_contrast(active));
 	theme.menu = theme.inactive;
 	theme.select = active;
+	/* IRIX's client palette, for mtk's clients: mwc draws nothing with it, but says
+	 * here, with the others, when it is no colour. */
+	struct mwc_color unused;
+	text_color("basicBackground", &unused);
+	text_color("textForeground", &unused);
 
 	const char *font = usable_font(getenv("MWC_FONT"), "MWC_FONT");
 	if (!font)

@@ -107,8 +107,8 @@ matched by their `app_id`, ignoring case; it may contain dots. Unknown resources
 logged and ignored.
 
 [docs/mwmrc](docs/mwmrc) is an example file. [docs/mwmrc.irix-schemes](docs/mwmrc.irix-schemes)
-has the frame colours of IRIX 6.5's colour schemes, Base (IndigoMagic) and 29 others;
-[docs/irix-schemes.html](docs/irix-schemes.html) shows them as mwc draws them.
+has the frame and client colours of IRIX 6.5's colour schemes, Base (IndigoMagic) and 29
+others; [docs/irix-schemes.html](docs/irix-schemes.html) shows them as mwc draws them.
 
 Global resources:
 
@@ -117,6 +117,7 @@ Global resources:
 | `activeBackground` | frame colour while focused |
 | `background` | frame colour while unfocused; also menus and icons |
 | `activeForeground`, `foreground` | title text; default black or white, as Motif picks it, and black on the built-in grey as in IRIX |
+| `basicBackground`, `textForeground` | IRIX's client palette: the colours mtk's clients draw with instead of the frame colours, their text at 4.5:1 at least; mwc itself doesn't use them |
 | `fontList` | font of titles and menus; title bars grow with it |
 | `resizeBorderWidth`, `frameBorderWidth` | frame width in pixels with resize handles and without, 3 to 64; default 7 and 5 |
 | `rootBackground` | desktop colour, or `none` for a wallpaper tool such as swaybg |

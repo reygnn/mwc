@@ -112,8 +112,13 @@ TEST(unknown_resources)
 		"Mwm*foot*geometry: +0+0\n"
 		"Mwm*foot*fontList: Sans 9\n"
 		"Mwm*keyboardVariant: nodeadkeys\n"
-		"Mwm*clipboardRectangleScreenshot: shot -c -r\n");
-	CHECK_INT(log_lines("unknown resource"), 3);
+		"Mwm*clipboardRectangleScreenshot: shot -c -r\n"
+		"Mwm*basicBackground: #795f78\n"
+		"Mwm*textForeground: #fffffe\n"
+		"Mwm*foot*basicBackground: #795f78\n");
+	/* The client palette is global only, as mtk reads it. */
+	CHECK_INT(log_lines("unknown resource"), 4);
+	CHECK_INT(log_lines("mwmrc:11: unknown resource basicBackground"), 1);
 	CHECK_INT(log_lines("mwmrc:1: unknown resource terminl"), 1);
 	CHECK_INT(log_lines("mwmrc:2: unknown resource activeBackgrond"), 1);
 	/* fontList is global only: for one program it means nothing. */

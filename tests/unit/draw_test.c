@@ -184,6 +184,14 @@ TEST(theme_bad_foreground)
 	CHECK_INT(log_lines("ignoring Mwm*activeForeground: #12"), 1);
 	theme_from("Mwm*foreground: white\n");
 	CHECK_INT(log_lines(""), 0);
+	/* IRIX's client palette is mtk's: mwc's frames don't change, a bad one is said. */
+	theme_from("Mwm*basicBackground: #795f78\nMwm*textForeground: #fffffe\n");
+	CHECK_INT(log_lines(""), 0);
+	CHECK(same(theme.inactive.bg, rgb(0xaaaaaa)) && same(theme.active.bg, rgb(0xc6c1aa)));
+	CHECK(same(theme.inactive.fg, rgb(0)) && same(theme.menu.bg, rgb(0xaaaaaa)));
+	theme_from("Mwm*basicBackground: nonsense\nMwm*textForeground: #12\n");
+	CHECK_INT(log_lines("ignoring Mwm*basicBackground: nonsense"), 1);
+	CHECK_INT(log_lines("ignoring Mwm*textForeground: #12"), 1);
 }
 
 /* docs/mwmrc.irix-schemes: each scheme, commented out or not, is read without a word and

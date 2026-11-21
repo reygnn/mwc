@@ -1,10 +1,12 @@
 /*
  * Writes docs/irix-schemes.html from docs/mwmrc.irix-schemes: each scheme as a focused
- * and an unfocused frame, with title text and shadows from color.c, as mwc draws them.
+ * and an unfocused frame, with title text and shadows from color.c, as mwc draws them,
+ * around a program in the scheme's client palette, which mtk's clients draw with.
  * make schemes runs it, make schemes-test checks that the page in the repository is
  * current.
  */
 #define _POSIX_C_SOURCE 200809L
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +19,7 @@ struct scheme {
 	char name[32];
 	char note[64];             /* "(colours as Base)" and the like, without brackets */
 	unsigned active, inactive; /* activeBackground, background */
+	unsigned basic, text;      /* basicBackground, textForeground: the client palette */
 	unsigned over_active, over_inactive; /* the optional title text, NONE if none */
 };
 
@@ -56,13 +59,18 @@ static int read_schemes(const char *path, struct scheme *s)
 			if (!optional && !cur && n < MAX_SCHEMES) {
 				cur = &s[n++];
 				*cur = (struct scheme){ .active = NONE, .inactive = NONE,
+					.basic = NONE, .text = NONE,
 					.over_active = NONE, .over_inactive = NONE };
 				strcpy(cur->name, name);
 				strcpy(cur->note, note);
 			}
 		} else if (cur && !strncmp(l, "Mwm*", 4)) {
 			bool active = !strncmp(l + 4, "active", 6);
-			if (!optional && strstr(l, "ackground:"))
+			if (!optional && !strncmp(l + 4, "basicBackground:", 16))
+				cur->basic = value(l);
+			else if (!optional && !strncmp(l + 4, "textForeground:", 15))
+				cur->text = value(l);
+			else if (!optional && strstr(l, "ackground:"))
 				*(active ? &cur->active : &cur->inactive) = value(l);
 			else if (optional && strstr(l, "oreground:"))
 				*(active ? &cur->over_active : &cur->over_inactive) = value(l);
@@ -72,7 +80,25 @@ static int read_schemes(const char *path, struct scheme *s)
 	return n;
 }
 
-static void frame(unsigned bg, const char *title)
+/* WCAG's relative luminance and contrast ratio, as mtk weighs the client text. */
+static double luminance(unsigned c)
+{
+	double l = 0;
+	static const double w[] = { 0.2126, 0.7152, 0.0722 };
+	for (int i = 0; i < 3; i++) {
+		double v = ((c >> (16 - 8 * i)) & 0xff) / 255.0;
+		l += w[i] * (v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4));
+	}
+	return l;
+}
+
+static double contrast(unsigned a, unsigned b)
+{
+	double la = luminance(a) + 0.05, lb = luminance(b) + 0.05;
+	return la > lb ? la / lb : lb / la;
+}
+
+static void frame(unsigned bg, const char *title, unsigned basic, unsigned text)
 {
 	struct color_shades s = color_shades(bg);
 	char bevel[64];
@@ -87,7 +113,8 @@ static void frame(unsigned bg, const char *title)
 		printf("<span class=\"btn\" style=\"%s\"><span class=\"%s\" style=\"%s\">"
 			"</span></span>", bevel, glyphs[i], bevel);
 	}
-	printf("</div><div class=\"client\"></div></div>\n");
+	printf("</div><div class=\"client\" style=\"background:#%06x;color:#%06x\">"
+		"Program text</div></div>\n", basic, text);
 }
 
 static void row(const char *resource, unsigned bg, unsigned over)
@@ -97,6 +124,17 @@ static void row(const char *resource, unsigned bg, unsigned over)
 		"<b>%s</b> #%06x &middot; text #%06x", bg, resource, bg, fg);
 	if (over != NONE)
 		printf(" <em>(optional override: #%06x)</em>", over);
+	printf("</div>\n");
+}
+
+static void client_row(unsigned basic, unsigned text)
+{
+	double c = contrast(basic, text);
+	printf("<div class=\"row\"><span class=\"sw\" style=\"background:#%06x\"></span>"
+		"<b>basicBackground</b> #%06x &middot; text #%06x, %.1f:1",
+		basic, basic, text, c);
+	if (c < 4.5)
+		printf(" <em>(mtk moves the text to 4.5:1)</em>");
 	printf("</div>\n");
 }
 
@@ -131,8 +169,9 @@ static const char head[] =
 ".title { flex:1; min-width:0; border:1px solid; text-align:center; padding:0 4px;\n"
 "  font:bold 12px/20px \"DejaVu Sans\", sans-serif; white-space:nowrap; overflow:hidden;\n"
 "  text-overflow:ellipsis; }\n"
-".client { height:46px; margin-top:3px; background:#fff; border:1px solid;\n"
-"  border-color:#00000066 #ffffff66 #ffffff66 #00000066; }\n"
+".client { height:46px; margin-top:3px; border:1px solid; padding:4px 8px;\n"
+"  border-color:#00000066 #ffffff66 #ffffff66 #00000066;\n"
+"  font:12px/1.4 \"DejaVu Sans\", sans-serif; }\n"
 ".row { display:flex; gap:6px; align-items:center; font-size:12.5px; flex-wrap:wrap; }\n"
 ".row b { font-weight:600; min-width:118px; } .row em { color:var(--muted); }\n"
 ".sw { width:14px; height:14px; border:1px solid var(--line); flex:0 0 auto; }\n"
@@ -140,10 +179,12 @@ static const char head[] =
 "  font-size:12px; overflow-x:auto; }\n"
 "</style></head><body>\n"
 "<header><h1>IRIX 6.5 colour schemes for mwc</h1>\n"
-"<p>The frame colours in <code>docs/mwmrc.irix-schemes</code>. Title text and shadows\n"
+"<p>The colours in <code>docs/mwmrc.irix-schemes</code>. Title text and shadows\n"
 "are mwc's, from Motif's formula: black text above 70% brightness, white otherwise.\n"
-"Where the palette gives other title text, its optional override is noted. The lines\n"
-"in the box go into <code>~/.config/mwc/mwmrc</code>.</p></header>\n<main>\n";
+"Where the palette gives other title text, its optional override is noted. Inside the\n"
+"frames is the client palette, basicBackground with textForeground, which mtk's\n"
+"clients draw with. The lines in the box go into\n"
+"<code>~/.config/mwc/mwmrc</code>.</p></header>\n<main>\n";
 
 int main(int argc, char **argv)
 {
@@ -155,7 +196,8 @@ int main(int argc, char **argv)
 	int n = read_schemes(argv[1], s);
 	fputs(head, stdout);
 	for (int i = 0; i < n; i++) {
-		if (s[i].active == NONE || s[i].inactive == NONE) {
+		if (s[i].active == NONE || s[i].inactive == NONE || s[i].basic == NONE ||
+		    s[i].text == NONE) {
 			fprintf(stderr, "%s: scheme %s lacks a colour\n", argv[1], s[i].name);
 			return 1;
 		}
@@ -163,13 +205,17 @@ int main(int argc, char **argv)
 		if (*s[i].note)
 			printf(" <small>%s</small>", s[i].note);
 		printf("</h2>\n<div class=\"pair\">\n");
-		frame(s[i].active, "focused");
-		frame(s[i].inactive, "unfocused");
+		frame(s[i].active, "focused", s[i].basic, s[i].text);
+		frame(s[i].inactive, "unfocused", s[i].basic, s[i].text);
 		printf("</div>\n");
 		row("activeBackground", s[i].active, s[i].over_active);
 		row("background", s[i].inactive, s[i].over_inactive);
+		client_row(s[i].basic, s[i].text);
 		printf("<pre>Mwm*activeBackground:        #%06x\n"
-			"Mwm*background:              #%06x", s[i].active, s[i].inactive);
+			"Mwm*background:              #%06x\n"
+			"Mwm*basicBackground:         #%06x\n"
+			"Mwm*textForeground:          #%06x", s[i].active, s[i].inactive,
+			s[i].basic, s[i].text);
 		if (s[i].over_active != NONE || s[i].over_inactive != NONE)
 			printf("\n! optional");
 		if (s[i].over_active != NONE)
