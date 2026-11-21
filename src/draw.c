@@ -64,7 +64,7 @@ static struct mwc_color setting_color(const char *env, const char *resource,
 	return hex(fallback);
 }
 
-/* A colour from mwmrc, if it sets one that is a colour; one that is none is said. */
+/* A colour from mwmrc, if it sets one that is a colour; one that isn't is said. */
 static bool text_color(const char *resource, struct mwc_color *out)
 {
 	const char *s = config_get(resource);
