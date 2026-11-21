@@ -77,35 +77,72 @@ struct mwc_color color_mix(struct mwc_color a, struct mwc_color b, float f)
 		a.b + (b.b - a.b) * f };
 }
 
-static float linear(float c)
+/*
+ * Motif's default colour calculation, CalculateColorsRGB() in lib/Xm/Color.c of
+ * Motif 2.3.8, in its 16-bit integer arithmetic so the shades come out as mwm's,
+ * and with its XmScreen defaults: darkThreshold 20, lightThreshold 93,
+ * foregroundThreshold 70, in percent of the brightness.
+ */
+#define XM_MAX 65535
+#define XM_PERCENT (XM_MAX / 100)
+#define XM_DARK (20 * XM_PERCENT)
+#define XM_LIGHT (93 * XM_PERCENT)
+#define XM_FOREGROUND (70 * XM_PERCENT)
+
+static int xm_channel(float c)
 {
-	return c <= 0.04045f ? c / 12.92f : powf((c + 0.055f) / 1.055f, 2.4f);
+	return (int)lroundf(fminf(fmaxf(c, 0.0f), 1.0f) * XM_MAX);
 }
 
-/* Black or white, whichever has the higher WCAG contrast on bg: black when
- * (L + 0.05) / 0.05 > 1.05 / (L + 0.05). A luma threshold gave mid-tones such
- * as 7387ad white text, and deskControl decides the same way. */
+/* Brightness(): three quarters the mean of the channels, a quarter the luminosity. */
+static int xm_brightness(const int c[3])
+{
+	int intensity = (c[0] + c[1] + c[2]) / 3;
+	int luminosity = (int)(0.30 * (float)c[0] + 0.59 * (float)c[1] +
+		0.11 * (float)c[2]);
+	return (intensity * 75 + luminosity * 25) / 100;
+}
+
+/* f percent of the way towards white, or towards black for a negative f. */
+static struct mwc_color xm_shift(const int c[3], int f)
+{
+	int out[3];
+	for (int i = 0; i < 3; i++)
+		out[i] = f >= 0 ? c[i] + f * (XM_MAX - c[i]) / 100 : c[i] - c[i] * -f / 100;
+	return (struct mwc_color){ out[0] / (float)XM_MAX, out[1] / (float)XM_MAX,
+		out[2] / (float)XM_MAX };
+}
+
+/* Black on a background brighter than foregroundThreshold, white otherwise. */
 struct mwc_color color_contrast(struct mwc_color bg)
 {
-	float l = 0.2126f * linear(bg.r) + 0.7152f * linear(bg.g) +
-		0.0722f * linear(bg.b);
-	return hex((l + 0.05f) * (l + 0.05f) > 1.05f * 0.05f ? 0x000000 : 0xffffff);
+	int c[3] = { xm_channel(bg.r), xm_channel(bg.g), xm_channel(bg.b) };
+	return hex(xm_brightness(c) > XM_FOREGROUND ? 0x000000 : 0xffffff);
 }
 
 /*
- * Derive the top/bottom shadow colours from a background the way Motif's
- * XmeGetDefaultThreeDColors roughly does: lighten towards white for the
- * top shadow, darken towards black for the bottom shadow.
+ * The top and bottom shadows of a background, by its brightness:
+ *   dark (below 20%):   both towards white, the top 50%, the bottom 30%;
+ *   light (above 93%):  both towards black, the top 20%, the bottom 40%;
+ *   medium:             the top 50 to 60% towards white, the bottom 60 to 40%
+ *                       towards black, the brighter the background the more and less.
  */
 struct mwc_shade shade_from(struct mwc_color bg, struct mwc_color fg)
 {
 	struct mwc_shade s = { .bg = bg, .fg = fg };
-	s.top.r = bg.r + (1.0f - bg.r) * 0.55f;
-	s.top.g = bg.g + (1.0f - bg.g) * 0.55f;
-	s.top.b = bg.b + (1.0f - bg.b) * 0.55f;
-	s.bottom.r = bg.r * 0.5f;
-	s.bottom.g = bg.g * 0.5f;
-	s.bottom.b = bg.b * 0.5f;
+	int c[3] = { xm_channel(bg.r), xm_channel(bg.g), xm_channel(bg.b) };
+	int b = xm_brightness(c);
+	if (b < XM_DARK) {
+		s.top = xm_shift(c, 50);
+		s.bottom = xm_shift(c, 30);
+	} else if (b > XM_LIGHT) {
+		s.top = xm_shift(c, -20);
+		s.bottom = xm_shift(c, -40);
+	} else {
+		/* XmCOLOR_LO/HI_TS_FACTOR 50/60, _BS_FACTOR 60/40, as C divides. */
+		s.top = xm_shift(c, 50 + b * (60 - 50) / XM_MAX);
+		s.bottom = xm_shift(c, -(60 + b * (40 - 60) / XM_MAX));
+	}
 	return s;
 }
 

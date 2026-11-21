@@ -119,8 +119,8 @@ check "term has the focus" "[ \"\$(get term active)\" = 1 ]"
 border_is "activeBackground by app_id, ignoring case" term 00aa00
 # firebrick mixed with gold, because foot's own "background" is unusable
 border_near "unfocused: a paler version of the client's colour" foot dc860f
-# 00aa00 is a mid-tone: black has the higher contrast, a luma threshold chose white.
-title_has "black title text on a mid-tone" term 000000
+# 00aa00 is a mid-tone at 26% of Motif's brightness, below its foregroundThreshold of 70%.
+title_has "white title text on a mid-tone, as Motif picks it" term ffffff
 
 do_input key alt+Tab
 check "foot has the focus" "[ \"\$(get foot active)\" = 1 ]"

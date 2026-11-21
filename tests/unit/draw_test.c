@@ -6,6 +6,7 @@
  */
 #define _POSIX_C_SOURCE 200809L
 #include <drm_fourcc.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wlr/interfaces/wlr_buffer.h>
@@ -49,37 +50,62 @@ static bool black_text(uint32_t bg)
 	return same(t, rgb(0));
 }
 
-/* WCAG: black when (L + 0.05) / 0.05 > 1.05 / (L + 0.05), L at about 0.179. */
+/* Motif: black above 70% brightness, three quarters the mean, a quarter the luminosity. */
 TEST(contrast)
 {
 	CHECK(black_text(0xffffff));
 	CHECK(!black_text(0x000000));
-	CHECK(black_text(0xaeb2c3)); /* the default frame */
-	CHECK(black_text(0x7387ad)); /* a luma threshold gave it white */
+	CHECK(black_text(0xaeb2c3)); /* the default frame, at 71% */
+	CHECK(!black_text(0x7387ad)); /* the default focused frame, at 55% */
 	CHECK(!black_text(0x8a0303));
 	CHECK(black_text(0xffff00));
+	CHECK(!black_text(0xffd700)); /* gold: mwm gives it white text too */
 	CHECK(!black_text(0x0000ff));
+	CHECK(!black_text(0x5f9ea0)); /* CadetBlue, mwm's own focused frame */
 	/* The grey on either side of the threshold. */
-	CHECK(!black_text(0x757575));
-	CHECK(black_text(0x767676));
-	/* Below 0.04045 sRGB is linear: its green of 0x0a counts as 0.003, not 0.04,
-	 * which would tip it over to black. */
-	CHECK(!black_text(0x0a0a0a));
-	CHECK(!black_text(0xb90aff));
+	CHECK(!black_text(0xb2b2b2));
+	CHECK(black_text(0xb3b3b3));
 }
 
+/* An 8-bit channel, rounded from the shade. */
+static int byte(float c)
+{
+	return (int)lroundf(c * 255);
+}
+
+static bool shade_is(struct mwc_color c, uint32_t v)
+{
+	return byte(c.r) == (int)(v >> 16) && byte(c.g) == (int)((v >> 8) & 0xff) &&
+		byte(c.b) == (int)(v & 0xff);
+}
+
+/* The values Motif 2.3.8's CalculateColorsRGB() gives, rounded to 8 bits. */
 TEST(shades)
 {
 	struct mwc_color bg = rgb(0x7387ad), fg = rgb(0x123456);
 	struct mwc_shade s = shade_from(bg, fg);
 	CHECK(same(s.bg, bg) && same(s.fg, fg));
-	CHECK(near(s.top.r, bg.r + (1 - bg.r) * 0.55f) && near(s.top.g, bg.g + (1 - bg.g) * 0.55f));
-	CHECK(near(s.bottom.b, bg.b * 0.5f));
+	/* Medium: the top towards white, the bottom towards black. */
+	CHECK(shade_is(s.top, 0xc0c9da) && shade_is(s.bottom, 0x3a4457));
+	s = shade_from(rgb(0xaeb2c3), fg);
+	CHECK(shade_is(s.top, 0xdcdee5) && shade_is(s.bottom, 0x5e6069));
+	s = shade_from(rgb(0x2e5e3e), fg);
+	CHECK(shade_is(s.top, 0x9bb2a2) && shade_is(s.bottom, 0x152a1c));
+	/* Light, above 93%: both towards black, the top less. */
+	s = shade_from(rgb(0xf0f0f0), fg);
+	CHECK(shade_is(s.top, 0xc0c0c0) && shade_is(s.bottom, 0x909090));
 	struct mwc_shade w = shade_from(rgb(0xffffff), fg);
-	CHECK(same(w.top, rgb(0xffffff)));
+	CHECK(shade_is(w.top, 0xcccccc) && shade_is(w.bottom, 0x999999));
+	/* Dark, below 20%: both towards white, the bottom less. */
+	s = shade_from(rgb(0x202020), fg);
+	CHECK(shade_is(s.top, 0x8f8f8f) && shade_is(s.bottom, 0x636363));
 	struct mwc_shade k = shade_from(rgb(0), fg);
-	CHECK(same(k.bottom, rgb(0)));
-	CHECK(near(k.top.r, 0.55f));
+	CHECK(shade_is(k.top, 0x7f7f7f) && shade_is(k.bottom, 0x4c4c4c));
+	/* The edges of the medium range. */
+	CHECK(byte(shade_from(rgb(0x323232), fg).bottom.r) > 0x32);
+	CHECK(byte(shade_from(rgb(0x333333), fg).bottom.r) < 0x33);
+	CHECK(byte(shade_from(rgb(0xededed), fg).top.r) > 0xed);
+	CHECK(byte(shade_from(rgb(0xeeeeee), fg).top.r) < 0xee);
 }
 
 /* ---- the theme ------------------------------------------------------------------ */
