@@ -1,16 +1,15 @@
 /*
  * Writes docs/irix-schemes.html from docs/mwmrc.irix-schemes: each scheme as a focused
- * and an unfocused frame, with title text and shadows from draw.c's own color_contrast()
- * and shade_from(), as mwc draws them. make schemes runs it, make schemes-test checks
- * that the page in the repository is current.
+ * and an unfocused frame, with title text and shadows from color.c, as mwc draws them.
+ * make schemes runs it, make schemes-test checks that the page in the repository is
+ * current.
  */
 #define _POSIX_C_SOURCE 200809L
-#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../src/mwc.h"
+#include "../src/color.h"
 
 #define MAX_SCHEMES 64
 
@@ -22,23 +21,6 @@ struct scheme {
 };
 
 #define NONE 0x1000000u
-
-static struct mwc_color rgb(unsigned v)
-{
-	return (struct mwc_color){ ((v >> 16) & 0xff) / 255.0f, ((v >> 8) & 0xff) / 255.0f,
-		(v & 0xff) / 255.0f };
-}
-
-/* As the screen shows it: the 16-bit value cut to its high byte, as cairo does. */
-static unsigned byte(float c)
-{
-	return (unsigned)lroundf(c * 65535) >> 8;
-}
-
-static unsigned hex(struct mwc_color c)
-{
-	return byte(c.r) << 16 | byte(c.g) << 8 | byte(c.b);
-}
 
 /* "#rrggbb" after the first ':' of l, or NONE. */
 static unsigned value(const char *l)
@@ -92,17 +74,16 @@ static int read_schemes(const char *path, struct scheme *s)
 
 static void frame(unsigned bg, const char *title)
 {
-	struct mwc_color c = rgb(bg);
-	struct mwc_shade s = shade_from(c, color_contrast(c));
+	struct color_shades s = color_shades(bg);
 	char bevel[64];
 	snprintf(bevel, sizeof(bevel), "border-color:#%06x #%06x #%06x #%06x",
-		hex(s.top), hex(s.bottom), hex(s.bottom), hex(s.top));
+		s.top, s.bottom, s.bottom, s.top);
 	printf("<div class=\"win\" style=\"background:#%06x;%s\"><div class=\"bar\">", bg, bevel);
 	static const char *const glyphs[] = { "g", "g min", "g max" };
 	for (int i = 0; i < 3; i++) {
 		if (i == 1)
 			printf("<span class=\"title\" style=\"color:#%06x;%s\">%s</span>",
-				hex(s.fg), bevel, title);
+				color_text(bg), bevel, title);
 		printf("<span class=\"btn\" style=\"%s\"><span class=\"%s\" style=\"%s\">"
 			"</span></span>", bevel, glyphs[i], bevel);
 	}
@@ -111,7 +92,7 @@ static void frame(unsigned bg, const char *title)
 
 static void row(const char *resource, unsigned bg, unsigned over)
 {
-	unsigned fg = hex(color_contrast(rgb(bg)));
+	unsigned fg = color_text(bg);
 	printf("<div class=\"row\"><span class=\"sw\" style=\"background:#%06x\"></span>"
 		"<b>%s</b> #%06x &middot; text #%06x", bg, resource, bg, fg);
 	if (over != NONE)

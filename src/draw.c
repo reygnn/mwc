@@ -11,6 +11,7 @@
 #include <pango/pangocairo.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/util/log.h>
+#include "color.h"
 #include "mwc.h"
 
 #define MAX_BAR_HEIGHT 128
@@ -82,73 +83,27 @@ struct mwc_color color_mix(struct mwc_color a, struct mwc_color b, float f)
 		a.b + (b.b - a.b) * f };
 }
 
-/*
- * Motif's default colour calculation, CalculateColorsRGB() in lib/Xm/Color.c of
- * Motif 2.3.8, in its 16-bit integer arithmetic so the shades come out as mwm's,
- * and with its XmScreen defaults: darkThreshold 20, lightThreshold 93,
- * foregroundThreshold 70, in percent of the brightness.
- */
-#define XM_MAX 65535
-#define XM_PERCENT (XM_MAX / 100)
-#define XM_DARK (20 * XM_PERCENT)
-#define XM_LIGHT (93 * XM_PERCENT)
-#define XM_FOREGROUND (70 * XM_PERCENT)
-
-static int xm_channel(float c)
+/* The 8 bits per channel a screen shows of c: its 16-bit value cut to the high byte, as
+ * cairo does. An 8-bit colour comes back as it was. */
+static uint32_t rgb_of(struct mwc_color c)
 {
-	return (int)lroundf(fminf(fmaxf(c, 0.0f), 1.0f) * XM_MAX);
-}
-
-/* Brightness(): three quarters the mean of the channels, a quarter the luminosity. */
-static int xm_brightness(const int c[3])
-{
-	int intensity = (c[0] + c[1] + c[2]) / 3;
-	int luminosity = (int)(0.30 * (float)c[0] + 0.59 * (float)c[1] +
-		0.11 * (float)c[2]);
-	return (intensity * 75 + luminosity * 25) / 100;
-}
-
-/* f percent of the way towards white, or towards black for a negative f. */
-static struct mwc_color xm_shift(const int c[3], int f)
-{
-	int out[3];
+	float v[3] = { c.r, c.g, c.b };
+	uint32_t out = 0;
 	for (int i = 0; i < 3; i++)
-		out[i] = f >= 0 ? c[i] + f * (XM_MAX - c[i]) / 100 : c[i] - c[i] * -f / 100;
-	return (struct mwc_color){ out[0] / (float)XM_MAX, out[1] / (float)XM_MAX,
-		out[2] / (float)XM_MAX };
+		out = out << 8 | (uint32_t)lroundf(fminf(fmaxf(v[i], 0.0f), 1.0f) * 65535) >> 8;
+	return out;
 }
 
-/* Black on a background brighter than foregroundThreshold, white otherwise. */
 struct mwc_color color_contrast(struct mwc_color bg)
 {
-	int c[3] = { xm_channel(bg.r), xm_channel(bg.g), xm_channel(bg.b) };
-	return hex(xm_brightness(c) > XM_FOREGROUND ? 0x000000 : 0xffffff);
+	return hex(color_text(rgb_of(bg)));
 }
 
-/*
- * The top and bottom shadows of a background, by its brightness:
- *   dark (below 20%):   both towards white, the top 50%, the bottom 30%;
- *   light (above 93%):  both towards black, the top 20%, the bottom 40%;
- *   medium:             the top 50 to 60% towards white, the bottom 60 to 40%
- *                       towards black, the brighter the background the more and less.
- */
 struct mwc_shade shade_from(struct mwc_color bg, struct mwc_color fg)
 {
-	struct mwc_shade s = { .bg = bg, .fg = fg };
-	int c[3] = { xm_channel(bg.r), xm_channel(bg.g), xm_channel(bg.b) };
-	int b = xm_brightness(c);
-	if (b < XM_DARK) {
-		s.top = xm_shift(c, 50);
-		s.bottom = xm_shift(c, 30);
-	} else if (b > XM_LIGHT) {
-		s.top = xm_shift(c, -20);
-		s.bottom = xm_shift(c, -40);
-	} else {
-		/* XmCOLOR_LO/HI_TS_FACTOR 50/60, _BS_FACTOR 60/40, as C divides. */
-		s.top = xm_shift(c, 50 + b * (60 - 50) / XM_MAX);
-		s.bottom = xm_shift(c, -(60 + b * (40 - 60) / XM_MAX));
-	}
-	return s;
+	struct color_shades c = color_shades(rgb_of(bg));
+	return (struct mwc_shade){ .bg = bg, .fg = fg, .top = hex(c.top),
+		.bottom = hex(c.bottom) };
 }
 
 /* mwm-x11's fontconfig patterns (Sans:bold:size=10) mean nothing to Pango,
@@ -229,12 +184,12 @@ void theme_init(void)
 	 * MWC_ACTIVE=#b24d7a. Title text picks black or white unless set. */
 	bool builtin_inactive;
 	struct mwc_color inactive = setting_color("MWC_INACTIVE", "background",
-		0xaaaaaa, NULL, &builtin_inactive);
+		COLOR_INACTIVE, NULL, &builtin_inactive);
 	struct mwc_color active = setting_color("MWC_ACTIVE", "activeBackground",
-		0xc6c1aa, NULL, NULL);
+		COLOR_ACTIVE, NULL, NULL);
 	/* "none" leaves the desktop to a wallpaper tool (swaybg); the colour
 	 * is then only used inside the default icon image. */
-	theme.root = setting_color("MWC_ROOT", "rootBackground", 0x5b7792,
+	theme.root = setting_color("MWC_ROOT", "rootBackground", COLOR_ROOT,
 		&theme.root_none, NULL);
 
 	theme.has_inactive_fg = text_color("foreground", &theme.inactive_fg);
@@ -242,7 +197,7 @@ void theme_init(void)
 	/* The built-in grey takes the Base palette's black text; Motif would pick white,
 	 * at 67%. A background that is set, #aaaaaa too, gets Motif's choice. */
 	struct mwc_color inactive_fg = theme.has_inactive_fg ? theme.inactive_fg :
-		builtin_inactive ? hex(0x000000) : color_contrast(inactive);
+		hex(color_inactive_text(rgb_of(inactive), builtin_inactive));
 	theme.inactive = shade_from(inactive, inactive_fg);
 	theme.active = shade_from(active, theme.has_active_fg ?
 		theme.active_fg : color_contrast(active));

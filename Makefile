@@ -27,7 +27,7 @@ SRC = src/main.c src/view.c src/frame.c src/menu.c \
 	src/hints.c src/outline.c src/snap.c src/tile.c src/tabs.c src/testhook.c \
 	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c src/iconbox.c \
 	src/dock.c src/outputrc.c src/sizehints.c src/snaprules.c src/configview.c \
-	src/tilelayout.c
+	src/tilelayout.c src/color.c
 # Protocols mwc implements itself, not through wlroots: their glue code too.
 PROTO_CODE = build/fifo-v1-protocol.c build/ext-workspace-v1-protocol.c
 OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)
@@ -81,6 +81,7 @@ build/logo.h: data/logo.png | build
 	  echo '};'; } >$@
 
 build/iconbox.o: build/logo.h
+build/draw.o build/color.o: src/color.h
 
 # The commit a build is from, after the version: +DATE.TIME.HASH, its commit time in
 # UTC, and .dirty for changes not committed. Rewritten only when it changes, so main.o
@@ -138,10 +139,10 @@ check: build/mwc-asan
 # logic kept apart from the display code: real data and libraries, fakes the test
 # fills where needed, no mocks. Always with the sanitizers: an overflow fails the
 # test. Fast, and the first step of make test.
-UNIT = outputrc sizehints snaprules config draw tilelayout
+UNIT = outputrc sizehints snaprules config draw tilelayout color
 # What a module needs of another: also linked, real.
-UNIT_WITH_config = src/draw.c
-UNIT_WITH_draw = src/config.c
+UNIT_WITH_config = src/draw.c src/color.c
+UNIT_WITH_draw = src/config.c src/color.c
 # float-cast-overflow isn't part of undefined in GCC; sizes from ratios go through it.
 UNIT_FLAGS = -O1 -g -fno-omit-frame-pointer \
 	-fsanitize=address,undefined,float-cast-overflow \
@@ -154,8 +155,9 @@ build/unit/%: tests/unit/%_test.c tests/unit/unit.h src/%.c src/mwc.h $(PROTO) |
 	$(CC) $(MWC_CFLAGS) $(CPPFLAGS) $(UNIT_FLAGS) -o $@ $< src/$*.c $(UNIT_WITH_$*) \
 		$(MWC_LIBS)
 
-build/unit/config: src/draw.c tests/unit/mwmrc.h
-build/unit/draw: src/config.c tests/unit/mwmrc.h
+build/unit/config: src/draw.c src/color.c src/color.h tests/unit/mwmrc.h
+build/unit/draw: src/config.c src/color.c src/color.h tests/unit/mwmrc.h
+build/unit/color: src/color.h
 
 # Leaks are looked for, but not in fontconfig's caches (tests/unit/lsan.supp).
 unit: $(UNIT:%=build/unit/%)
@@ -164,11 +166,11 @@ unit: $(UNIT:%=build/unit/%)
 	done; exit $$fail
 
 # docs/irix-schemes.html shows docs/mwmrc.irix-schemes with the title text and shadows
-# draw.c computes. make schemes writes it; schemes-test, part of make test, fails while
+# color.c computes. make schemes writes it; schemes-test, part of make test, fails while
 # the page in the repository is not what the generator writes.
-build/schemes-html: docs/schemes-html.c src/draw.c src/config.c src/mwc.h $(PROTO) | build
-	$(CC) $(MWC_CFLAGS) $(CPPFLAGS) $(CFLAGS) -o $@ docs/schemes-html.c src/draw.c \
-		src/config.c $(MWC_LIBS) $(LDLIBS)
+build/schemes-html: docs/schemes-html.c src/color.c src/color.h | build
+	$(CC) -std=c11 -Wall -Wextra $(CPPFLAGS) $(CFLAGS) -o $@ docs/schemes-html.c \
+		src/color.c $(LDFLAGS) $(LDLIBS)
 
 schemes: build/schemes-html
 	build/schemes-html docs/mwmrc.irix-schemes > docs/irix-schemes.html

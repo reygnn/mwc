@@ -1,8 +1,8 @@
 /*
- * draw.c: colour mixing, Motif title text and shades; the theme from built-in
- * defaults, mwmrc and the environment, fonts measured by Pango; bevels and grooves
- * drawn into a real cairo_buffer and read back through wlroots' data pointer access.
- * Linked with config.c, which the theme reads.
+ * draw.c: colour mixing, color.c's title text and shades on mwc's colours; the theme
+ * from built-in defaults, mwmrc and the environment, fonts measured by Pango; bevels and
+ * grooves drawn into a real cairo_buffer and read back through wlroots' data pointer
+ * access. Linked with config.c, which the theme reads, and color.c.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <drm_fourcc.h>
@@ -43,32 +43,6 @@ TEST(mix)
 	CHECK(near(m.r, c.r + (1 - c.r) * 0.25f) && near(m.b, c.b + (1 - c.b) * 0.25f));
 }
 
-static bool black_text(uint32_t bg)
-{
-	struct mwc_color t = color_contrast(rgb(bg));
-	CHECK(same(t, rgb(0)) || same(t, rgb(0xffffff)));
-	return same(t, rgb(0));
-}
-
-/* Motif: black above 70% brightness, three quarters the mean, a quarter the luminosity. */
-TEST(contrast)
-{
-	CHECK(black_text(0xffffff));
-	CHECK(!black_text(0x000000));
-	CHECK(black_text(0xaeb2c3)); /* at 71% */
-	CHECK(black_text(0xc6c1aa)); /* the default focused frame, at 74% */
-	CHECK(!black_text(0x7387ad)); /* at 55% */
-	CHECK(!black_text(0xaaaaaa)); /* the default frame, at 67% */
-	CHECK(!black_text(0x8a0303));
-	CHECK(black_text(0xffff00));
-	CHECK(!black_text(0xffd700)); /* gold: mwm gives it white text too */
-	CHECK(!black_text(0x0000ff));
-	CHECK(!black_text(0x5f9ea0)); /* CadetBlue, mwm's own focused frame */
-	/* The grey on either side of the threshold. */
-	CHECK(!black_text(0xb2b2b2));
-	CHECK(black_text(0xb3b3b3));
-}
-
 /* An 8-bit channel as the screen shows it: the 16-bit value cut to its high byte, as
  * the X server does for mwm and cairo does for mwc. */
 static int byte(float c)
@@ -82,33 +56,25 @@ static bool shade_is(struct mwc_color c, uint32_t v)
 		byte(c.b) == (int)(v & 0xff);
 }
 
-/* The values Motif 2.3.8's CalculateColorsRGB() gives, as mwm shows them. */
-TEST(shades)
+/* The Motif rules are color.c's (color_test.c); these hand it what the screen shows of a
+ * colour, its 16-bit value cut to 8 bits, and give its answers back. */
+TEST(color_wrappers)
 {
 	struct mwc_color bg = rgb(0x7387ad), fg = rgb(0x123456);
 	struct mwc_shade s = shade_from(bg, fg);
 	CHECK(same(s.bg, bg) && same(s.fg, fg));
-	/* Medium: the top towards white, the bottom towards black. */
-	CHECK(shade_is(s.top, 0xc0c9da) && shade_is(s.bottom, 0x394356));
-	s = shade_from(rgb(0xaeb2c3), fg);
-	CHECK(shade_is(s.top, 0xdddee6) && shade_is(s.bottom, 0x5e6069));
-	s = shade_from(rgb(0x2e5e3e), fg);
-	CHECK(shade_is(s.top, 0x9bb2a2) && shade_is(s.bottom, 0x142a1c));
-	/* Light, above 93%: both towards black, the top less. */
-	s = shade_from(rgb(0xf0f0f0), fg);
-	CHECK(shade_is(s.top, 0xc0c0c0) && shade_is(s.bottom, 0x909090));
-	struct mwc_shade w = shade_from(rgb(0xffffff), fg);
-	CHECK(shade_is(w.top, 0xcccccc) && shade_is(w.bottom, 0x999999));
-	/* Dark, below 20%: both towards white, the bottom less. */
-	s = shade_from(rgb(0x202020), fg);
-	CHECK(shade_is(s.top, 0x909090) && shade_is(s.bottom, 0x636363));
-	struct mwc_shade k = shade_from(rgb(0), fg);
-	CHECK(shade_is(k.top, 0x7f7f7f) && shade_is(k.bottom, 0x4c4c4c));
-	/* The edges of the medium range. */
-	CHECK(byte(shade_from(rgb(0x323232), fg).bottom.r) > 0x32);
-	CHECK(byte(shade_from(rgb(0x333333), fg).bottom.r) < 0x33);
-	CHECK(byte(shade_from(rgb(0xededed), fg).top.r) > 0xed);
-	CHECK(byte(shade_from(rgb(0xeeeeee), fg).top.r) < 0xee);
+	CHECK(same(s.top, rgb(0xc0c9da)) && same(s.bottom, rgb(0x394356)));
+	CHECK(same(color_contrast(bg), rgb(0xffffff)));
+	CHECK(same(color_contrast(rgb(0xc6c1aa)), rgb(0)));
+	/* 0x39ff is shown as 0x39, rounded it would be 0x3a. 0x17fcff is exactly at 70%
+	 * and takes white text; rounded, 0x17ff would make it 0x18fcff, which takes black. */
+	struct mwc_color g = { 0x39ff / 65535.0f, 0x39ff / 65535.0f, 0x39ff / 65535.0f };
+	CHECK(same(shade_from(g, fg).top, shade_from(rgb(0x393939), fg).top));
+	struct mwc_color h = { 0x17ff / 65535.0f, 0xfcfc / 65535.0f, 1 };
+	CHECK(same(color_contrast(h), rgb(0xffffff)));
+	/* Out of range is clamped. */
+	CHECK(same(color_contrast((struct mwc_color){ 2, 2, 2 }), rgb(0)));
+	CHECK(same(shade_from((struct mwc_color){ -1, -1, -1 }, fg).top, rgb(0x7f7f7f)));
 }
 
 /* ---- the theme ------------------------------------------------------------------ */
@@ -501,8 +467,7 @@ int main(void)
 {
 	mwmrc_init();
 	RUN(mix);
-	RUN(contrast);
-	RUN(shades);
+	RUN(color_wrappers);
 	RUN(theme_defaults);
 	RUN(theme_from_mwmrc);
 	RUN(theme_builtin_grey);
