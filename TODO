@@ -107,3 +107,16 @@ TODO
   normal), oder für jedes Hauptfenster?
   Abnahme: ein Test in tests/window.sh mit xdgc, README unter
   Configuration.
+
+* Mindestkontrast für Titeltext (nur falls nötig, 2026-11-21). Motifs Regel
+  (schwarz über 70 % Helligkeit, sonst weiß) gibt manchen Farben schwer lesbaren
+  Text, als WCAG-Kontrast: gold weiß 1,4:1 (schwarz 15,0), #aaaaaa gesetzt weiß
+  2,3:1 (schwarz 9,0), CadetBlue weiß 3,1:1, #7387ad weiß 3,6:1. Idee:
+  Mwm*minimumContrast, Vorgabe 0 (aus, Motif wie bisher). Mit etwa 4.5 nimmt mwc
+  die andere Textfarbe, wenn Motifs Wahl darunter liegt und die andere mehr
+  Kontrast hat; für Rahmen, Menüs und Farben pro Programm, nicht für ein
+  gesetztes foreground oder activeForeground. Das eingebaute Grau hat schon
+  schwarzen Text. mtk zieht dieselbe Regel nach: Name, Vorgabe und Regel an die
+  mtk-Session.
+  Abnahme: Fälle in tests/unit/draw_test.c (gold, #aaaaaa gesetzt, ein
+  gesetztes foreground geht vor, 0 lässt Motif), README unter Configuration.
