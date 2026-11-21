@@ -1,0 +1,172 @@
+! IRIX 6.5 colour schemes for mwc's ~/.config/mwc/mwmrc.
+! Values: BaseColorPalette at gamma 1.0 (gamma1_0.WMActiveBackground and WMBackground),
+! from the palettes in techomancer/ttr (data/schemes/irix).
+!
+! Use: copy a scheme's two Mwm lines into mwmrc, without the leading "! ". Base
+! (= IndigoMagic) is active here. Later lines win, so a scheme further down overrides it.
+!
+! Title text: deliberately unset. 4Dwm left it to Motif and so does mwc: black above 70%
+! brightness, white otherwise. Where the palette says otherwise, an optional override is
+! at the bottom.
+!
+! The global colours reach programs with frame colours of their own: a global
+! activeForeground is their title text too, and unfocused they are mixed with background.
+!
+! rootBackground is not part of the schemes (IRIX: Customize > Background).
+! Without it the desktop keeps mwc's default #5b7792.
+! Mwm*rootBackground:          #5b7792
+
+! --- Arizona
+! Mwm*activeBackground:        #968d4f
+! Mwm*background:              #868373
+
+! --- Base  (= IndigoMagic, active)
+Mwm*activeBackground:        #c6c1aa
+Mwm*background:              #aaaaaa
+
+! --- Bayou
+! Mwm*activeBackground:        #b69dab
+! Mwm*background:              #878787
+
+! --- BlackAndWhite
+! Mwm*activeBackground:        #000000
+! Mwm*background:              #ffffff
+
+! --- Buckingham
+! Mwm*activeBackground:        #9991a6
+! Mwm*background:              #8c8c8c
+
+! --- Gainsborough
+! Mwm*activeBackground:        #aea9c2
+! Mwm*background:              #8c8c8c
+
+! --- Gotham
+! Mwm*activeBackground:        #aba68c
+! Mwm*background:              #8c8c8c
+
+! --- GrayScale
+! Mwm*activeBackground:        #d6d6d6
+! Mwm*background:              #c1c1c1
+
+! --- Inverness
+! Mwm*activeBackground:        #b7a5d0
+! Mwm*background:              #9ca3c2
+
+! --- KeyWest
+! Mwm*activeBackground:        #e3a6a6
+! Mwm*background:              #d3b5b5
+
+! --- Lascaux  (colours as Base)
+! Mwm*activeBackground:        #c6c1aa
+! Mwm*background:              #aaaaaa
+
+! --- Leonardo  (colours as Bayou)
+! Mwm*activeBackground:        #b69dab
+! Mwm*background:              #878787
+
+! --- Mendocino
+! Mwm*activeBackground:        #44848c
+! Mwm*background:              #718c91
+
+! --- Metropolis
+! Mwm*activeBackground:        #925279
+! Mwm*background:              #8c687e
+
+! --- Milan
+! Mwm*activeBackground:        #c6bf92
+! Mwm*background:              #bdb9a3
+
+! --- Monet
+! Mwm*activeBackground:        #aaa5d5
+! Mwm*background:              #8c8c8c
+
+! --- Pacific
+! Mwm*activeBackground:        #0e7698
+! Mwm*background:              #42748a
+
+! --- Potrero
+! Mwm*activeBackground:        #b38eb4
+! Mwm*background:              #8c8c8c
+
+! --- Print
+! Mwm*activeBackground:        #d6d6d6
+! Mwm*background:              #c1c1c1
+
+! --- RedGreenSafe  (colours as Gainsborough)
+! Mwm*activeBackground:        #aea9c2
+! Mwm*background:              #8c8c8c
+
+! --- Rembrandt  (colours as Mendocino)
+! Mwm*activeBackground:        #44848c
+! Mwm*background:              #718c91
+
+! --- Rio
+! Mwm*activeBackground:        #e788e8
+! Mwm*background:              #53b9ff
+
+! --- RoseGarden  (colours as Monet)
+! Mwm*activeBackground:        #aaa5d5
+! Mwm*background:              #8c8c8c
+
+! --- Sargent
+! Mwm*activeBackground:        #909585
+! Mwm*background:              #8c8c8c
+
+! --- Titian
+! Mwm*activeBackground:        #c6c1aa
+! Mwm*background:              #aaaaaa
+
+! --- Turner  (colours as Potrero)
+! Mwm*activeBackground:        #b38eb4
+! Mwm*background:              #8c8c8c
+
+! --- Vancouver
+! Mwm*activeBackground:        #b0bad7
+! Mwm*background:              #959fbd
+
+! --- VanGogh  (colours as Buckingham)
+! Mwm*activeBackground:        #9991a6
+! Mwm*background:              #8c8c8c
+
+! --- Whistler  (colours as Gotham)
+! Mwm*activeBackground:        #aba68c
+! Mwm*background:              #8c8c8c
+
+! --- Willis  (colours as BlackAndWhite)
+! Mwm*activeBackground:        #000000
+! Mwm*background:              #ffffff
+
+! === Optional: title text as the palette has it, where it differs from Motif's
+! Only together with its scheme. No comment after the value: in mwmrc a "!" after the
+! value is still part of it.
+! --- Base
+!   foreground: Motif gives #ffffff
+! Mwm*foreground:             #000000
+! --- Gainsborough
+!   activeForeground: Motif gives #ffffff
+! Mwm*activeForeground:       #000000
+!   foreground: Motif gives #ffffff
+! Mwm*foreground:             #000000
+! --- Inverness
+!   foreground: Motif gives #ffffff
+! Mwm*foreground:             #000000
+! --- Lascaux
+!   foreground: Motif gives #ffffff
+! Mwm*foreground:             #000000
+! --- Monet
+!   activeForeground: Motif gives #000000
+! Mwm*activeForeground:       #ffffff
+! --- RedGreenSafe
+!   activeForeground: Motif gives #ffffff
+! Mwm*activeForeground:       #000000
+!   foreground: Motif gives #ffffff
+! Mwm*foreground:             #000000
+! --- Rio
+!   foreground: Motif gives #ffffff
+! Mwm*foreground:             #000000
+! --- RoseGarden
+!   activeForeground: Motif gives #000000
+! Mwm*activeForeground:       #ffffff
+! --- Vancouver
+!   foreground: Motif gives #ffffff
+! Mwm*foreground:             #000000

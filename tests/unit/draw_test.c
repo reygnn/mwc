@@ -1,5 +1,5 @@
 /*
- * draw.c: colour mixing, WCAG contrast and Motif shades; the theme from built-in
+ * draw.c: colour mixing, Motif title text and shades; the theme from built-in
  * defaults, mwmrc and the environment, fonts measured by Pango; bevels and grooves
  * drawn into a real cairo_buffer and read back through wlroots' data pointer access.
  * Linked with config.c, which the theme reads.
@@ -190,6 +190,88 @@ TEST(theme_bad_foreground)
 	CHECK_INT(log_lines("ignoring Mwm*activeForeground: #12"), 1);
 	theme_from("Mwm*foreground: white\n");
 	CHECK_INT(log_lines(""), 0);
+}
+
+/* docs/mwmrc.irix-schemes: each scheme, commented out or not, is read without a word and
+ * gives its two colours; where the file says what Motif gives for the title text, mwc
+ * gives that, and the override it offers is read and differs from it. */
+struct scheme {
+	char name[32];
+	char lines[256]; /* its Mwm lines, uncommented */
+};
+
+static uint32_t hex_after(const char *s, const char *key)
+{
+	const char *p = strstr(s, key);
+	return p ? (uint32_t)strtoul(strchr(p, '#') + 1, NULL, 16) : 0x1000000;
+}
+
+static void irix_scheme(const struct scheme *sc)
+{
+	theme_from(sc->lines);
+	CHECK_INT(log_lines(""), 0);
+	CHECK(same(theme.active.bg, rgb(hex_after(sc->lines, "activeBackground:"))));
+	CHECK(same(theme.inactive.bg, rgb(hex_after(sc->lines, "*background:"))));
+}
+
+TEST(irix_schemes)
+{
+	FILE *f = fopen("docs/mwmrc.irix-schemes", "r");
+	CHECK(f != NULL);
+	if (!f)
+		return;
+	static struct scheme schemes[40];
+	int n = 0, claims = 0, overrides = 0;
+	bool optional = false;
+	const struct scheme *cur = NULL;
+	char line[256], text[512];
+	while (fgets(line, sizeof(line), f)) {
+		const char *l = line + (line[0] == '!' ? strspn(line + 1, " ") + 1 : 0);
+		if (!strncmp(line, "! ===", 5)) {
+			optional = true;
+		} else if (!strncmp(line, "! --- ", 6)) {
+			char name[32];
+			sscanf(line + 6, "%31s", name);
+			cur = NULL;
+			for (int i = 0; i < n; i++)
+				if (!strcmp(schemes[i].name, name))
+					cur = &schemes[i];
+			if (!optional && n < 40) {
+				CHECK(cur == NULL); /* each once */
+				strcpy(schemes[n].name, name);
+				schemes[n].lines[0] = '\0';
+				cur = &schemes[n++];
+			}
+			CHECK(cur != NULL);
+		} else if (!optional && cur && !strncmp(l, "Mwm*", 4)) {
+			struct scheme *s = &schemes[cur - schemes];
+			strncat(s->lines, l, sizeof(s->lines) - strlen(s->lines) - 1);
+		} else if (optional && cur && strstr(line, "Motif gives")) {
+			/* "!   activeForeground: Motif gives #rrggbb" */
+			bool active = strstr(line, "activeForeground:") != NULL;
+			theme_from(cur->lines);
+			struct mwc_color fg = active ? theme.active.fg : theme.inactive.fg;
+			CHECK(same(fg, rgb(hex_after(line, "gives"))));
+			claims++;
+		} else if (optional && cur && !strncmp(l, "Mwm*", 4)) {
+			bool active = strstr(l, "activeForeground") != NULL;
+			theme_from(cur->lines);
+			struct mwc_color motif = active ? theme.active.fg : theme.inactive.fg;
+			snprintf(text, sizeof(text), "%s%s", cur->lines, l);
+			theme_from(text);
+			CHECK_INT(log_lines(""), 0);
+			CHECK(active ? theme.has_active_fg : theme.has_inactive_fg);
+			struct mwc_color fg = active ? theme.active.fg : theme.inactive.fg;
+			CHECK(same(fg, rgb(hex_after(l, ":"))) && !same(fg, motif));
+			overrides++;
+		}
+	}
+	fclose(f);
+	CHECK_INT(n, 30);
+	for (int i = 0; i < n; i++)
+		irix_scheme(&schemes[i]);
+	CHECK_INT(claims, 11);
+	CHECK_INT(overrides, 11);
 }
 
 /* "none" leaves the desktop to a wallpaper tool; the colour stays for the icon. */
@@ -398,6 +480,7 @@ int main(void)
 	RUN(theme_environment_first);
 	RUN(theme_root_none);
 	RUN(theme_bad_foreground);
+	RUN(irix_schemes);
 	RUN(theme_fonts);
 	RUN(theme_bar_heights);
 	RUN(theme_border_widths);

@@ -106,6 +106,9 @@ lines win. Colours are `#rrggbb`, names such as `gold`, or `rgb:rr/gg/bb`. Progr
 matched by their `app_id`, ignoring case; it may contain dots. Unknown resources are
 logged and ignored.
 
+[docs/mwmrc](docs/mwmrc) is an example file. [docs/mwmrc.irix-schemes](docs/mwmrc.irix-schemes)
+has the frame colours of IRIX 6.5's colour schemes, Base (IndigoMagic) and 29 others.
+
 Global resources:
 
 | Resource | Meaning |
