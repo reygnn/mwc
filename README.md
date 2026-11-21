@@ -116,7 +116,7 @@ Global resources:
 |---|---|
 | `activeBackground` | frame colour while focused |
 | `background` | frame colour while unfocused; also menus and icons |
-| `activeForeground`, `foreground` | title text; default black or white, as Motif picks it |
+| `activeForeground`, `foreground` | title text; default black or white, as Motif picks it, and black on the built-in grey as in IRIX |
 | `fontList` | font of titles and menus; title bars grow with it |
 | `resizeBorderWidth`, `frameBorderWidth` | frame width in pixels with resize handles and without, 3 to 64; default 7 and 5 |
 | `rootBackground` | desktop colour, or `none` for a wallpaper tool such as swaybg |

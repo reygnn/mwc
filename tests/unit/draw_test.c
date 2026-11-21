@@ -136,7 +136,9 @@ TEST(theme_defaults)
 	CHECK(same(theme.active.bg, rgb(0xc6c1aa)));
 	CHECK(shade_is(theme.active.top, 0xe7e5db) && shade_is(theme.active.bottom, 0x6b685c));
 	CHECK(shade_is(theme.inactive.top, 0xdadada) && shade_is(theme.inactive.bottom, 0x5a5a5a));
-	CHECK(same(theme.active.fg, rgb(0)) && same(theme.inactive.fg, rgb(0xffffff)));
+	/* Black on the grey too, as the Base palette has it; Motif would pick white. */
+	CHECK(same(theme.active.fg, rgb(0)) && same(theme.inactive.fg, rgb(0)));
+	CHECK(same(theme.menu.fg, rgb(0)));
 	CHECK(same(theme.root, rgb(0x5b7792)) && !theme.root_none);
 	CHECK(!theme.has_active_fg && !theme.has_inactive_fg);
 	CHECK(same(theme.menu.bg, theme.inactive.bg) && same(theme.select, theme.active.bg));
@@ -165,6 +167,27 @@ TEST(theme_from_mwmrc)
 	CHECK(theme.has_inactive_fg && same(theme.inactive.fg, rgb(0xffffff)));
 	CHECK(theme.has_active_fg && same(theme.active.fg, rgb(0x010203)));
 	CHECK(same(theme.active.top, shade_from(rgb(0xffd700), rgb(0)).top));
+}
+
+/* Only the built-in grey takes black title text: a background that is set, the same grey
+ * too, gets Motif's white, as in docs/mwmrc.irix-schemes. One that isn't a colour leaves
+ * the built-in, and a foreground that is set goes first. */
+TEST(theme_builtin_grey)
+{
+	no_env();
+	theme_from("Mwm*background: #aaaaaa\n");
+	CHECK(same(theme.inactive.fg, rgb(0xffffff)) && !theme.has_inactive_fg);
+	setenv("MWC_INACTIVE", "#aaaaaa", 1);
+	theme_from("");
+	CHECK(same(theme.inactive.fg, rgb(0xffffff)));
+	no_env();
+	theme_from("Mwm*background: nonsense\n");
+	CHECK(same(theme.inactive.bg, rgb(0xaaaaaa)) && same(theme.inactive.fg, rgb(0)));
+	CHECK_INT(log_lines("ignoring Mwm*background: nonsense"), 1);
+	theme_from("Mwm*foreground: #ffffff\n");
+	CHECK(same(theme.inactive.fg, rgb(0xffffff)));
+	theme_from("Mwm*activeBackground: #8c8c8c\n");
+	CHECK(same(theme.inactive.fg, rgb(0)) && same(theme.menu.fg, rgb(0)));
 }
 
 /* Environment first, then mwmrc, then the default; each bad one is said and skipped. */
@@ -482,6 +505,7 @@ int main(void)
 	RUN(shades);
 	RUN(theme_defaults);
 	RUN(theme_from_mwmrc);
+	RUN(theme_builtin_grey);
 	RUN(theme_environment_first);
 	RUN(theme_root_none);
 	RUN(theme_bad_foreground);

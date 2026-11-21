@@ -4,8 +4,8 @@
 ! them as mwc draws them; after a change here, make schemes writes it anew.
 !
 ! Use: copy a scheme's two Mwm lines into mwmrc, without the leading "! ". Base
-! (= IndigoMagic) is active here and mwc's default. Later lines win, so a scheme further
-! down overrides it.
+! (= IndigoMagic) is active here. Later lines win, so a scheme further down overrides it.
+! mwc's built-in default is Base with its optional black foreground.
 !
 ! Title text: deliberately unset. 4Dwm left it to Motif and so does mwc: black above 70%
 ! brightness, white otherwise. Where the palette says otherwise, an optional override is
