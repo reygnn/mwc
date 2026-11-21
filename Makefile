@@ -163,6 +163,21 @@ unit: $(UNIT:%=build/unit/%)
 		LSAN_OPTIONS=suppressions=tests/unit/lsan.supp:print_suppressions=0 $$t || fail=1; \
 	done; exit $$fail
 
+# docs/irix-schemes.html shows docs/mwmrc.irix-schemes with the title text and shadows
+# draw.c computes. make schemes writes it; schemes-test, part of make test, fails while
+# the page in the repository is not what the generator writes.
+build/schemes-html: docs/schemes-html.c src/draw.c src/config.c src/mwc.h $(PROTO) | build
+	$(CC) $(MWC_CFLAGS) $(CPPFLAGS) $(CFLAGS) -o $@ docs/schemes-html.c src/draw.c \
+		src/config.c $(MWC_LIBS) $(LDLIBS)
+
+schemes: build/schemes-html
+	build/schemes-html docs/mwmrc.irix-schemes > docs/irix-schemes.html
+
+schemes-test: build/schemes-html
+	@build/schemes-html docs/mwmrc.irix-schemes | cmp -s - docs/irix-schemes.html || \
+		{ echo "FAIL: docs/irix-schemes.html is out of date, make schemes"; exit 1; }
+	@echo "PASS: schemes"
+
 # make analyze: GCC's static analyzer over every source file, findings as errors:
 # NULL dereferences, use after free, double free, leaks on a path. Clean today, so a
 # new finding stops it. At -O0: optimizing first lets GCC drop the very paths that
@@ -178,7 +193,7 @@ analyze: $(PROTO) build/logo.h build/gitversion.h
 # kernel's checkpatch counts them. Shell scripts are left out: their checks are long
 # conditions that read better whole.
 LINT_MAX = 100
-LINT_FILES = src/*.c src/*.h tests/*.c tests/unit/*.c tests/unit/*.h fuzz/*.c
+LINT_FILES = src/*.c src/*.h tests/*.c tests/unit/*.c tests/unit/*.h fuzz/*.c docs/*.c
 
 lint:
 	@awk -v max=$(LINT_MAX) '{ \
@@ -465,7 +480,7 @@ walk: mwc build/vinput build/xdgc build/workspacec
 build-test: mwc
 	tests/build.sh
 
-test: unit smoke input-test wallpaper-test config-test layer-test window-test \
+test: unit schemes-test smoke input-test wallpaper-test config-test layer-test window-test \
 	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test desktop-test iconbox-test dock-test \
 	matrix-test build-test
 
@@ -475,4 +490,4 @@ clean:
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN) $(IDLEC_GEN) build/ext-workspace-v1-client.h \
 	build/ext-workspace-v1-code.c
-.PHONY: matrix-test walk unit build-test lint analyze valgrind check fuzz fuzz-replay dock-test iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: matrix-test walk unit schemes schemes-test build-test lint analyze valgrind check fuzz fuzz-replay dock-test iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean

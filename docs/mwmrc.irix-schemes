@@ -1,6 +1,7 @@
 ! IRIX 6.5 colour schemes for mwc's ~/.config/mwc/mwmrc.
 ! Values: BaseColorPalette at gamma 1.0 (gamma1_0.WMActiveBackground and WMBackground),
-! from the palettes in techomancer/ttr (data/schemes/irix).
+! from the palettes in techomancer/ttr (data/schemes/irix). docs/irix-schemes.html shows
+! them as mwc draws them; after a change here, make schemes writes it anew.
 !
 ! Use: copy a scheme's two Mwm lines into mwmrc, without the leading "! ". Base
 ! (= IndigoMagic) is active here. Later lines win, so a scheme further down overrides it.
