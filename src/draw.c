@@ -163,6 +163,22 @@ static int font_height(const char *font)
 	return h;
 }
 
+/* Mwm*resizeBorderWidth and frameBorderWidth, in pixels. mwm takes 2 to 64; mwc
+ * wants 3, so that the outer bevel and the inner edge don't overlap. */
+static int setting_width(const char *resource, int fallback)
+{
+	const char *s = config_get(resource);
+	if (!s || !*s)
+		return fallback;
+	char *end;
+	long n = strtol(s, &end, 10);
+	if (*end || n < 3 || n > 64) {
+		wlr_log(WLR_ERROR, "ignoring Mwm*%s: %s, expected 3 to 64", resource, s);
+		return fallback;
+	}
+	return (int)n;
+}
+
 void theme_init(void)
 {
 	/* Defaults follow the Motif 2.x look: #aeb2c3 grey-blue background,
@@ -195,16 +211,23 @@ void theme_init(void)
 	free(theme.font);
 	theme.font = strdup(font);
 
-	theme.border = 6;
+	/* mwm's defaults for a screen of about 96 dpi: it takes 2.2 and 1.7 mm and
+	 * stops at 7 and 5 pixels, which those already reach. */
+	theme.border = setting_width("resizeBorderWidth", 7);
+	theme.thin_border = setting_width("frameBorderWidth", 5);
 	theme.bevel = 2;
-	/* Grow title bars and menus with the font. */
-	int text_h = font_height(theme.font) + 8;
+	/* Title bars as mwm's TitleTextHeight(): the font with a pixel of bevel and
+	 * one of padding above and below it. Menus get more room. */
+	int font_h = font_height(theme.font);
+	int title_h = font_h + 4, text_h = font_h + 8;
 	/* A typo like "Sans Bold 1000" must leave something to fix it with. */
 	if (text_h > MAX_BAR_HEIGHT) {
 		wlr_log(WLR_ERROR, "font \"%s\" is too large for a title bar", theme.font);
 		text_h = MAX_BAR_HEIGHT;
+		if (title_h > MAX_BAR_HEIGHT)
+			title_h = MAX_BAR_HEIGHT;
 	}
-	theme.title_height = text_h > 22 ? text_h : 22;
+	theme.title_height = title_h;
 	theme.menu_item_height = text_h > 24 ? text_h : 24;
 }
 

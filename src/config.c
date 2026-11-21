@@ -7,6 +7,8 @@
  *   Mwm*background:                #aeb2c3    other frames, menus, icons
  *   Mwm*activeForeground / foreground         title text (default: auto)
  *   Mwm*fontList:                  Sans Bold 10
+ *   Mwm*resizeBorderWidth:         7          frames with resize handles, 3 to 64
+ *   Mwm*frameBorderWidth:          5          frames without
  *   Mwm*rootBackground:            #5b7792
  *   Mwm*wallpaper:                 ~/pictures/desk.png
  *   Mwm*terminal:                  mwt        for New Window and Super+Return
@@ -281,6 +283,7 @@ static bool parse_position(const char *s, struct config_position *out)
  * takes by its name. */
 static const char *const global_resources[] = {
 	"activeBackground", "activeForeground", "background", "foreground", "fontList",
+	"resizeBorderWidth", "frameBorderWidth",
 	"rootBackground", "wallpaper", "terminal", "runDialog", "screenSaver",
 	"clipboardRectangleScreenshot", "clipboardScreenshot", "rectangleScreenshot",
 	"screenshot", "rootMenuItem", "moveOpaque", "keyboardLayout", "keyboardVariant",

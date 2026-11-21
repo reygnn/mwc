@@ -109,9 +109,12 @@ TEST(theme_defaults)
 	CHECK(!theme.has_active_fg && !theme.has_inactive_fg);
 	CHECK(same(theme.menu.bg, theme.inactive.bg) && same(theme.select, theme.active.bg));
 	CHECK(!strcmp(theme.font, "Sans Bold 10"));
-	CHECK_INT(theme.border, 6);
+	CHECK_INT(theme.border, 7);
+	CHECK_INT(theme.thin_border, 5);
 	CHECK_INT(theme.bevel, 2);
-	CHECK(theme.title_height >= 22 && theme.title_height <= 128);
+	int w, h;
+	text_extent("Sans Bold 10", "Xg", &w, &h);
+	CHECK_INT(theme.title_height, h + 4);
 	CHECK(theme.menu_item_height >= 24 && theme.menu_item_height >= theme.title_height);
 	CHECK_INT(log_lines(""), 0);
 }
@@ -206,20 +209,46 @@ TEST(theme_fonts)
 	no_env();
 }
 
-/* Bars grow with the font, not below 22 and 24, and stop at 128. */
+/* Bars grow with the font: title bars as mwm's, the font and 4, menu items the font and 8
+ * but not below 24. Both stop at 128. */
 TEST(theme_bar_heights)
 {
+	int w, h;
 	no_env();
 	theme_from("Mwm*fontList: Sans 4\n");
-	CHECK_INT(theme.title_height, 22);
+	text_extent("Sans 4", "Xg", &w, &h);
+	CHECK_INT(theme.title_height, h + 4);
 	CHECK_INT(theme.menu_item_height, 24);
 	theme_from("Mwm*fontList: Sans 20\n");
-	int h20 = theme.title_height;
-	CHECK(h20 > 22 && theme.menu_item_height == h20);
+	text_extent("Sans 20", "Xg", &w, &h);
+	CHECK_INT(theme.title_height, h + 4);
+	CHECK_INT(theme.menu_item_height, h + 8);
 	theme_from("Mwm*fontList: Sans Bold 1000\n");
 	CHECK_INT(theme.title_height, 128);
 	CHECK_INT(theme.menu_item_height, 128);
 	CHECK_INT(log_lines("is too large for a title bar"), 1);
+}
+
+/* Mwm*resizeBorderWidth and frameBorderWidth, 3 to 64 pixels; anything else keeps the
+ * default and is logged. */
+TEST(theme_border_widths)
+{
+	no_env();
+	theme_from("Mwm*resizeBorderWidth: 10\nMwm*frameBorderWidth: 3\n");
+	CHECK_INT(theme.border, 10);
+	CHECK_INT(theme.thin_border, 3);
+	theme_from("Mwm*resizeBorderWidth: 64\nMwm*frameBorderWidth: 64\n");
+	CHECK_INT(theme.border, 64);
+	CHECK_INT(theme.thin_border, 64);
+	CHECK_INT(log_lines("expected 3 to 64"), 0);
+	theme_from("Mwm*resizeBorderWidth: 2\nMwm*frameBorderWidth: 65\n");
+	CHECK_INT(theme.border, 7);
+	CHECK_INT(theme.thin_border, 5);
+	CHECK_INT(log_lines("expected 3 to 64"), 2);
+	theme_from("Mwm*resizeBorderWidth: 8px\nMwm*frameBorderWidth: wide\n");
+	CHECK_INT(theme.border, 7);
+	CHECK_INT(theme.thin_border, 5);
+	CHECK_INT(log_lines("expected 3 to 64"), 2);
 }
 
 TEST(text)
@@ -344,6 +373,7 @@ int main(void)
 	RUN(theme_bad_foreground);
 	RUN(theme_fonts);
 	RUN(theme_bar_heights);
+	RUN(theme_border_widths);
 	RUN(text);
 	RUN(buffer);
 	RUN(bevel_out_and_in);

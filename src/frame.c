@@ -30,7 +30,7 @@ int frame_border(struct view *view)
 {
 	if (!view_decorated(view))
 		return 0;
-	return (view->decor & DECOR_RESIZEH) ? theme.border : frame_thin_border();
+	return (view->decor & DECOR_RESIZEH) ? theme.border : theme.thin_border;
 }
 
 int frame_title(struct view *view)
@@ -262,28 +262,53 @@ void draw_title_button(cairo_t *cr, enum frame_part part, int x, int y, int size
 {
 	draw_bevel(cr, x, y, size, size, 1, s, down);
 
-	/* Glyphs are themselves little raised bevels, as in mwm. */
-	int g;
+	/* Glyphs are themselves little raised bevels, sized and placed as mwm's
+	 * BevelSystemButton(), BevelMinimizeButton() and BevelMaximizeButton() do:
+	 * dx, dy from the button's corner, w x h. Small buttons have their own steps. */
+	const int n = size;
+	int dx, dy, w, h;
 	switch (part) {
-	case PART_MENU_BUTTON: {
-		int gw = size * 11 / 20, gh = 4;
-		draw_bevel(cr, x + (size - gw) / 2, y + (size - gh) / 2,
-			gw, gh, 1, s, false);
+	case PART_MENU_BUTTON:
+		if (n < 5)
+			return;
+		if (n <= 6)
+			dx = dy = 2, w = h = n - 4;
+		else if (n == 7)
+			dx = dy = 2, w = 3, h = 2;
+		else if (n <= 9)
+			dx = 2, dy = 3, w = n - 4, h = n - 6;
+		else if (n <= 11)
+			dx = 3, dy = 4, w = n - 6, h = n - 8;
+		else if (n <= 13)
+			dx = 3, dy = (n - 3) / 2, w = n - 6, h = 3;
+		else
+			dx = 4, dy = (n - 4) / 2, w = n - 8, h = 4;
 		break;
-	}
 	case PART_MINIMIZE_BUTTON:
-		g = 5;
-		draw_bevel(cr, x + (size - g) / 2, y + (size - g) / 2,
-			g, g, 1, s, false);
+		if (n < 7)
+			return;
+		if (n <= 9)
+			dx = dy = 3, w = h = n - 6;
+		else if (n <= 12)
+			dx = dy = (n - 3) / 2, w = h = 3;
+		else
+			dx = dy = (n - 4) / 2, w = h = 4;
 		break;
 	case PART_MAXIMIZE_BUTTON:
-		g = size * 11 / 20;
-		draw_bevel(cr, x + (size - g) / 2, y + (size - g) / 2,
-			g, g, 1, s, toggled);
+		if (n < 5)
+			return;
+		if (n <= 11)
+			dx = dy = 2, w = h = n - 4;
+		else if (n <= 15)
+			dx = dy = 3, w = h = n - 6;
+		else
+			dx = dy = 4, w = h = n - 8;
 		break;
 	default:
-		break;
+		return;
 	}
+	draw_bevel(cr, x + dx, y + dy, w, h, 1, s,
+		part == PART_MAXIMIZE_BUTTON && toggled);
 }
 
 static void draw_button(cairo_t *cr, struct view *view, enum frame_part part,
@@ -300,7 +325,6 @@ static void draw_frame(cairo_t *cr, struct view *view, int W, int H, bool title)
 {
 	const int B = frame_border(view), T = title ? frame_title(view) : 0;
 	const int bv = theme.bevel < B ? theme.bevel : B;
-	const bool full = B == theme.border;
 	const struct mwc_shade *s = view->activated ?
 		&view->shade_active : &view->shade_inactive;
 
@@ -308,9 +332,10 @@ static void draw_frame(cairo_t *cr, struct view *view, int W, int H, bool title)
 	cairo_paint(cr);
 
 	if (B) {
-		/* Outer raised edge, inner sunken edge around title + client. */
+		/* Outer raised edge, inner sunken edge around title + client, with resize
+		 * handles or without, as mwm's frameBorderWidth has it too. */
 		draw_bevel(cr, 0, 0, W, H, bv, s, false);
-		if (full)
+		if (B > bv)
 			draw_bevel(cr, B - 1, B - 1, W - 2 * B + 2,
 				H - 2 * B + 2, 1, s, true);
 	}
@@ -319,20 +344,22 @@ static void draw_frame(cairo_t *cr, struct view *view, int W, int H, bool title)
 	 * StretcherCorner(), each corner ends in its own shadow and the side piece starts
 	 * with its light edge: dark on k - 1, light on k. That is where the menu and the
 	 * maximize button meet the title, and the title bar meets the window, so the
-	 * grooves go on from those lines. Tiled windows keep them: the decoration stays,
-	 * inactive. */
-	if (full && ((view->funcs & FUNC_RESIZE) || view->tiled) &&
-			(!view->maximized || view->tiled)) {
+	 * grooves go on from those lines. Across the border they start at the outer
+	 * bevel's second pixel; the light one cuts the dark inner edge at the top and
+	 * left, the dark one stops short of the light one at the bottom and right.
+	 * Maximized and tiled windows keep them: the decoration stays, inactive. */
+	if ((frame_decor(view) & DECOR_RESIZEH) && B > bv &&
+			((view->funcs & FUNC_RESIZE) || view->tiled)) {
 		int kx, ky;
 		corner_reach(W, H, &kx, &ky);
-		draw_groove_v(cr, kx - 1, bv, B - bv - 1, s);
-		draw_groove_v(cr, W - kx - 1, bv, B - bv - 1, s);
-		draw_groove_v(cr, kx - 1, H - B + 1, B - bv - 1, s);
-		draw_groove_v(cr, W - kx - 1, H - B + 1, B - bv - 1, s);
-		draw_groove_h(cr, bv, ky - 1, B - bv - 1, s);
-		draw_groove_h(cr, W - B + 1, ky - 1, B - bv - 1, s);
-		draw_groove_h(cr, bv, H - ky - 1, B - bv - 1, s);
-		draw_groove_h(cr, W - B + 1, H - ky - 1, B - bv - 1, s);
+		draw_groove_v(cr, kx - 1, 1, B - 1, s);
+		draw_groove_v(cr, W - kx - 1, 1, B - 1, s);
+		draw_groove_v(cr, kx - 1, H - B + 1, B - 2, s);
+		draw_groove_v(cr, W - kx - 1, H - B + 1, B - 2, s);
+		draw_groove_h(cr, 1, ky - 1, B - 1, s);
+		draw_groove_h(cr, W - B + 1, ky - 1, B - 2, s);
+		draw_groove_h(cr, 1, H - ky - 1, B - 1, s);
+		draw_groove_h(cr, W - B + 1, H - ky - 1, B - 2, s);
 	}
 
 	/* Title bar: menu button | title | minimize | maximize */
@@ -346,8 +373,10 @@ static void draw_frame(cairo_t *cr, struct view *view, int W, int H, bool title)
 		} else {
 			draw_bevel(cr, tl.title_x, B, tl.title_w, T, 1, s,
 				view->pressed == PART_TITLE);
+			/* mwm's GetTextBox(): inside the bevel and a pixel of padding. A title
+			 * too long for it is shortened with "…", where mwm cuts it off. */
 			draw_text(cr, view_title(view), theme.font, s->fg,
-				tl.title_x + 4, B + 1, tl.title_w - 8, T - 2, true);
+				tl.title_x + 2, B + 2, tl.title_w - 4, T - 4, true);
 		}
 		if (tl.min_x >= 0)
 			draw_button(cr, view, PART_MINIMIZE_BUTTON, tl.min_x, B, T, s);
@@ -450,7 +479,8 @@ enum frame_part frame_hit(struct view *view, int fx, int fy, uint32_t *edges)
 		return view->group ? PART_TAB : PART_TITLE;
 	}
 	/* A border that can't resize moves the window, like the title. */
-	if (B != theme.border || !(view->funcs & FUNC_RESIZE) || view->maximized)
+	if (!(frame_decor(view) & DECOR_RESIZEH) || !(view->funcs & FUNC_RESIZE) ||
+			view->maximized)
 		return PART_TITLE;
 
 	/* Border: the corner pieces extend B+T along each side, but no further

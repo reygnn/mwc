@@ -114,6 +114,7 @@ Global resources:
 | `background` | frame colour while unfocused; also menus and icons |
 | `activeForeground`, `foreground` | title text; default black or white, whichever contrasts |
 | `fontList` | font of titles and menus; title bars grow with it |
+| `resizeBorderWidth`, `frameBorderWidth` | frame width in pixels with resize handles and without, 3 to 64; default 7 and 5 |
 | `rootBackground` | desktop colour, or `none` for a wallpaper tool such as swaybg |
 | `wallpaper` | PNG on the desktop, see below |
 | `moveOpaque` | `true`: move and resize the window itself instead of an outline |

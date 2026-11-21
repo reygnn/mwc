@@ -50,7 +50,8 @@ struct mwc_theme {
 	struct mwc_color active_fg, inactive_fg;
 	bool has_active_fg, has_inactive_fg;
 	char *font;              /* Pango name */
-	int border;
+	int border;              /* with resize handles: Mwm*resizeBorderWidth */
+	int thin_border;         /* without: Mwm*frameBorderWidth */
 	int title_height;
 	int menu_item_height;
 	int bevel;
@@ -618,7 +619,7 @@ uint32_t now_msec(void);
 /* ---- frame.c ------------------------------------------------------------ */
 
 int frame_border(struct view *view);
-int frame_thin_border(void); /* without resize handles */
+int frame_thin_border(void); /* the icon box's and the dock's */
 int frame_title(struct view *view);
 int frame_top(struct view *view);
 int frame_extra_w(struct view *view);

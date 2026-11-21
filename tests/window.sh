@@ -16,7 +16,7 @@ start_vinput
 refresh
 B=$(global theme border)
 T=$(global theme title)
-THIN=3 # bevel 2 + 1, from frame_border()
+THIN=$(global theme thin)
 
 PIDS=()
 wayland() {

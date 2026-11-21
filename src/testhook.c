@@ -180,8 +180,8 @@ static int dump_state(int signal, void *data)
 		*p = *p == ' ' ? '_' : *p;
 	fprintf(f, "feedback text=%s x=%d y=%d draws=%d\n", label, box.x, box.y, draws);
 	fprintf(f, "wallpaper decodes=%d\n", server->wallpaper_decodes);
-	fprintf(f, "theme border=%d title=%d\n", theme.border,
-		theme.title_height);
+	fprintf(f, "theme border=%d thin=%d title=%d\n", theme.border,
+		theme.thin_border, theme.title_height);
 	/* A client's own cursor image, while it is shown: its buffer and scale. */
 	struct wlr_surface *cs = server->cursor_name ? NULL : server->client_cursor;
 	fprintf(f, "cursor x=%d y=%d mode=%d cw=%d ch=%d cscale=%d name=%s\n",
