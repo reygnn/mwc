@@ -19,7 +19,7 @@ build/pngtool stripes "$SMOKE_DIR/fit.png" 2560 1440 "$RED" "$BLUE"
 build/pngtool stripes "$SMOKE_DIR/wide.png" 3440 720 "$RED" "$BLUE"
 
 # pngtool itself: count's tolerance, and 0 for exact. 9497a6 is within the default of
-# 7387ad, mwc's active colour, which a test of a pale shade needs to tell apart.
+# 7387ad, which was mwc's active colour, so a test of a pale shade couldn't tell them apart.
 build/pngtool stripes "$SMOKE_DIR/two.png" 8 1 9497a6 7387ad
 [ "$(build/pngtool count "$SMOKE_DIR/two.png" 0 0 8 1 7387ad)" = 8 ] ||
 	fail "pngtool count: the default tolerance doesn't take 9497a6 for 7387ad"

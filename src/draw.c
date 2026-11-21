@@ -218,14 +218,14 @@ static int setting_width(const char *resource, int fallback)
 
 void theme_init(void)
 {
-	/* Defaults follow the Motif 2.x look: #aeb2c3 grey-blue background,
-	 * a stronger blue for the window that has the focus. Each one can be
-	 * set in mwmrc or overridden through the environment, e.g.
+	/* Defaults are IRIX 6.5's Base scheme (IndigoMagic, docs/mwmrc.irix-schemes):
+	 * #aaaaaa grey, a light stone for the window that has the focus. Each one can
+	 * be set in mwmrc or overridden through the environment, e.g.
 	 * MWC_ACTIVE=#b24d7a. Title text picks black or white unless set. */
 	struct mwc_color inactive = setting_color("MWC_INACTIVE", "background",
-		0xaeb2c3, NULL);
+		0xaaaaaa, NULL);
 	struct mwc_color active = setting_color("MWC_ACTIVE", "activeBackground",
-		0x7387ad, NULL);
+		0xc6c1aa, NULL);
 	/* "none" leaves the desktop to a wallpaper tool (swaybg); the colour
 	 * is then only used inside the default icon image. */
 	theme.root = setting_color("MWC_ROOT", "rootBackground", 0x5b7792,

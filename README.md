@@ -92,8 +92,8 @@ It is read at startup, on SIGHUP and on "Reload" in the root menu. A Wayland com
 cannot restart and keep its windows, so a reload applies the file to what is running.
 
     ! global
-    Mwm*activeBackground:        #7387ad
-    Mwm*background:              #aeb2c3
+    Mwm*activeBackground:        #c6c1aa
+    Mwm*background:              #aaaaaa
     Mwm*fontList:                Sans Bold 10
     Mwm*wallpaper:               ~/pictures/desk.png
 
@@ -153,8 +153,8 @@ The environment overrides the global entries:
 
 | Variable | Default | |
 |---|---|---|
-| `MWC_ACTIVE` | `#7387ad` | focused frame colour |
-| `MWC_INACTIVE` | `#aeb2c3` | other frames, menus, icons |
+| `MWC_ACTIVE` | `#c6c1aa` | focused frame colour; with `MWC_INACTIVE` IRIX's Base scheme |
+| `MWC_INACTIVE` | `#aaaaaa` | other frames, menus, icons |
 | `MWC_ROOT` | `#5b7792` | desktop colour, `none`: not drawn |
 | `MWC_WALLPAPER` | none | PNG on the desktop |
 | `MWC_FONT` | `Sans Bold 10` | font of titles and menus |

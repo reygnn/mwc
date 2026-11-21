@@ -55,8 +55,10 @@ TEST(contrast)
 {
 	CHECK(black_text(0xffffff));
 	CHECK(!black_text(0x000000));
-	CHECK(black_text(0xaeb2c3)); /* the default frame, at 71% */
-	CHECK(!black_text(0x7387ad)); /* the default focused frame, at 55% */
+	CHECK(black_text(0xaeb2c3)); /* at 71% */
+	CHECK(black_text(0xc6c1aa)); /* the default focused frame, at 74% */
+	CHECK(!black_text(0x7387ad)); /* at 55% */
+	CHECK(!black_text(0xaaaaaa)); /* the default frame, at 67% */
 	CHECK(!black_text(0x8a0303));
 	CHECK(black_text(0xffff00));
 	CHECK(!black_text(0xffd700)); /* gold: mwm gives it white text too */
@@ -129,10 +131,13 @@ TEST(theme_defaults)
 {
 	no_env();
 	theme_from("");
-	CHECK(same(theme.inactive.bg, rgb(0xaeb2c3)));
-	CHECK(same(theme.active.bg, rgb(0x7387ad)));
+	/* IRIX's Base scheme, its title text and shadows as Motif derives them. */
+	CHECK(same(theme.inactive.bg, rgb(0xaaaaaa)));
+	CHECK(same(theme.active.bg, rgb(0xc6c1aa)));
+	CHECK(shade_is(theme.active.top, 0xe7e5db) && shade_is(theme.active.bottom, 0x6b685c));
+	CHECK(shade_is(theme.inactive.top, 0xdadada) && shade_is(theme.inactive.bottom, 0x5a5a5a));
+	CHECK(same(theme.active.fg, rgb(0)) && same(theme.inactive.fg, rgb(0xffffff)));
 	CHECK(same(theme.root, rgb(0x5b7792)) && !theme.root_none);
-	CHECK(same(theme.active.fg, color_contrast(rgb(0x7387ad))));
 	CHECK(!theme.has_active_fg && !theme.has_inactive_fg);
 	CHECK(same(theme.menu.bg, theme.inactive.bg) && same(theme.select, theme.active.bg));
 	CHECK(!strcmp(theme.font, "Sans Bold 10"));
@@ -289,7 +294,7 @@ TEST(theme_root_none)
 	/* Only the root may be none. */
 	no_env();
 	theme_from("Mwm*activeBackground: none\n");
-	CHECK(same(theme.active.bg, rgb(0x7387ad)));
+	CHECK(same(theme.active.bg, rgb(0xc6c1aa)));
 	CHECK_INT(log_lines("ignoring Mwm*activeBackground: none"), 1);
 }
 
