@@ -209,8 +209,8 @@ static int dump_state(int signal, void *data)
 		snprintf(toast_label, sizeof(toast_label), "%s", e);
 		for (char *p = toast_label; *p; p++)
 			*p = isspace((unsigned char)*p) ? '_' : *p;
-		fprintf(f, "toasterror_%d text=%s x=%d y=%d h=%d\n", errors, toast_label,
-			box.x, box.y, box.height);
+		fprintf(f, "toasterror_%d text=%s x=%d y=%d w=%d h=%d\n", errors, toast_label,
+			box.x, box.y, box.width, box.height);
 	}
 	fprintf(f, "toasterrors n=%d\n", errors);
 	int started;

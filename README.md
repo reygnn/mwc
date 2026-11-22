@@ -138,8 +138,8 @@ Global resources:
 | `outputManagement` | `true`: offer wlr-output-management, see Keyboard and monitors |
 
 A program in these that isn't found, or may not be run, shows a toast such as
-"mfmx: not found" for three seconds, each its own, below the desktop's; the same one
-again only shows longer.
+"mfmx: not found" for three seconds, each its own, stacked in the bottom right corner
+clear of panels and the dock, the newest lowest; the same one again only shows longer.
 
 Per program:
 

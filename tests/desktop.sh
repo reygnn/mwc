@@ -575,7 +575,8 @@ wait "$PID_lock" 2>/dev/null
 switch_to 2
 check "once it is gone, a switch shows one again" "[ \"\$(toast shown)\" = $((n + 4)) ]"
 switch_to 1
-# A program that couldn't be started keeps its toast over a switch, below the desktop's.
+# A program that couldn't be started keeps its toast over a switch, in the corner apart
+# from the desktop's.
 printf 'Mwm*outputManagement: true\nMwm*terminal: missing-here\n' >"$XDG_CONFIG_HOME/mwc/mwmrc"
 reload_mwc
 do_input key super+Return
@@ -583,9 +584,27 @@ check "a toast for a program not found" "[ \"\$(global toasterror_0 text)\" = mi
 switch_to 2
 check "a switch shows its own and leaves that one" \
 	"[ \"\$(toast text)\" = Desktop_2 ] && [ \"\$(global toasterror_0 text)\" = missing-here:_not_found ]"
-[ "$(global toasterror_0 y)" -ge $(($(toast y) + $(toast h))) ] ||
-	fail "the error isn't below the desktop's: $(toast y) $(global toasterror_0 y)"
-echo "ok: below the desktop's"
+[ "$(global toasterror_0 y)" -ge $(($(toast y) + $(toast h))) ] &&
+	[ "$(global toasterror_0 x)" -ge $(($(toast x) + $(toast w))) ] ||
+	fail "the error isn't below and right of the desktop's: $(toast x),$(toast y) $(global toasterror_0 x),$(global toasterror_0 y)"
+echo "ok: apart from the desktop's, below and right of it"
+# A panel along the bottom: the corner moves up out of its way.
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=top anchor=bottom,left,right size=0x40 \
+	exclusive=40 color=444444 >"$SMOKE_DIR/panel.events" 2>&1 &
+PID_panel=$!
+wait_for "a panel along the bottom" grep -q configured "$SMOKE_DIR/panel.events"
+check "it leaves 680 px" "[ \"\$(global output uh)\" = 680 ]"
+check "the toast from before has gone" "[ \"\$(global toasterrors n)\" = 0 ]"
+do_input key super+Return
+check "the toast sits 16 px above the panel" \
+	"[ \$((\$(global toasterror_0 y) + \$(global toasterror_0 h))) = $((680 - 16)) ]"
+kill "$PID_panel"
+wait "$PID_panel" 2>/dev/null
+check "the panel is gone" "[ \"\$(global output uh)\" = 720 ]"
+do_input key super+Return
+check "the same one again, still showing, moves down with it" \
+	"[ \"\$(global toasterrors n)\" = 1 ] && \
+	[ \$((\$(global toasterror_0 y) + \$(global toasterror_0 h))) = $((720 - 16)) ]"
 echo 'Mwm*outputManagement: true' >"$XDG_CONFIG_HOME/mwc/mwmrc"
 reload_mwc
 switch_to 1

@@ -1,10 +1,11 @@
 /*
  * toast.c - short notices in the middle of the pointer's monitor, as screenShot shows
  * one. The desktop switched to, however it was switched (a pager such as deskControl,
- * xdg-activation): one, which the next switch replaces, its time anew. A program mwc
- * started that couldn't be: one each, with a time of its own, below the desktop's, the
- * oldest first; the same text again only starts its time anew. Clicks go through
- * them, and none shows over a screen locker. draw.c draws them.
+ * xdg-activation): one in the middle, which the next switch replaces, its time anew. A
+ * program mwc started that couldn't be: one each, with a time of its own, in the
+ * bottom right corner clear of panels and the dock, the newest lowest; the same text
+ * again only starts its time anew. Clicks go through them, and none shows over a
+ * screen locker. draw.c draws them.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
@@ -15,7 +16,8 @@
 #include "mwc.h"
 
 #define TOAST_ERRORS 5 /* the oldest goes for a sixth */
-#define TOAST_GAP 8
+#define TOAST_GAP 8     /* between errors */
+#define TOAST_MARGIN 16 /* from the corner */
 
 struct toast {
 	struct wlr_scene_buffer *node;
@@ -42,26 +44,27 @@ static int toast_ms(int ms)
 	return *end || env < 1 || env > 60000 ? ms : (int)env;
 }
 
-/* A column of what shows, centred on the pointer's monitor. */
+/* On the pointer's monitor: the desktop's in its middle, the errors stacked up from the
+ * bottom right corner of what panels and the dock leave free, the newest lowest. */
 static void arrange(void)
 {
-	struct toast *shown[1 + TOAST_ERRORS];
-	int n = 0, height = 0;
-	if (desktop.text[0])
-		shown[n++] = &desktop;
-	for (int i = 0; i < n_errors; i++)
-		shown[n++] = errors[i];
-	for (int i = 0; i < n; i++)
-		height += shown[i]->box.height + (i ? TOAST_GAP : 0);
 	struct server *server = toast_server;
-	struct wlr_box m = output_full_area(server, server->cursor->x, server->cursor->y);
-	int y = m.y + (m.height - height) / 2;
-	for (int i = 0; i < n; i++) {
-		struct wlr_box *b = &shown[i]->box;
+	double lx = server->cursor->x, ly = server->cursor->y;
+	if (desktop.text[0]) {
+		struct wlr_box m = output_full_area(server, lx, ly);
+		struct wlr_box *b = &desktop.box;
 		b->x = m.x + (m.width - b->width) / 2;
-		b->y = y;
-		y += b->height + TOAST_GAP;
-		wlr_scene_node_set_position(&shown[i]->node->node, b->x, b->y);
+		b->y = m.y + (m.height - b->height) / 2;
+		wlr_scene_node_set_position(&desktop.node->node, b->x, b->y);
+	}
+	struct wlr_box u = output_usable_area(server, lx, ly);
+	int bottom = u.y + u.height - TOAST_MARGIN;
+	for (int i = n_errors - 1; i >= 0; i--) {
+		struct wlr_box *b = &errors[i]->box;
+		b->x = u.x + u.width - TOAST_MARGIN - b->width;
+		b->y = bottom - b->height;
+		bottom = b->y - TOAST_GAP;
+		wlr_scene_node_set_position(&errors[i]->node->node, b->x, b->y);
 	}
 }
 
@@ -157,6 +160,7 @@ void toast_error(struct server *server, const char *text, int ms)
 	for (int i = 0; i < n_errors; i++) {
 		if (!strcmp(errors[i]->text, text)) {
 			wl_event_source_timer_update(errors[i]->timer, toast_ms(ms));
+			arrange(); /* the pointer or a panel may have moved */
 			return;
 		}
 	}

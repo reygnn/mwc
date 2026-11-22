@@ -100,8 +100,9 @@ rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 
 # A program that can't be started says so, in a toast and the log: a name the shell
 # doesn't find (127), a file it may not run (126). Not one that ends at once on its own,
-# nor one that keeps running. Each such toast has its own, below the desktop's, the
-# oldest first, and the same one again stays one. A minute here (MWC_TOAST_MS), so
+# nor one that keeps running. Each such toast has its own, stacked up from the bottom
+# right corner of what panels leave free, the newest lowest, and the same one again
+# stays one. A minute here (MWC_TOAST_MS), so
 # that none goes before a check.
 error_is() { # description index text, spaces as _
 	WANT=$3
@@ -132,9 +133,17 @@ terminal "$SMOKE_DIR/no-exec"
 do_input key super+Return
 error_is "a file that can't be run says so, below the first" 1 "$SMOKE_DIR/no-exec:_can't_be_run"
 refresh
-[ "$(global toasterror_1 y)" -ge $(($(global toasterror_0 y) + $(global toasterror_0 h))) ] ||
-	fail "the second isn't below the first: $(global toasterror_0 y) $(global toasterror_1 y)"
-echo "ok: the second below the first"
+right=$(($(global output ux) + $(global output uw) - 16))
+bottom=$(($(global output uy) + $(global output uh) - 16))
+for i in 0 1; do
+	[ $(($(global toasterror_$i x) + $(global toasterror_$i w))) = "$right" ] ||
+		fail "toast $i doesn't end 16 px from the right: x=$(global toasterror_$i x)"
+done
+[ $(($(global toasterror_1 y) + $(global toasterror_1 h))) = "$bottom" ] ||
+	fail "the newest isn't 16 px above the bottom: y=$(global toasterror_1 y)"
+[ $(($(global toasterror_0 y) + $(global toasterror_0 h))) -le "$(global toasterror_1 y)" ] ||
+	fail "the older isn't above the newest: $(global toasterror_0 y) $(global toasterror_1 y)"
+echo "ok: in the bottom right corner, the newest lowest"
 n=$(global toast shown)
 do_input key super+Return
 wait_for "the same one again" eval '[ $(grep -c "no-exec: can.t be run" "$LOG") -ge 2 ]'
