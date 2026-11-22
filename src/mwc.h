@@ -821,6 +821,7 @@ const char *feedback_get(struct wlr_box *box, int *draws);
 
 /* Replaces the one showing. */
 void toast_show(struct server *server, const char *text);
+void toast_hide(void);
 void toast_fini(void);
 /* "" while hidden; n: how many were shown. */
 const char *toast_get(struct wlr_box *box, int *n);

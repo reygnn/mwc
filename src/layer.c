@@ -194,6 +194,7 @@ static void take_keyboard_back(struct server *server)
 	struct layer_surface *waiting = waiting_exclusive(server);
 	if (waiting) {
 		server->exclusive_layer = waiting->wlr;
+		toast_hide();
 		give_keyboard(waiting);
 		return;
 	}
@@ -239,8 +240,10 @@ static void update_keyboard(struct layer_surface *ls, bool appearing)
 
 	if (wants && may && server->focused_layer != ls->wlr)
 		give_keyboard(ls);
-	if (outranks)
+	if (outranks) {
 		server->exclusive_layer = ls->wlr;
+		toast_hide(); /* not over a screen locker */
+	}
 	else if (!exclusive && holder == ls->wlr)
 		server->exclusive_layer = NULL;
 	if (!wants && server->focused_layer == ls->wlr)

@@ -490,7 +490,7 @@ token src
 WAYLAND_DISPLAY=wayland-0 build/layerc layer=overlay keyboard=exclusive size=100x100 \
 	>"$SMOKE_DIR/lock.events" 2>&1 &
 PID_lock=$!
-wait_for "a layer surface takes the keys exclusively" grep -q configured "$SMOKE_DIR/lock.events"
+wait_for "a layer surface takes the keys exclusively" grep -q keyboard-enter "$SMOKE_DIR/lock.events"
 stays_with "nor once a screen locker took them" src
 kill "$PID_lock"
 wait "$PID_lock" 2>/dev/null
@@ -526,11 +526,17 @@ exec {srcfd}>&- {dstfd}>&-
 # monitor, for a second, here three (MWC_TOAST_MS) for margins of a second. A switch
 # while one shows replaces it and starts its time anew. None over a screen locker.
 toast() { global toast "$1"; }
+now_ms() { echo $(($(date +%s%N) / 1000000)); }
+sleep_until() { # ms
+	local left=$(($1 - $(now_ms)))
+	[ "$left" -le 0 ] || sleep "$(awk -v l="$left" 'BEGIN { print l / 1000 }')"
+}
 n=$(toast shown)
 switch_to 1
 sleep 0.3
 check "no switch, no toast" "[ \"\$(toast shown)\" = $n ]"
 switch_to 2
+t0=$(now_ms)
 check "a switch shows a toast" "[ \"\$(toast text)\" = Desktop_2 ] && [ \"\$(toast shown)\" = $((n + 1)) ]"
 TX=$(toast x) TY=$(toast y) TW=$(toast w) TH=$(toast h)
 [ "$TX" = $(((1280 - TW) / 2)) ] && [ "$TY" = $(((720 - TH) / 2)) ] ||
@@ -538,25 +544,36 @@ TX=$(toast x) TY=$(toast y) TW=$(toast w) TH=$(toast h)
 echo "ok: in the middle of the monitor"
 pixel_is "a grey line round it" "$TX" "$TY" 808080
 pixel_is "a dark box" $((TX + 2)) $((TY + 2)) 2b2b2b
-sleep 1.5
+sleep_until $((t0 + 1500))
 check "it still shows before the next switch" "[ \"\$(toast text)\" = Desktop_2 ]"
 switch_to 3
+t1=$(now_ms)
 check "the next switch replaces it" "[ \"\$(toast text)\" = Desktop_3 ] && [ \"\$(toast shown)\" = $((n + 2)) ]"
-sleep 2 # over three seconds after the first: gone by now, had its time not started anew
+# Over three seconds after the first: gone by now, had its time not started anew.
+sleep_until $((t0 + 3500))
+[ $(($(now_ms) - t1)) -lt 2500 ] || fail "too slow to tell: $(($(now_ms) - t1)) ms since the switch"
 check "and starts its time anew" "[ \"\$(toast text)\" = Desktop_3 ]"
 check "then it goes" '[ -z "$(toast text)" ]'
 pixel_is "and the desktop shows again" $((TX + 2)) $((TY + 2)) 7189a3
+# A locker coming up takes a toast that shows away, long before its time is up.
+switch_to 1
+check "a toast for desktop 1" "[ \"\$(toast text)\" = Desktop_1 ]"
+t0=$(now_ms)
 WAYLAND_DISPLAY=wayland-0 build/layerc layer=overlay keyboard=exclusive size=100x100 \
 	>"$SMOKE_DIR/lock.events" 2>&1 &
 PID_lock=$!
-wait_for "a screen locker takes the keys" grep -q configured "$SMOKE_DIR/lock.events"
-switch_to 1
+wait_for "a screen locker takes the keys" grep -q keyboard-enter "$SMOKE_DIR/lock.events"
+refresh
+[ -z "$(toast text)" ] || fail "the toast stays over the locker: $(toast text)"
+[ $(($(now_ms) - t0)) -lt 2500 ] || fail "too slow to tell: $(($(now_ms) - t0)) ms"
+echo "ok: a locker coming up takes the toast away"
+switch_to 3
 sleep 0.3
-check "a switch under it shows none" "[ \"\$(toast shown)\" = $((n + 2)) ] && [ -z \"\$(toast text)\" ]"
+check "a switch under it shows none" "[ \"\$(toast shown)\" = $((n + 3)) ] && [ -z \"\$(toast text)\" ]"
 kill "$PID_lock"
 wait "$PID_lock" 2>/dev/null
 switch_to 2
-check "once it is gone, a switch shows one again" "[ \"\$(toast shown)\" = $((n + 3)) ]"
+check "once it is gone, a switch shows one again" "[ \"\$(toast shown)\" = $((n + 4)) ]"
 switch_to 1
 
 # ---- the group follows its output -------------------------------------------------------

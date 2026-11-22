@@ -27,12 +27,24 @@ static int toast_expired(void *data)
 	return 0;
 }
 
-/* MWC_TOAST_MS: how long, for the tests, which need margins of whole seconds. */
+void toast_hide(void)
+{
+	if (!node || !shown[0])
+		return;
+	wl_event_source_timer_update(timer, 0);
+	toast_expired(NULL);
+}
+
+/* MWC_TOAST_MS: how long, 1 to 60000, for the tests, which need margins of whole
+ * seconds. */
 static int toast_ms(void)
 {
 	const char *s = getenv("MWC_TOAST_MS");
-	int ms = s ? atoi(s) : 0;
-	return ms > 0 ? ms : TOAST_MS;
+	if (!s || !*s)
+		return TOAST_MS;
+	char *end;
+	long ms = strtol(s, &end, 10);
+	return *end || ms < 1 || ms > 60000 ? TOAST_MS : (int)ms;
 }
 
 static bool toast_init(struct server *server)
