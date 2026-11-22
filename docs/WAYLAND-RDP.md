@@ -248,7 +248,7 @@ Check that both are up and that wayrdp listens on localhost only:
 ```sh
 systemctl --user status mwc wayrdp
 ss -ltn | grep 3389                    # 127.0.0.1:3389, not 0.0.0.0 or *
-journalctl --user -u wayrdp            # "Listening on", and the certificate's thumbprint
+journalctl --user -u wayrdp            # the certificate's SHA-1 thumbprint ("Listening on" only with -L info)
 ```
 
 ## 7. The RDP login
