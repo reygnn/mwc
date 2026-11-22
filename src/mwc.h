@@ -408,6 +408,9 @@ struct server {
 	struct wl_listener new_input;
 	struct wl_listener request_cursor;
 	struct wlr_surface *client_cursor; /* the last one a client set, for the tests */
+	/* Or the cursor-shape-v1 name, till mwc or the client sets another; for the tests. */
+	const char *client_shape;
+	struct wl_listener request_set_shape;
 	struct wl_listener client_cursor_destroy;
 	struct wl_listener request_set_selection;
 	struct wl_listener request_set_primary_selection;

@@ -8,13 +8,16 @@
  * - SIGUSR1 writes the window state to the file so tests can check geometry
  *   and focus, which a Wayland client cannot query for other clients.
  * - SIGUSR2 removes an output: the newest, or the one named in the file
- *   <state file>.unplug if there is one (read and removed then).
+ *   <state file>.unplug if there is one (read and removed then); "+" there plugs a
+ *   1280x720 one in instead.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wlr/backend/headless.h>
+#include <wlr/backend/multi.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_output.h>
@@ -27,13 +30,16 @@
 static struct server *test_server;
 static const char *state_path;
 
+static void plug_into(struct wlr_backend *backend, void *data)
+{
+	if (wlr_backend_is_headless(backend) && !wlr_headless_add_output(backend, 1280, 720))
+		wlr_log(WLR_ERROR, "test hook: can't plug in an output");
+}
+
 /* SIGUSR2 unplugs an output, which the headless backend can't do by itself: the
- * newest, or the one <state file>.unplug names. */
+ * newest, or the one <state file>.unplug names; "+" plugs one in. */
 static int unplug_output(int signal, void *data)
 {
-	if (wl_list_empty(&test_server->outputs))
-		return 0;
-	struct output *target = wl_container_of(test_server->outputs.next, target, link);
 	char path[4096], name[64] = "";
 	snprintf(path, sizeof(path), "%s.unplug", state_path);
 	FILE *f = fopen(path, "r");
@@ -43,6 +49,16 @@ static int unplug_output(int signal, void *data)
 		fclose(f);
 		remove(path);
 	}
+	if (!strcmp(name, "+")) {
+		if (wlr_backend_is_multi(test_server->backend))
+			wlr_multi_for_each_backend(test_server->backend, plug_into, NULL);
+		else
+			plug_into(test_server->backend, NULL);
+		return 0;
+	}
+	if (wl_list_empty(&test_server->outputs))
+		return 0;
+	struct output *target = wl_container_of(test_server->outputs.next, target, link);
 	if (name[0]) {
 		struct output *o;
 		target = NULL;
@@ -192,11 +208,12 @@ static int dump_state(int signal, void *data)
 		theme.thin_border, theme.title_height);
 	/* A client's own cursor image, while it is shown: its buffer and scale. */
 	struct wlr_surface *cs = server->cursor_name ? NULL : server->client_cursor;
-	fprintf(f, "cursor x=%d y=%d mode=%d cw=%d ch=%d cscale=%d name=%s\n",
+	const char *shape = server->client_shape ? server->client_shape : "none";
+	fprintf(f, "cursor x=%d y=%d mode=%d cw=%d ch=%d cscale=%d name=%s shape=%s\n",
 		(int)server->cursor->x, (int)server->cursor->y, server->cursor_mode,
 		cs ? cs->current.buffer_width : 0, cs ? cs->current.buffer_height : 0,
 		cs ? cs->current.scale : 0,
-		server->cursor_name ? server->cursor_name : "client");
+		server->cursor_name ? server->cursor_name : "client", shape);
 	int nodes[3] = { 0 };
 	count_nodes(&server->scene->tree.node, nodes);
 	fprintf(f, "scene trees=%d rects=%d buffers=%d\n", nodes[WLR_SCENE_NODE_TREE],

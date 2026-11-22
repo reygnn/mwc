@@ -649,9 +649,8 @@ static void new_output(struct wl_listener *listener, void *data)
 	struct wlr_scene_output *so = wlr_scene_output_create(server->scene,
 		wlr_output);
 	wlr_scene_output_layout_add_output(server->scene_layout, lo, so);
-	/* There is no cursor image before the first motion otherwise. */
-	if (!server->cursor_name)
-		cursor_set_name(server, "default");
+	/* No image of mwc's here: layout_change() asks what is under the pointer, and
+	 * wlr_cursor gives the output what there is, a client's image or shape too. */
 }
 
 static void layout_change(struct wl_listener *listener, void *data)
@@ -1170,6 +1169,7 @@ int main(int argc, char *argv[])
 	wl_list_remove(&server.cursor_frame.link);
 	wl_list_remove(&server.new_input.link);
 	wl_list_remove(&server.request_cursor.link);
+	wl_list_remove(&server.request_set_shape.link);
 	wl_list_remove(&server.client_cursor_destroy.link);
 	wl_list_remove(&server.request_set_selection.link);
 	wl_list_remove(&server.request_set_primary_selection.link);

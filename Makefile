@@ -34,7 +34,7 @@ OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)
 PROTO = build/xdg-shell-protocol.h build/wlr-layer-shell-unstable-v1-protocol.h \
 	build/wlr-output-power-management-unstable-v1-protocol.h \
 	build/ext-image-copy-capture-v1-protocol.h build/fifo-v1-protocol.h \
-	build/ext-workspace-v1-protocol.h
+	build/ext-workspace-v1-protocol.h build/cursor-shape-v1-protocol.h
 
 all: mwc
 
@@ -61,6 +61,10 @@ build/ext-workspace-v1-protocol.h: $(WAYLAND_PROTOCOLS)/staging/ext-workspace/ex
 
 build/ext-workspace-v1-protocol.c: $(WAYLAND_PROTOCOLS)/staging/ext-workspace/ext-workspace-v1.xml | build
 	$(WAYLAND_SCANNER) private-code $< $@
+
+# wlroots' own header for it includes this one. In wayland-protocols from 1.32 on.
+build/cursor-shape-v1-protocol.h: $(WAYLAND_PROTOCOLS)/staging/cursor-shape/cursor-shape-v1.xml | build
+	$(WAYLAND_SCANNER) server-header $< $@
 
 build/%-protocol.o: build/%-protocol.c
 	$(CC) $(MWC_CFLAGS) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
@@ -317,7 +321,18 @@ XDGC_GEN = build/xdg-decoration-unstable-v1-client.h \
 	build/xdg-shell-code.c build/server-decoration-client.h \
 	build/server-decoration-code.c build/viewporter-client.h \
 	build/viewporter-code.c build/xdg-activation-v1-client.h \
-	build/xdg-activation-v1-code.c
+	build/xdg-activation-v1-code.c build/cursor-shape-v1-client.h \
+	build/cursor-shape-v1-code.c build/tablet-unstable-v2-code.c
+
+build/cursor-shape-v1-client.h: $(WAYLAND_PROTOCOLS)/staging/cursor-shape/cursor-shape-v1.xml | build
+	$(WAYLAND_SCANNER) client-header $< $@
+
+build/cursor-shape-v1-code.c: $(WAYLAND_PROTOCOLS)/staging/cursor-shape/cursor-shape-v1.xml | build
+	$(WAYLAND_SCANNER) private-code $< $@
+
+# cursor-shape-v1 names a tablet tool's interface.
+build/tablet-unstable-v2-code.c: $(WAYLAND_PROTOCOLS)/unstable/tablet/tablet-unstable-v2.xml | build
+	$(WAYLAND_SCANNER) private-code $< $@
 
 build/xdg-activation-v1-client.h: $(WAYLAND_PROTOCOLS)/staging/xdg-activation/xdg-activation-v1.xml | build
 	$(WAYLAND_SCANNER) client-header $< $@
@@ -330,7 +345,8 @@ build/xdgc: tests/xdgc.c $(XDGC_GEN)
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/xdgc.c \
 		build/xdg-decoration-unstable-v1-code.c build/xdg-shell-code.c \
 		build/server-decoration-code.c build/viewporter-code.c \
-		build/xdg-activation-v1-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
+		build/xdg-activation-v1-code.c build/cursor-shape-v1-code.c \
+		build/tablet-unstable-v2-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
 
 build/badclient: tests/badclient.c build/xdg-shell-client.h build/xdg-shell-code.c
 	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
@@ -440,7 +456,8 @@ misc-test: mwc build/vinput build/pngtool build/xdgc
 state-test: mwc build/vinput build/pngtool build/xdgc build/badclient build/layerc
 	tests/state.sh
 
-pointer-test: mwc build/vinput build/pngtool build/badclient build/xdgc
+pointer-test: mwc build/vinput build/pngtool build/badclient build/xdgc build/capturec \
+	build/powerc
 	tests/pointer.sh
 
 crash-test: mwc build/vinput build/xdgc build/badclient build/layerc

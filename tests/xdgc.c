@@ -39,7 +39,8 @@
  *                  token FILE (an xdg-activation token for the main window and the
  *                  last input event it got, written to FILE), token_noinput FILE (one
  *                  without an input event, as mwt's bell asks), activate FILE (the
- *                  main window asks for the focus with the token in FILE)
+ *                  main window asks for the focus with the token in FILE), shape NAME
+ *                  (asks for that pointer shape now, wherever the pointer is)
  *     caps=1       print the wm_capabilities each window is offered:
  *                  "caps NAME max=M min=N"
  *     fs_output=N  a moment after mapping, ask for fullscreen on the Nth wl_output,
@@ -52,6 +53,7 @@
  *                  a window of any size for next to no memory
  *     cursor=WxH@S a cursor of its own while the pointer is over it: a WxH buffer
  *                  at buffer scale S
+ *     shape=NAME   or one by name, cursor-shape-v1: text, pointer, crosshair or wait
  *     menu_at=X,Y  a button or key press asks for the window menu at X,Y, any int32;
  *                  says "menu asked"
  *     geometry_at=X,Y  the window geometry at X,Y of the surface, any int32
@@ -82,6 +84,7 @@
 #include "server-decoration-client.h"
 #include "viewporter-client.h"
 #include "xdg-activation-v1-client.h"
+#include "cursor-shape-v1-client.h"
 #include "xdg-decoration-unstable-v1-client.h"
 #include "xdg-shell-client.h"
 
@@ -107,8 +110,32 @@ static bool menu_asked;
 static int32_t menu_x, menu_y;
 static struct wl_seat *the_seat;
 static struct xdg_activation_v1 *activation;
-static uint32_t last_serial; /* of the last input event, for a token */
+static uint32_t last_serial; /* of the last input event, for a token or a shape */
 static bool have_serial;
+static struct wp_cursor_shape_manager_v1 *shape_manager;
+static uint32_t shape; /* 0: none */
+static struct wl_pointer *the_pointer;
+static uint32_t enter_serial; /* of the last pointer enter, for a shape */
+
+static uint32_t shape_named(const char *v)
+{
+	return !strcmp(v, "text") ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT :
+		!strcmp(v, "pointer") ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER :
+		!strcmp(v, "crosshair") ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR :
+		!strcmp(v, "wait") ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_WAIT : 0;
+}
+
+static void ask_shape(uint32_t s)
+{
+	static struct wp_cursor_shape_device_v1 *device;
+	if (!shape_manager || !the_pointer) {
+		fprintf(stderr, "xdgc: no cursor-shape manager or pointer\n");
+		return;
+	}
+	if (!device)
+		device = wp_cursor_shape_manager_v1_get_pointer(shape_manager, the_pointer);
+	wp_cursor_shape_device_v1_set_shape(device, enter_serial, s);
+}
 static struct xdg_toplevel *menu_toplevel;
 static struct wl_surface *cursor_surf;
 static int shadow, titles;
@@ -208,8 +235,10 @@ static void draw(struct window *win)
 static void pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	struct wl_surface *surface, wl_fixed_t x, wl_fixed_t y)
 {
-	last_serial = serial;
+	last_serial = enter_serial = serial;
 	have_serial = true;
+	if (shape)
+		ask_shape(shape);
 	if (cursor_scale <= 0)
 		return;
 	if (!cursor_surf) {
@@ -446,12 +475,16 @@ static void registry_global(void *data, struct wl_registry *registry,
 	else if (strcmp(interface, wl_subcompositor_interface.name) == 0)
 		subcompositor = wl_registry_bind(registry, name, &wl_subcompositor_interface, 1);
 	else if (strcmp(interface, wl_seat_interface.name) == 0 &&
-			(cursor_scale > 0 || menu_asked || control)) {
+			(cursor_scale > 0 || menu_asked || control || shape)) {
 		/* The tests always have a pointer, so its capability is not awaited. */
 		the_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
-		wl_pointer_add_listener(wl_seat_get_pointer(the_seat), &pointer_listener, NULL);
+		the_pointer = wl_seat_get_pointer(the_seat);
+		wl_pointer_add_listener(the_pointer, &pointer_listener, NULL);
 		wl_seat_add_listener(the_seat, &seat_listener, NULL);
 	}
+	else if (strcmp(interface, wp_cursor_shape_manager_v1_interface.name) == 0)
+		shape_manager = wl_registry_bind(registry, name,
+			&wp_cursor_shape_manager_v1_interface, 1);
 	else if (strcmp(interface, xdg_activation_v1_interface.name) == 0)
 		activation = wl_registry_bind(registry, name, &xdg_activation_v1_interface, 1);
 	else if (strcmp(interface, wl_output_interface.name) == 0 && n_outputs < 4)
@@ -741,6 +774,10 @@ static bool command(struct wl_display *display, char *line)
 		ask_token(arg, false);
 	else if (!strcmp(line, "activate") && arg && activation)
 		activate_with(arg);
+	else if (!strcmp(line, "shape") && arg && shape_named(arg))
+		ask_shape(shape_named(arg));
+	else if (!strcmp(line, "shape"))
+		fprintf(stderr, "xdgc: no shape %s\n", arg ? arg : "");
 	return true;
 }
 
@@ -861,6 +898,12 @@ int main(int argc, char *argv[])
 			sscanf(v, "%dx%d", &grow_w, &grow_h);
 		else if (!strcmp(argv[i], "grow_ms"))
 			grow_ms = atoi(v);
+		else if (!strcmp(argv[i], "shape")) {
+			if (!(shape = shape_named(v))) {
+				fprintf(stderr, "xdgc: no shape %s\n", v);
+				return 2;
+			}
+		}
 		else if (!strcmp(argv[i], "cursor"))
 			sscanf(v, "%dx%d@%d", &cursor_w, &cursor_h, &cursor_scale);
 		else if (!strcmp(argv[i], "menu_at"))
@@ -911,6 +954,10 @@ int main(int argc, char *argv[])
 	wl_display_roundtrip(display);
 	if (!compositor || !shm || !wm_base || !deco_manager) {
 		fprintf(stderr, "xdgc: the compositor lacks a needed global\n");
+		return 1;
+	}
+	if (shape && !shape_manager) {
+		fprintf(stderr, "xdgc: the compositor offers no cursor-shape-v1\n");
 		return 1;
 	}
 	main_win = open_window(app, NULL, default_w, default_h, true);

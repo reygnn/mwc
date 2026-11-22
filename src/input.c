@@ -16,6 +16,7 @@
 #include <wlr/backend/session.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_cursor_shape_v1.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
@@ -100,6 +101,7 @@ void spawn_file(const char *path)
 
 void cursor_set_name(struct server *server, const char *name)
 {
+	server->client_shape = NULL;
 	if (server->cursor_name == name)
 		return;
 	server->cursor_name = name;
@@ -1564,7 +1566,24 @@ static void request_cursor(struct wl_listener *listener, void *data)
 		wlr_cursor_set_surface(server->cursor, event->surface,
 			event->hotspot_x, event->hotspot_y);
 		client_cursor_set(server, event->surface);
+		server->client_shape = NULL;
 	}
+}
+
+/* cursor-shape-v1: a client names its pointer image, mwc takes it from the theme. As
+ * with an image of its own: only the client under the pointer, which none is while mwc
+ * moves, resizes or shows a menu. Tablets have no pointer of their own here. */
+static void request_set_shape(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server, request_set_shape);
+	struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
+	if (event->device_type != WLR_CURSOR_SHAPE_MANAGER_V1_DEVICE_TYPE_POINTER ||
+			server->seat->pointer_state.focused_client != event->seat_client)
+		return;
+	const char *name = wlr_cursor_shape_v1_name(event->shape);
+	client_cursor_set(server, NULL);
+	server->client_shape = name;
+	wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, name);
 }
 
 static void request_set_selection(struct wl_listener *listener, void *data)
@@ -1640,6 +1659,10 @@ void input_init(struct server *server)
 	wl_list_init(&server->client_cursor_destroy.link);
 	wl_signal_add(&server->seat->events.request_set_cursor,
 		&server->request_cursor);
+	struct wlr_cursor_shape_manager_v1 *shapes =
+		wlr_cursor_shape_manager_v1_create(server->display, 1);
+	server->request_set_shape.notify = request_set_shape;
+	wl_signal_add(&shapes->events.request_set_shape, &server->request_set_shape);
 	server->request_set_selection.notify = request_set_selection;
 	wl_signal_add(&server->seat->events.request_set_selection,
 		&server->request_set_selection);

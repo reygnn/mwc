@@ -427,6 +427,9 @@ desktop, under opaque windows, on a monitor that is off), about one a second.
 Clients that speak xdg-decoration (foot, Qt, alacritty, kitty, mpv) or KDE's server
 decoration protocol (GTK3) get a Motif frame.
 
+A program may name its pointer image through cursor-shape-v1 instead of drawing it
+(foot, GTK4, Qt 6, Firefox); mwc takes it from the cursor theme, as for its own.
+
 
 ## How this is built
 

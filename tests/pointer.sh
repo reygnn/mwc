@@ -7,7 +7,7 @@ LOG=build/pointer.log
 . "$(dirname "$0")/lib.sh"
 
 require_tools grim
-for tool in build/vinput build/pngtool build/badclient build/xdgc; do
+for tool in build/vinput build/pngtool build/badclient build/xdgc build/capturec build/powerc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -16,6 +16,12 @@ BTN_LEFT=272
 start_mwc 'exec sleep 300'
 start_vinput
 refresh
+# A pointer image before any motion: mwc's, as the first output joins the layout.
+WAYLAND_DISPLAY=wayland-0 build/capturec cursor HEADLESS-1 "$SMOKE_DIR/first.png" \
+	>"$SMOKE_DIR/first.txt" || fail "capturing the pointer before any motion"
+grep -q 'opaque=[1-9]' "$SMOKE_DIR/first.txt" ||
+	fail "no pointer before the first motion: $(cat "$SMOKE_DIR/first.txt")"
+echo "ok: a pointer before the first motion"
 B=$(global theme border)
 T=$(global theme title)
 
@@ -548,6 +554,33 @@ check "gets no menu with an old serial" "[ \"\$(global menu open)\" = 0 ]"
 stop Q
 stop R
 
+# A monitor plugged in and out through the test hook, one at a time.
+outputs_now() { grep -o '^output_[^ ]*' "$MWC_TEST_STATE"; }
+plug_in() {
+	refresh
+	local before
+	before=$(outputs_now | sort)
+	echo + >"$MWC_TEST_STATE.unplug"
+	kill -USR2 "$pid"
+	check "a monitor is plugged in" "[ \$(outputs_now | wc -l) -gt $(wc -l <<<"$before") ]"
+	PLUGGED=$(comm -13 <(echo "$before") <(outputs_now | sort))
+	PLUGGED=${PLUGGED#output_}
+	[ -n "$PLUGGED" ] && [ "$PLUGGED" != HEADLESS-1 ] || fail "which monitor is new: '$PLUGGED'"
+}
+unplug_again() {
+	echo "$PLUGGED" >"$MWC_TEST_STATE.unplug"
+	kill -USR2 "$pid"
+	check "and unplugged again" "! grep -q '^output_$PLUGGED ' \"\$MWC_TEST_STATE\""
+}
+# The pointer's image, as a capture of it sees it: its hotspot and size.
+image() {
+	WAYLAND_DISPLAY=wayland-0 build/capturec cursor HEADLESS-1 "$SMOKE_DIR/image.png" \
+		>"$SMOKE_DIR/image.txt" || fail "capturing the pointer"
+	local _ x y hotspot w h opaque
+	read -r _ x y hotspot w h opaque <"$SMOKE_DIR/image.txt"
+	echo "$hotspot $w $h"
+}
+
 # A client's own cursor: the state shows its buffer and scale, for the tools that
 # load a cursor theme at their output's scale. 64 at scale 3 is what Adwaita gives
 # for 24 at 3; wlroots only logs that it doesn't divide.
@@ -557,9 +590,82 @@ check "curs is mapped" "[ -n \"\$(get curs x)\" ]"
 do_input move $(($(get curs x) + 150)) $(($(get curs y) + 100))
 check "its cursor is in the state" \
 	"[ \"\$(global cursor cw)x\$(global cursor ch)@\$(global cursor cscale)\" = 64x64@3 ]"
+plug_in
+refresh
+[ "$(global cursor cw)" = 64 ] || fail "a monitor plugged in replaced it: cw=$(global cursor cw)"
+echo "ok: a monitor plugged in leaves it"
+unplug_again
 do_input move 5 5
 check "and gone over the desktop" "[ \"\$(global cursor cw)\" = 0 ]"
 stop curs
+
+# Or one by name, cursor-shape-v1: mwc takes it from the theme, only from the client
+# under the pointer and not while mwc moves a window; its own again over the desktop.
+DEFAULT=$(image)
+mkfifo "$SMOKE_DIR/shaped.ctl"
+exec {shapedfd}<>"$SMOKE_DIR/shaped.ctl"
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=shaped shape=text control="$SMOKE_DIR/shaped.ctl" \
+	>"$SMOKE_DIR/shaped.log" 2>&1 &
+PID_shaped=$!
+check "shaped is mapped" "[ -n \"\$(get shaped x)\" ]"
+SX=$(($(get shaped x) + 150)) SY=$(($(get shaped y) + 100))
+do_input move "$SX" "$SY"
+check "over it, the shape it names" "[ \"\$(global cursor shape)\" = text ]"
+TEXT=$(image)
+[ "$TEXT" != "$DEFAULT" ] || fail "the image is still mwc's: $TEXT"
+echo "ok: and the image is the theme's for it ($TEXT, mwc's $DEFAULT)"
+dids() { grep -c '^did' "$SMOKE_DIR/shaped.log"; }
+ask() { # shape: shaped asks for it now, and mwc has had the request
+	local n
+	n=$(dids)
+	echo "shape $1" >&$shapedfd
+	wait_for "shaped asks for $1" eval '[ "$(dids)" -gt "$n" ]'
+	refresh
+}
+ask crosshair
+[ "$(global cursor shape)" = crosshair ] || fail "a new shape isn't taken: $(global cursor shape)"
+echo "ok: a new one while the pointer is on it"
+ask text
+plug_in
+refresh
+[ "$(global cursor shape)" = text ] || fail "a monitor plugged in replaced it: $(global cursor shape)"
+echo "ok: a monitor plugged in leaves it"
+unplug_again
+refresh
+[ "$(global cursor shape)" = text ] || fail "a monitor unplugged replaced it: $(global cursor shape)"
+echo "ok: and one unplugged"
+WAYLAND_DISPLAY=wayland-0 build/powerc off || fail "powerc off"
+WAYLAND_DISPLAY=wayland-0 build/powerc on || fail "powerc on"
+check "the monitor is off and on again" "[ \"\$(global output on)\" = 1 ]"
+[ "$(image)" = "$TEXT" ] || fail "after the monitor was off the image is $(image), not $TEXT"
+echo "ok: after the monitor was off it is the shape's again"
+do_input hold alt
+do_input down left
+do_input move $((SX + 20)) $((SY + 20))
+check "an Alt+drag moves it" "[ \"\$(global cursor mode)\" = 1 ]"
+ask crosshair
+[ "$(global cursor shape)" != crosshair ] || fail "a shape is taken during a move"
+echo "ok: not during a move"
+do_input up left
+do_input release alt
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=other size=200x150 >"$SMOKE_DIR/other.log" 2>&1 &
+PID_other=$!
+check "other is mapped" "[ -n \"\$(get other x)\" ]"
+do_input move $(($(get other x) + 100)) $(($(get other y) + 80))
+ask wait
+[ "$(global cursor shape)" != wait ] || fail "a client not under the pointer set it, over another"
+echo "ok: not while another client has the pointer"
+kill "$PID_other"
+wait "$PID_other" 2>/dev/null
+do_input move 5 5
+check "over the desktop, mwc's own" \
+	"[ \"\$(global cursor name)\" = default ] && [ \"\$(global cursor shape)\" = none ]"
+ask crosshair
+[ "$(global cursor name)" = default ] && [ "$(global cursor shape)" = none ] ||
+	fail "a client not under the pointer set it: $(global cursor name) $(global cursor shape)"
+echo "ok: nor over the desktop"
+stop shaped
+exec {shapedfd}>&-
 
 stop_vinput
 stop_mwc

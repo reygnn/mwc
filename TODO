@@ -14,6 +14,8 @@ TODO
   neu schickt. Nach Aus und An über output-power bleibt das Bild eines Clients
   dagegen erhalten: headless geprüft (foot, Zeiger-Sitzung), wlroots baut es
   beim Einschalten selbst neu; auf DRM ungeprüft.
+  Für Clients mit cursor-shape-v1 (foot, GTK4) reicht es, server->client_shape
+  neu zu setzen wie in output_back_on().
   Abnahme: session.sh fängt den Zeiger nach einer Aufnahme mit "cursors"
   und bekommt ein Bild; ein Upstream-Bericht an wlroots.
 
@@ -120,13 +122,6 @@ TODO
   mtk-Session.
   Abnahme: Fälle in tests/unit/draw_test.c (gold, #aaaaaa gesetzt, ein
   gesetztes foreground geht vor, 0 lässt Motif), README unter Configuration.
-
-* Prio hoch: cursor-shape-v1 (aus rediwm, 2026-11-22). Clients setzen das
-  Zeigerbild über einen Namen statt eines eigenen Bildes; wlroots macht fast
-  alles (wlr_cursor_shape_manager_v1), mwc setzt das Bild aus dem
-  xcursor-Thema wie für eigene Zeiger.
-  Abnahme: ein Fall in tests/pointer.sh (xdgc setzt eine Form, das Zeigerbild
-  wechselt), nur für den Client mit Zeigerfokus.
 
 * Prio hoch: Startfehler zeigen (aus rediwm, launch_feedback.zig,
   2026-11-22). Ein Programm, das mwc startet (terminal, runDialog,
