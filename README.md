@@ -367,8 +367,8 @@ monitor that is off stays in the layout. When all monitors are off, a key, a cli
 pointer motion switches them on again, from a second after the last went off. The key
 or click only wakes them: it doesn't reach the window, as it would hit what nobody
 sees, nor do keys pressed while that key is held, so Super+Return opens no terminal. A
-key or button let go of doesn't wake. A window inhibiting idle counts once it has
-appeared, also while minimized.
+lock key such as Caps Lock still changes its state. A key or button let go of doesn't
+wake. A window inhibiting idle counts once it has appeared, also while minimized.
 
 
 ## Keyboard and monitors

@@ -469,6 +469,7 @@ struct server {
 	struct wl_listener output_power_set_mode;
 	uint32_t dark_since; /* now_msec() of the last switch off */
 	bool wake_failed;    /* since then */
+	uint32_t wake_button; /* the button that woke them, while held; 0: none */
 	struct wlr_output_manager_v1 *output_manager; /* NULL unless outputManagement */
 	struct wl_listener output_manager_apply;
 	struct wl_listener output_manager_test;

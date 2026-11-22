@@ -269,8 +269,12 @@ static void output_power_set_mode(struct wl_listener *listener, void *data)
 
 bool outputs_wake(struct server *server)
 {
-	if (server->wake_failed ||
-			!outputrc_wakes(&server->outputs, now_msec(), server->dark_since))
+	/* Once per dark spell: one ends also where no output went through output_power(). */
+	if (!outputrc_wakes(&server->outputs, now_msec(), server->dark_since)) {
+		server->wake_failed = false;
+		return false;
+	}
+	if (server->wake_failed)
 		return false;
 	wlr_log(WLR_INFO, "input wakes the monitors: all were off");
 	bool woke = false;

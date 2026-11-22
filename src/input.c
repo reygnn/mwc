@@ -838,10 +838,16 @@ static void cursor_button(struct wl_listener *listener, void *data)
 	struct wlr_seat *seat = server->seat;
 	input_activity(server);
 	bool pressed = event->state == WL_POINTER_BUTTON_STATE_PRESSED;
-	/* A click in the dark only wakes: it would hit what nobody sees. Its release
-	 * then reaches nobody, as no client saw the press. */
-	if (pressed && outputs_wake(server))
+	/* A click in the dark only wakes: it would hit what nobody sees, and so would its
+	 * release, in an open menu. */
+	if (pressed && outputs_wake(server)) {
+		server->wake_button = event->button;
 		return;
+	}
+	if (!pressed && server->wake_button && event->button == server->wake_button) {
+		server->wake_button = 0;
+		return;
+	}
 	double cx = server->cursor->x, cy = server->cursor->y;
 
 	/* A client that saw the press gets the release, whatever else is going on. Only

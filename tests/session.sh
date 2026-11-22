@@ -185,6 +185,7 @@ finish
 
 # The key or click that wakes does nothing else: it would hit what nobody sees. A key
 # or button let go of doesn't wake, it may be what switched them off.
+: >"$RC"
 begin
 foot -a typer -W 40x4 sh -c "stty raw -echo; exec cat > '$SMOKE_DIR/typed'" \
 	>>"$LOG" 2>&1 &
@@ -206,6 +207,7 @@ echo "ok: the waking key didn't"
 # Keys pressed while the waking one is held only wake too, as Super+Return must open no
 # terminal: Shift+d types nothing.
 power off
+check "dark for Shift" "[ \"\$(global output on)\" = 0 ]"
 past_dark
 do_input key shift+d
 check "Shift wakes" "[ \"\$(global output on)\" = 1 ]"
@@ -216,8 +218,9 @@ echo "ok: a key pressed with the waking one didn't"
 kill "$PID_typer"
 wait "$PID_typer" 2>/dev/null
 check "the window is gone" "[ -z \"\$(get typer x)\" ]"
-do_input move 1200 20
+do_input move 700 20
 power off
+check "dark for a click" "[ \"\$(global output on)\" = 0 ]"
 past_dark
 do_input click left
 check "a click wakes" "[ \"\$(global output on)\" = 1 ]"
@@ -225,6 +228,16 @@ sleep 0.3
 check "and does nothing else: no root menu" "[ \"\$(global menu open)\" = 0 ]"
 do_input click left
 check "the next click opens it" "[ \"\$(global menu open)\" = 1 ]"
+# Its release too: in an open menu it would pick the item under the pointer.
+do_input move $(($(global menu x) + 20)) $(($(global menu y) + $(global menu h) / 3))
+check "an item is armed" "[ \"\$(global menu armed)\" -ge 0 ]"
+power off
+check "dark with the menu open" "[ \"\$(global output on)\" = 0 ]"
+past_dark
+do_input click left
+check "a click in the menu wakes" "[ \"\$(global output on)\" = 1 ]"
+sleep 0.3
+check "and leaves the menu open" "[ \"\$(global menu open)\" = 1 ]"
 do_input key Escape
 finish
 
