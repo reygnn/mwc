@@ -578,6 +578,7 @@ image() {
 		>"$SMOKE_DIR/image.txt" || fail "capturing the pointer"
 	local _ x y hotspot w h opaque
 	read -r _ x y hotspot w h opaque <"$SMOKE_DIR/image.txt"
+	[ "${opaque#opaque=}" -gt 0 ] 2>/dev/null || fail "no pointer image: $(cat "$SMOKE_DIR/image.txt")"
 	echo "$hotspot $w $h"
 }
 
@@ -648,12 +649,15 @@ ask crosshair
 echo "ok: not during a move"
 do_input up left
 do_input release alt
-WAYLAND_DISPLAY=wayland-0 build/xdgc app=other size=200x150 >"$SMOKE_DIR/other.log" 2>&1 &
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=other size=200x150 shape=pointer \
+	>"$SMOKE_DIR/other.log" 2>&1 &
 PID_other=$!
 check "other is mapped" "[ -n \"\$(get other x)\" ]"
 do_input move $(($(get other x) + 100)) $(($(get other y) + 80))
+check "the pointer is on other, with its shape" \
+	"[ \"\$(global seat pointer)\" = other ] && [ \"\$(global cursor shape)\" = pointer ]"
 ask wait
-[ "$(global cursor shape)" != wait ] || fail "a client not under the pointer set it, over another"
+[ "$(global cursor shape)" = pointer ] || fail "a client not under the pointer set it, over another"
 echo "ok: not while another client has the pointer"
 kill "$PID_other"
 wait "$PID_other" 2>/dev/null

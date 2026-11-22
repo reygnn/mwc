@@ -1088,9 +1088,6 @@ int main(int argc, char *argv[])
 	wl_list_init(&server.outputs);
 	server.new_output.notify = new_output;
 	wl_signal_add(&server.backend->events.new_output, &server.new_output);
-	server.layout_change.notify = layout_change;
-	wl_signal_add(&server.output_layout->events.change,
-		&server.layout_change);
 
 	server.scene = wlr_scene_create();
 	server.scene_layout = wlr_scene_attach_output_layout(server.scene,
@@ -1115,6 +1112,10 @@ int main(int argc, char *argv[])
 	wl_list_init(&server.views);
 	xdg_init(&server);
 	input_init(&server);
+	/* After wlr_cursor's, which input_init() attaches: the pointer must be off an output
+	 * that went before mwc asks what is under it. */
+	server.layout_change.notify = layout_change;
+	wl_signal_add(&server.output_layout->events.change, &server.layout_change);
 	layer_init(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);

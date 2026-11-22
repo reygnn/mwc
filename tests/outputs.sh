@@ -259,6 +259,30 @@ rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 stop_vinput
 stop_mwc
 
+# The monitor under the pointer unplugged: wlr_cursor puts the pointer on the other one,
+# and what is there gets it, without a motion. Here a fullscreen window, frameless to
+# the monitor's edge.
+printf 'Mwm*HEADLESS-1*outputPosition: 0,0\nMwm*HEADLESS-2*outputPosition: 1280,0\n' \
+	>"$XDG_CONFIG_HOME/mwc/mwmrc"
+start_mwc 'exec sleep 300'
+start_vinput 2560 720
+do_input move 640 360
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=under size=200x100 pre=full >/dev/null 2>&1 &
+PID_under=$!
+check "a fullscreen window on the left monitor" \
+	"[ \"\$(get under full)\" = 1 ] && [ \"\$(get under x)\" = 0 ] && [ \"\$(get under w)\" = 1280 ]"
+do_input move 1900 360
+check "the pointer on the right monitor, over the desktop" "[ \"\$(global seat pointer)\" = none ]"
+echo HEADLESS-2 >"$MWC_TEST_STATE.unplug"
+kill -USR2 "$pid"
+check "the right monitor is unplugged" "[ -z \"\$(global output_HEADLESS-2 x)\" ]"
+check "the pointer is on the window" "[ \"\$(global seat pointer)\" = under ]"
+kill "$PID_under"
+wait "$PID_under" 2>/dev/null
+rm "$XDG_CONFIG_HOME/mwc/mwmrc"
+stop_vinput
+stop_mwc
+
 # An output shrinking by its scale: windows filling a state on it stay there, though
 # their centre is now on the other output, which wlroots moved closer (mwmrc, placed
 # automatically), or in the gap left beside it (wlr-output-management, placed as given).
