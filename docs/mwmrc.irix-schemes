@@ -22,8 +22,8 @@
 ! activeForeground is their title text too, and unfocused they are mixed with background.
 !
 ! rootBackground is not part of the schemes (IRIX: Customize > Background).
-! Without it the desktop keeps mwc's default #5b7792.
-! Mwm*rootBackground:          #5b7792
+! Without it the desktop keeps mwc's default #7189a3.
+! Mwm*rootBackground:          #7189a3
 
 ! --- Arizona
 ! Mwm*activeBackground:        #968d4f

@@ -179,7 +179,7 @@ check "the window is still there" "[ -n \"\$(get foot x)\" ] && [ -n \"\$(get te
 
 rm "$RC"
 reload_mwc
-pixel_is "without the file: back to the defaults" 1270 700 5b7792
+pixel_is "without the file: back to the defaults" 1270 700 7189a3
 check "the title bar is back to normal" "[ \"\$(global theme title)\" = $T ]"
 log_has "a reload is logged" "reloading the configuration"
 stop_vinput
@@ -208,7 +208,7 @@ pixel_is "a colour name in the environment" 640 360 ffd700
 stop_mwc
 export MWC_ROOT=not-a-colour
 start_mwc "sleep 120"
-pixel_is "an unusable value falls back" 640 360 5b7792
+pixel_is "an unusable value falls back" 640 360 7189a3
 log_has "an unusable value is reported" 'ignoring MWC_ROOT=not-a-colour'
 stop_mwc
 unset MWC_ROOT

@@ -10,7 +10,7 @@
  *   Mwm*fontList:                  Sans Bold 10
  *   Mwm*resizeBorderWidth:         7          frames with resize handles, 3 to 64
  *   Mwm*frameBorderWidth:          5          frames without
- *   Mwm*rootBackground:            #5b7792
+ *   Mwm*rootBackground:            #7189a3
  *   Mwm*wallpaper:                 ~/pictures/desk.png
  *   Mwm*terminal:                  mwt        for New Window and Super+Return
  *   Mwm*runDialog:                 mrun       the middle button on the desktop

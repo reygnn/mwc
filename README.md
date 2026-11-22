@@ -156,7 +156,7 @@ The environment overrides the global entries:
 |---|---|---|
 | `MWC_ACTIVE` | `#2e5a8c` | focused frame colour |
 | `MWC_INACTIVE` | `#b4b4b4` | other frames, menus, icons |
-| `MWC_ROOT` | `#5b7792` | desktop colour, `none`: not drawn |
+| `MWC_ROOT` | `#7189a3` | desktop colour, `none`: not drawn |
 | `MWC_WALLPAPER` | none | PNG on the desktop |
 | `MWC_FONT` | `Sans Bold 10` | font of titles and menus |
 | `MWC_MOVE_OPAQUE` | `0` | `1`: opaque move and resize |

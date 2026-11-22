@@ -107,7 +107,7 @@ check "Super+T switches it on" "[ \"\$(global tiling on)\" = 1 ]"
 cell_is "the newest window is the main one, on the right" c "$MAIN_X" 8 "$MAIN_W" "$FULL_H"
 cell_is "the others stack on the left" b 8 8 "$STACK_W" 348
 cell_is "sharing the height" a 8 364 "$STACK_W" 348
-pixel_is "the desktop stays in reach in the gaps" 4 360 5b7792
+pixel_is "the desktop stays in reach in the gaps" 4 360 7189a3
 window_menu_is "the main window can't move, resize or maximize" c nLC
 root_menu_is "the root menu offers the way back" NUDtRQ
 
@@ -143,7 +143,7 @@ SHADED=$((2 * B + T))
 check "minimize on a stack window shades it" "[ \"\$(get a shaded)\" = 1 ] && [ \"\$(get a min)\" = 0 ]"
 cell_is "it keeps its title bar" a 8 $((8 + 696 - SHADED + 8)) "$STACK_W" "$SHADED"
 cell_is "the other one takes the room" b 8 8 "$STACK_W" $((696 - SHADED))
-pixel_is "what shows below it is the desktop" 300 $((8 + 696 - SHADED + 8 + SHADED + 2)) 5b7792
+pixel_is "what shows below it is the desktop" 300 $((8 + 696 - SHADED + 8 + SHADED + 2)) 7189a3
 check "the client keeps its height for later" "[ \"\$(get a h)\" -gt 100 ]"
 window_menu_is "with a window shaded, the main window's menu is the same" c nLC
 click_title a
@@ -342,7 +342,7 @@ cell_is "Wayland: the main window" wb "$MAIN_X" 8 "$MAIN_W" "$FULL_H"
 cell_is "Wayland: the stack" wa 8 8 "$STACK_W" "$FULL_H"
 button wa min
 cell_is "Wayland: shading keeps the title bar" wa 8 8 "$STACK_W" "$SHADED"
-pixel_is "Wayland: nothing of the client shows" 300 $((8 + SHADED + 3)) 5b7792
+pixel_is "Wayland: nothing of the client shows" 300 $((8 + SHADED + 3)) 7189a3
 click_title wa
 check "Wayland: a click unrolls it" "[ \"\$(get wa shaded)\" = 0 ]"
 cell_is "Wayland: back to its cell" wa 8 8 "$STACK_W" "$FULL_H"

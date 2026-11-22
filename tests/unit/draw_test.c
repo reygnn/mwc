@@ -104,7 +104,7 @@ TEST(theme_defaults)
 	CHECK(shade_is(theme.inactive.top, 0xdfdfdf) && shade_is(theme.inactive.bottom, 0x616161));
 	CHECK(same(theme.active.fg, rgb(0xffffff)) && same(theme.inactive.fg, rgb(0)));
 	CHECK(same(theme.menu.fg, rgb(0)));
-	CHECK(same(theme.root, rgb(0x5b7792)) && !theme.root_none);
+	CHECK(same(theme.root, rgb(0x7189a3)) && !theme.root_none);
 	CHECK(!theme.has_active_fg && !theme.has_inactive_fg);
 	CHECK(same(theme.menu.bg, theme.inactive.bg) && same(theme.select, theme.active.bg));
 	CHECK(!strcmp(theme.font, "Sans Bold 10"));
@@ -167,7 +167,7 @@ TEST(theme_environment_first)
 		"Mwm*rootBackground: nonsense\n");
 	CHECK(same(theme.active.bg, rgb(0xb24d7a)));
 	CHECK(same(theme.inactive.bg, rgb(0x102030)));
-	CHECK(same(theme.root, rgb(0x5b7792)));
+	CHECK(same(theme.root, rgb(0x7189a3)));
 	CHECK_INT(log_lines("ignoring MWC_INACTIVE=not a colour"), 1);
 	CHECK_INT(log_lines("ignoring Mwm*rootBackground: nonsense"), 1);
 	no_env();
@@ -280,7 +280,7 @@ TEST(theme_root_none)
 {
 	no_env();
 	theme_from("Mwm*rootBackground: None\n");
-	CHECK(theme.root_none && same(theme.root, rgb(0x5b7792)));
+	CHECK(theme.root_none && same(theme.root, rgb(0x7189a3)));
 	setenv("MWC_ROOT", "none", 1);
 	theme_from("Mwm*rootBackground: #000000\n");
 	CHECK(theme.root_none);

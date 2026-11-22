@@ -11,7 +11,7 @@ done
 
 RED=ff0000
 BLUE=0000ff
-ROOT=5b7792
+ROOT=7189a3
 
 # Same 16:9 as the 1280x720 output: the image fits exactly, scaled down.
 build/pngtool stripes "$SMOKE_DIR/fit.png" 2560 1440 "$RED" "$BLUE"

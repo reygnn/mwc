@@ -210,7 +210,7 @@ Mwm*org.mwc.Test*activeBackground: #00aa00
 Mwm*rootBackground: rgb:-1/-1/-1
 RC
 begin
-pixel_is "rgb: with a sign is not a colour" 1000 600 5b7792
+pixel_is "rgb: with a sign is not a colour" 1000 600 7189a3
 grep -q 'not a colour' "$LOG" || fail "the bad colour is not reported"
 echo "ok: the bad colour is reported"
 WAYLAND_DISPLAY=wayland-0 build/xdgc app=org.mwc.Test size=300x200 >/dev/null 2>&1 &

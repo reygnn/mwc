@@ -14,7 +14,7 @@
 #define COLOR_INACTIVE 0xb4b4b4u
 #define COLOR_BASIC 0xc4c4c4u
 #define COLOR_TEXT 0x000000u
-#define COLOR_ROOT 0x5b7792u
+#define COLOR_ROOT 0x7189a3u
 
 struct color_shades {
 	uint32_t top, bottom;

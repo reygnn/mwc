@@ -11,7 +11,7 @@ for tool in build/vinput build/pngtool build/layerc build/xdgc; do
 done
 
 export MWC_TEST_STATE=$SMOKE_DIR/state
-ROOT=5b7792
+ROOT=7189a3
 PANEL=ff00ff
 
 # layerc_start <name> key=value...: remembers the pid in LAYERC_<name>, logs to
