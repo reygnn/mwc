@@ -363,7 +363,11 @@ Ctrl+Alt+Backspace.
 
 ext-idle-notify-v1, idle-inhibit-unstable-v1 and wlr-output-power-management-unstable-v1
 are there for tools such as [displayOff](https://github.com/reygnn/displayOff). A
-monitor that is off stays in the layout. A window inhibiting idle counts once it has
+monitor that is off stays in the layout. When all monitors are off, a key, a click or
+pointer motion switches them on again, from a second after the last went off. The key
+or click only wakes them: it doesn't reach the window, as it would hit what nobody
+sees, nor do keys pressed while that key is held, so Super+Return opens no terminal. A
+key or button let go of doesn't wake. A window inhibiting idle counts once it has
 appeared, also while minimized.
 
 

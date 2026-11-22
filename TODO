@@ -121,19 +121,6 @@ TODO
   Abnahme: Fälle in tests/unit/draw_test.c (gold, #aaaaaa gesetzt, ein
   gesetztes foreground geht vor, 0 lässt Motif), README unter Configuration.
 
-* Prio hoch: Monitore aufwecken, wenn alle aus sind (aus rediwm,
-  wakeIfAllDark in src/output_power.zig, 2026-11-22). Heute kann jeder Client
-  über wlr-output-power-management alle Monitore abschalten, und nur ein
-  Client bringt sie zurück. Die eine Ausnahme: sind alle Monitore aus, weckt
-  eine Eingabe (Taste, Zeiger) sie wieder. Ist einer an, bleibt es wie heute.
-  Für wayrdp eher gut: ein abgeschalteter headless-Monitor gibt mstsc nur
-  Schwarz, eine Eingabe über RDP holte ihn zurück. Zu prüfen: ob displayOff
-  damit zurechtkommt, wenn mwc vor ihm aufweckt.
-  Die Regel als reine Funktion in einem Modul ohne Anzeigecode.
-  Abnahme: Unit-Test der Regel (alle aus, einer an, kein Monitor), ein Fall in
-  tests/session.sh mit powerc und vinput, CAVEATS unter "Protocols open to
-  every client" angepasst.
-
 * Prio hoch: xdg-activation-v1 (aus rediwm, 2026-11-22). Ein Programm holt
   ein anderes nach vorn, etwa Firefox nach einem Link-Klick in mwt, oder mfm
   ein Programm, das es öffnet. Ein Token nur für ein Fenster, das den

@@ -1,7 +1,7 @@
 /*
  * outputrc.c: outputMode, outputScale, outputTransform and outputPosition as mwmrc
- * writes them, well formed, malformed and out of range, and the choice from a real
- * list of wlr_output_mode.
+ * writes them, well formed, malformed and out of range, the choice from a real
+ * list of wlr_output_mode, and when input wakes a list of real outputs.
  */
 #include <stdint.h>
 #include <string.h>
@@ -177,6 +177,65 @@ TEST(position_refused)
 	}
 }
 
+/* ---- waking ---------------------------------------------------------------------- */
+
+struct outputs {
+	struct wl_list list;
+	struct output o[3];
+	struct wlr_output w[3];
+};
+
+/* n outputs; each on, dark (off through wlr-output-power) or off through output
+ * management, as "o", "d" and "m" in states. */
+static struct wl_list *outputs(struct outputs *s, const char *states)
+{
+	memset(s, 0, sizeof(*s));
+	wl_list_init(&s->list);
+	for (int i = 0; states[i]; i++) {
+		s->o[i].wlr_output = &s->w[i];
+		s->w[i].enabled = states[i] == 'o';
+		s->o[i].dark = states[i] == 'd';
+		s->o[i].client_off = states[i] == 'm';
+		wl_list_insert(s->list.prev, &s->o[i].link);
+	}
+	return &s->list;
+}
+
+/* An hour after the last went dark, past the second in which nothing wakes. */
+static bool wakes(struct outputs *s, const char *states)
+{
+	return outputrc_wakes(outputs(s, states), 3600000, 0);
+}
+
+TEST(wake)
+{
+	struct outputs s;
+	CHECK(wakes(&s, "d"));
+	CHECK(wakes(&s, "dd"));
+	/* One on: the other stays off, as the client set it. */
+	CHECK(!wakes(&s, "do"));
+	CHECK(!wakes(&s, "od"));
+	CHECK(!wakes(&s, "o"));
+	/* Off through output management only: only such a client turns it on. */
+	CHECK(!wakes(&s, "m"));
+	CHECK(wakes(&s, "md"));
+	CHECK(wakes(&s, "dmd"));
+	/* No output at all: nothing to wake. */
+	CHECK(!wakes(&s, ""));
+}
+
+/* Not in the first second after the last went dark, also across the clock's wrap. */
+TEST(wake_after_a_second)
+{
+	struct outputs s;
+	CHECK(!outputrc_wakes(outputs(&s, "d"), 5000, 5000));
+	CHECK(!outputrc_wakes(outputs(&s, "d"), 5999, 5000));
+	CHECK(outputrc_wakes(outputs(&s, "d"), 6000, 5000));
+	CHECK(!outputrc_wakes(outputs(&s, "d"), 0x100, 0xfffffff0u));
+	CHECK(outputrc_wakes(outputs(&s, "d"), 0x400, 0xfffffff0u));
+	CHECK(!outputrc_wakes(outputs(&s, "o"), 6000, 5000));
+}
+
 int main(void)
 {
 	RUN(mode_values);
@@ -188,5 +247,7 @@ int main(void)
 	RUN(transform_names);
 	RUN(position_values);
 	RUN(position_refused);
+	RUN(wake);
+	RUN(wake_after_a_second);
 	return unit_done();
 }

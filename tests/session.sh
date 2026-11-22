@@ -166,6 +166,66 @@ echo 'Mwm*HEADLESS-1*outputMode: 800x500' >"$RC"
 kill -HUP "$pid"
 output_is "a reload still applies to a monitor that is on" HEADLESS-1 0 0 800 500
 check "and leaves it on" "[ \"\$(global output on)\" = 1 ]"
+# With every monitor off, input brings them back: no client has to. Not in the first
+# second, see past_dark.
+past_dark() { sleep 1.1; }
+power off
+check "off again" "[ \"\$(global output on)\" = 0 ]"
+past_dark
+do_input move 200 200
+check "the pointer moves: all were off, so it wakes" "[ \"\$(global output on)\" = 1 ]"
+output_is "with its mode" HEADLESS-1 0 0 800 500
+log_has "and says why" "input wakes the monitors"
+power off
+check "off once more" "[ \"\$(global output on)\" = 0 ]"
+past_dark
+do_input key a
+check "a key wakes it too" "[ \"\$(global output on)\" = 1 ]"
+finish
+
+# The key or click that wakes does nothing else: it would hit what nobody sees. A key
+# or button let go of doesn't wake, it may be what switched them off.
+begin
+foot -a typer -W 40x4 sh -c "stty raw -echo; exec cat > '$SMOKE_DIR/typed'" \
+	>>"$LOG" 2>&1 &
+PID_typer=$!
+check "the typing window has the focus" "[ \"\$(get typer kbfocus)\" = 1 ]"
+do_input press b
+power off
+check "dark" "[ \"\$(global output on)\" = 0 ]"
+past_dark
+do_input lift b
+sleep 0.3
+check "a key let go of doesn't wake" "[ \"\$(global output on)\" = 0 ]"
+do_input key a
+check "a key wakes" "[ \"\$(global output on)\" = 1 ]"
+do_input key c
+wait_for "the next key reaches the window" grep -q c "$SMOKE_DIR/typed"
+grep -q a "$SMOKE_DIR/typed" && fail "the waking key reached the window: $(cat "$SMOKE_DIR/typed")"
+echo "ok: the waking key didn't"
+# Keys pressed while the waking one is held only wake too, as Super+Return must open no
+# terminal: Shift+d types nothing.
+power off
+past_dark
+do_input key shift+d
+check "Shift wakes" "[ \"\$(global output on)\" = 1 ]"
+do_input key e
+wait_for "the next key reaches the window" grep -q e "$SMOKE_DIR/typed"
+grep -q -i d "$SMOKE_DIR/typed" && fail "a key pressed with the waking one reached the window: $(cat "$SMOKE_DIR/typed")"
+echo "ok: a key pressed with the waking one didn't"
+kill "$PID_typer"
+wait "$PID_typer" 2>/dev/null
+check "the window is gone" "[ -z \"\$(get typer x)\" ]"
+do_input move 1200 20
+power off
+past_dark
+do_input click left
+check "a click wakes" "[ \"\$(global output on)\" = 1 ]"
+sleep 0.3
+check "and does nothing else: no root menu" "[ \"\$(global menu open)\" = 0 ]"
+do_input click left
+check "the next click opens it" "[ \"\$(global menu open)\" = 1 ]"
+do_input key Escape
 finish
 
 # Every mode change throws away the output's buffers. src/shmalloc.c tells the renderer
@@ -328,6 +388,10 @@ check "a reload leaves it off" "[ \"\$(global output on)\" = 0 ]"
 power on
 sleep 0.3
 check "and a power on too: a client switched it off" "[ \"\$(global output on)\" = 0 ]"
+sleep 1.1 # past the second in which input doesn't wake
+do_input move 210 210
+sleep 0.3
+check "and input: only such a client turns it on" "[ \"\$(global output on)\" = 0 ]"
 outputc apply HEADLESS-1 on 1024x768 || fail "switching it on"
 check "and on" "[ \"\$(global output on)\" = 1 ]"
 output_is "with the mode it asked for" HEADLESS-1 0 0 1024 768

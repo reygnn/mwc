@@ -1,7 +1,8 @@
 /*
  * outputrc.c - what mwmrc says about an output, outputMode, outputScale,
- * outputTransform and outputPosition, from text to values. Nothing here touches an
- * output: main.c applies them and logs what it ignores. Tested in tests/unit.
+ * outputTransform and outputPosition, from text to values, and when input wakes the
+ * outputs. Nothing here touches an output: main.c applies them and logs what it
+ * ignores. Tested in tests/unit.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
@@ -108,4 +109,20 @@ bool outputrc_position(const char *value, int *px, int *py)
 	*px = (int)x;
 	*py = (int)y;
 	return true;
+}
+
+/* rediwm's rule: any client may switch every monitor off, and then input is the only
+ * way back that needs no client. With one on, the others stay as a client set them.
+ * Not in the first second: the release of the key or click that switched them off,
+ * a pointer that shakes after it, or a touchpad still scrolling would undo it. */
+bool outputrc_wakes(struct wl_list *outputs, uint32_t now, uint32_t dark_since)
+{
+	bool dark = false;
+	struct output *o;
+	wl_list_for_each(o, outputs, link) {
+		if (o->wlr_output->enabled)
+			return false;
+		dark = dark || o->dark;
+	}
+	return dark && now - dark_since >= OUTPUTRC_WAKE_AFTER_MS;
 }

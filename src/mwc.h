@@ -467,6 +467,8 @@ struct server {
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wl_listener new_idle_inhibitor;
 	struct wl_listener output_power_set_mode;
+	uint32_t dark_since; /* now_msec() of the last switch off */
+	bool wake_failed;    /* since then */
 	struct wlr_output_manager_v1 *output_manager; /* NULL unless outputManagement */
 	struct wl_listener output_manager_apply;
 	struct wl_listener output_manager_test;
@@ -612,6 +614,9 @@ bool view_focusable(struct view *view);
 /* ---- main.c ------------------------------------------------------------- */
 
 void outputs_config_changed(struct server *server);
+/* Input: switches the monitors that are off through wlr-output-power back on, but only
+ * when no monitor is on; true if it did. Once per dark spell if that fails. */
+bool outputs_wake(struct server *server);
 const char *terminal_command(struct server *server);
 /* The clock input events are stamped with, in ms. */
 uint32_t now_msec(void);
@@ -839,6 +844,10 @@ struct wlr_output_mode *outputrc_pick_mode(struct wl_list *modes, int w, int h, 
 bool outputrc_scale(const char *value, double *scale);
 bool outputrc_transform(const char *value, enum wl_output_transform *transform);
 bool outputrc_position(const char *value, int *x, int *y);
+/* No output is on, at least one is off through wlr-output-power, and the last went off
+ * at least OUTPUTRC_WAKE_AFTER_MS before now, in ms of the same clock. */
+#define OUTPUTRC_WAKE_AFTER_MS 1000
+bool outputrc_wakes(struct wl_list *outputs, uint32_t now, uint32_t dark_since);
 
 /* ---- config.c ----------------------------------------------------------- */
 

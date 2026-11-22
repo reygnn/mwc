@@ -206,6 +206,43 @@ static void output_commit(struct wl_listener *listener, void *data)
 		output_manager_update(output->server);
 }
 
+/* Switches o off or on through wlr-output-power, for a client or for input. */
+static bool output_power(struct server *server, struct wlr_output *o, bool on)
+{
+	struct output *output = o->data;
+	bool ok = false;
+	if (on) {
+		if (output && output_keeps_managed(output)) {
+			ok = output_commit_managed(output);
+			if (!ok)
+				output_forget_managed(output);
+		}
+		if (!ok)
+			ok = output_commit_config(o);
+	} else {
+		struct wlr_output_state state;
+		wlr_output_state_init(&state);
+		wlr_output_state_set_enabled(&state, false);
+		ok = wlr_output_commit_state(o, &state);
+		wlr_output_state_finish(&state);
+	}
+	if (!ok) {
+		wlr_log(WLR_ERROR, "can't switch output %s %s", o->name, on ? "on" : "off");
+		return false;
+	}
+	if (output)
+		output->dark = !on;
+	if (on) {
+		output_back_on(server, o);
+	} else {
+		server->dark_since = now_msec();
+		server->wake_failed = false;
+	}
+	/* The commit tells clients too, but a dark output isn't what it looks like. */
+	output_manager_update(server);
+	return true;
+}
+
 /* A client asks to switch a monitor off or on. The output stays in the layout, so
  * windows keep their places, and any client can ask: that is what the protocol is.
  * Coming back it takes what mwmrc says now: a reload leaves a monitor that is off alone.
@@ -227,33 +264,23 @@ static void output_power_set_mode(struct wl_listener *listener, void *data)
 			event->output->name);
 		return;
 	}
-	bool ok = false;
-	if (on) {
-		if (output && output_keeps_managed(output)) {
-			ok = output_commit_managed(output);
-			if (!ok)
-				output_forget_managed(output);
-		}
-		if (!ok)
-			ok = output_commit_config(event->output);
-	} else {
-		struct wlr_output_state state;
-		wlr_output_state_init(&state);
-		wlr_output_state_set_enabled(&state, false);
-		ok = wlr_output_commit_state(event->output, &state);
-		wlr_output_state_finish(&state);
-	}
-	if (!ok) {
-		wlr_log(WLR_ERROR, "can't switch output %s %s", event->output->name,
-			on ? "on" : "off");
-		return;
-	}
-	if (output)
-		output->dark = !on;
-	if (on)
-		output_back_on(server, event->output);
-	/* The commit tells clients too, but a dark output isn't what it looks like. */
-	output_manager_update(server);
+	output_power(server, event->output, on);
+}
+
+bool outputs_wake(struct server *server)
+{
+	if (server->wake_failed ||
+			!outputrc_wakes(&server->outputs, now_msec(), server->dark_since))
+		return false;
+	wlr_log(WLR_INFO, "input wakes the monitors: all were off");
+	bool woke = false;
+	struct output *output;
+	/* A client_off output is never dark: output management clears it. */
+	wl_list_for_each(output, &server->outputs, link)
+		if (output->dark)
+			woke = output_power(server, output->wlr_output, true) || woke;
+	server->wake_failed = !woke;
+	return woke;
 }
 
 /* One per inhibitor. While one exists whose surface is mapped, nobody counts as idle;

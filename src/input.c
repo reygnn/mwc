@@ -45,6 +45,9 @@ struct keyboard {
 	 * which never saw them go down. */
 	uint32_t swallowed[MAX_SWALLOWED_KEYS];
 	int n_swallowed;
+	/* The key that woke the monitors, while it is held; 0: none. Keys pressed with it
+	 * only wake too: Super+Return in the dark must not open a terminal. */
+	uint32_t waking_key;
 	/* An arrow key held in a menu, a keyboard move or the icon box: wlroots repeats
 	 * keys for clients only, so mwc does it for its own. */
 	struct wl_event_source *repeat;
@@ -571,6 +574,7 @@ static void cursor_motion(struct wl_listener *listener, void *data)
 	struct server *server = wl_container_of(listener, server, cursor_motion);
 	struct wlr_pointer_motion_event *event = data;
 	input_activity(server);
+	outputs_wake(server);
 	wlr_cursor_move(server->cursor, &event->pointer->base,
 		event->delta_x, event->delta_y);
 	process_cursor_motion(server, event->time_msec);
@@ -582,6 +586,7 @@ static void cursor_motion_absolute(struct wl_listener *listener, void *data)
 		cursor_motion_absolute);
 	struct wlr_pointer_motion_absolute_event *event = data;
 	input_activity(server);
+	outputs_wake(server);
 	wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
 		event->x, event->y);
 	process_cursor_motion(server, event->time_msec);
@@ -833,6 +838,10 @@ static void cursor_button(struct wl_listener *listener, void *data)
 	struct wlr_seat *seat = server->seat;
 	input_activity(server);
 	bool pressed = event->state == WL_POINTER_BUTTON_STATE_PRESSED;
+	/* A click in the dark only wakes: it would hit what nobody sees. Its release
+	 * then reaches nobody, as no client saw the press. */
+	if (pressed && outputs_wake(server))
+		return;
 	double cx = server->cursor->x, cy = server->cursor->y;
 
 	/* A client that saw the press gets the release, whatever else is going on. Only
@@ -923,6 +932,7 @@ static void cursor_axis(struct wl_listener *listener, void *data)
 	struct server *server = wl_container_of(listener, server, cursor_axis);
 	struct wlr_pointer_axis_event *event = data;
 	input_activity(server);
+	outputs_wake(server);
 	/* The wheel over the tabs of a group, one step at a time on any wheel. */
 	if (server->cursor_mode == CURSOR_PASSTHROUGH &&
 			!server->seat->pointer_state.focused_surface &&
@@ -1252,6 +1262,12 @@ static void keyboard_key(struct wl_listener *listener, void *data)
 		bool room = kb->n_swallowed < MAX_SWALLOWED_KEYS;
 		if (room)
 			kb->swallowed[kb->n_swallowed++] = event->keycode;
+		/* A key in the dark only wakes, its release with it. */
+		handled = kb->waking_key != 0;
+		if (!handled && outputs_wake(server)) {
+			kb->waking_key = event->keycode;
+			handled = true;
+		}
 		for (int i = 0; i < nsyms && !handled; i++) {
 			bool steering = navigating(server) && is_arrow(syms[i]);
 			handled = handle_keybinding(server, mods, syms[i]);
@@ -1261,6 +1277,8 @@ static void keyboard_key(struct wl_listener *listener, void *data)
 		if (room && !handled)
 			kb->n_swallowed--;
 	} else {
+		if (event->keycode == kb->waking_key)
+			kb->waking_key = 0;
 		for (int i = 0; i < kb->n_swallowed; i++) {
 			if (kb->swallowed[i] == event->keycode) {
 				kb->swallowed[i] = kb->swallowed[--kb->n_swallowed];
