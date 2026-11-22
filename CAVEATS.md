@@ -74,7 +74,8 @@ such a client brings them back.
 
 ## Scaled monitors
 
-Frames, menus and icons are drawn at 1x. With `outputScale` above 1 they look soft.
+Frames, menus, icons and the desktop toast are drawn at 1x. With `outputScale` above 1
+they look soft.
 
 
 ## Programs that draw their own frame
@@ -94,7 +95,7 @@ and only the shell's message ("not found") is in mwc's log.
 ## Desktops and what clients see
 
 Clients aren't told about desktops, and a capture of a monitor sees the current desktop
-only.
+only. A capture within a second of a switch has the toast "Desktop N" in it.
 
 The icon of a window on all desktops takes a slot no icon of any desktop has, so on one
 desktop its row may show a gap where an icon of another desktop sits.

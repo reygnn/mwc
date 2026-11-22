@@ -85,6 +85,10 @@ struct cairo_buffer {
 struct cairo_buffer *cairo_buffer_create(int width, int height);
 /* The scene keeps it while shown. */
 void cairo_buffer_drop(struct cairo_buffer *buf);
+#define TOAST_FONT "Sans Bold 14"
+#define TOAST_PAD 12
+/* The text TOAST_PAD in from each side; NULL for no text. */
+struct cairo_buffer *draw_toast(const char *text);
 /* Top, bottom, left, right of a w x h ring, th and tw thick, corners top and bottom. */
 void ring_strips(struct wlr_box out[4], int w, int h, int th, int tw);
 /* Paints draw's w x h ring into the four nodes (NULL skipped), an empty strip blank. */
@@ -812,6 +816,14 @@ void feedback_show(struct server *server, const char *text, double lx, double ly
 void feedback_hide(void);
 /* "" while hidden; draws: how often it was drawn. */
 const char *feedback_get(struct wlr_box *box, int *draws);
+
+/* ---- toast.c ------------------------------------------------------------ */
+
+/* Replaces the one showing. */
+void toast_show(struct server *server, const char *text);
+void toast_fini(void);
+/* "" while hidden; n: how many were shown. */
+const char *toast_get(struct wlr_box *box, int *n);
 
 /* ---- layer.c ------------------------------------------------------------ */
 

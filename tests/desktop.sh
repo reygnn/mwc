@@ -12,6 +12,7 @@ for tool in build/vinput build/xdgc build/workspacec build/outputc build/layerc;
 done
 
 export MWC_TEST_STATE=$SMOKE_DIR/state
+export MWC_TOAST_MS=3000 # see the toast below
 mkdir -p "$XDG_CONFIG_HOME/mwc"
 echo 'Mwm*outputManagement: true' >"$XDG_CONFIG_HOME/mwc/mwmrc"
 start_mwc 'exec sleep 300'
@@ -518,6 +519,45 @@ stop dst
 switch_to 1
 stop src
 exec {srcfd}>&- {dstfd}>&-
+
+# ---- the toast ---------------------------------------------------------------------------
+
+# Each switch, whoever asks for it, says "Desktop N" in the middle of the pointer's
+# monitor, for a second, here three (MWC_TOAST_MS) for margins of a second. A switch
+# while one shows replaces it and starts its time anew. None over a screen locker.
+toast() { global toast "$1"; }
+n=$(toast shown)
+switch_to 1
+sleep 0.3
+check "no switch, no toast" "[ \"\$(toast shown)\" = $n ]"
+switch_to 2
+check "a switch shows a toast" "[ \"\$(toast text)\" = Desktop_2 ] && [ \"\$(toast shown)\" = $((n + 1)) ]"
+TX=$(toast x) TY=$(toast y) TW=$(toast w) TH=$(toast h)
+[ "$TX" = $(((1280 - TW) / 2)) ] && [ "$TY" = $(((720 - TH) / 2)) ] ||
+	fail "the toast isn't in the middle: $TX,$TY ${TW}x$TH"
+echo "ok: in the middle of the monitor"
+pixel_is "a grey line round it" "$TX" "$TY" 808080
+pixel_is "a dark box" $((TX + 2)) $((TY + 2)) 2b2b2b
+sleep 1.5
+check "it still shows before the next switch" "[ \"\$(toast text)\" = Desktop_2 ]"
+switch_to 3
+check "the next switch replaces it" "[ \"\$(toast text)\" = Desktop_3 ] && [ \"\$(toast shown)\" = $((n + 2)) ]"
+sleep 2 # over three seconds after the first: gone by now, had its time not started anew
+check "and starts its time anew" "[ \"\$(toast text)\" = Desktop_3 ]"
+check "then it goes" '[ -z "$(toast text)" ]'
+pixel_is "and the desktop shows again" $((TX + 2)) $((TY + 2)) 7189a3
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=overlay keyboard=exclusive size=100x100 \
+	>"$SMOKE_DIR/lock.events" 2>&1 &
+PID_lock=$!
+wait_for "a screen locker takes the keys" grep -q configured "$SMOKE_DIR/lock.events"
+switch_to 1
+sleep 0.3
+check "a switch under it shows none" "[ \"\$(toast shown)\" = $((n + 2)) ] && [ -z \"\$(toast text)\" ]"
+kill "$PID_lock"
+wait "$PID_lock" 2>/dev/null
+switch_to 2
+check "once it is gone, a switch shows one again" "[ \"\$(toast shown)\" = $((n + 3)) ]"
+switch_to 1
 
 # ---- the group follows its output -------------------------------------------------------
 

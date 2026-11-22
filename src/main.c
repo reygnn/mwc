@@ -1144,6 +1144,7 @@ int main(int argc, char *argv[])
 	if (server.pointer_refresh)
 		wl_event_source_remove(server.pointer_refresh);
 	input_virtual_fini();
+	toast_fini();
 	wl_list_remove(&server.new_idle_inhibitor.link);
 	wl_list_remove(&server.activation_new_token.link);
 	wl_list_remove(&server.activation_request.link);

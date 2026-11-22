@@ -470,6 +470,51 @@ TEST(grooves)
 	cairo_buffer_drop(b);
 }
 
+/* ---- the toast ------------------------------------------------------------------- */
+
+static int white_pixels(struct cairo_buffer *b)
+{
+	int n = 0;
+	for (int y = 0; y < b->base.height; y++)
+		for (int x = 0; x < b->base.width; x++)
+			n += pixel(b, x, y) == 0xffffff;
+	return n;
+}
+
+TEST(toast)
+{
+	int tw, th;
+	text_extent(TOAST_FONT, "Desktop 2", &tw, &th);
+	struct cairo_buffer *b = draw_toast("Desktop 2");
+	CHECK(b);
+	if (!b)
+		return;
+	CHECK(b->base.width == tw + 2 * TOAST_PAD && b->base.height == th + 2 * TOAST_PAD);
+	int w = b->base.width, h = b->base.height;
+	/* A grey line round a dark box, all of it opaque. */
+	CHECK_INT(pixel(b, 0, 0), 0x808080);
+	CHECK_INT(pixel(b, w - 1, h - 1), 0x808080);
+	CHECK_INT(pixel(b, w / 2, 0), 0x808080);
+	CHECK_INT(pixel(b, 1, 1), 0x2b2b2b);
+	CHECK_INT(pixel(b, w - 2, h / 2), 0x2b2b2b);
+	/* White text within the padding. */
+	int n = white_pixels(b);
+	CHECK(n > 20);
+	for (int y = 0; y < h; y++) {
+		CHECK(pixel(b, TOAST_PAD / 2, y) != 0xffffff);
+		CHECK(pixel(b, w - TOAST_PAD / 2, y) != 0xffffff);
+	}
+	cairo_buffer_drop(b);
+	/* A longer text, a wider box of the same height. */
+	struct cairo_buffer *l = draw_toast("Desktop 2 Desktop 2");
+	CHECK(l);
+	if (!l)
+		return;
+	CHECK(l->base.width > w && l->base.height == h && white_pixels(l) > n);
+	cairo_buffer_drop(l);
+	CHECK(draw_toast("") == NULL && draw_toast(NULL) == NULL);
+}
+
 int main(void)
 {
 	mwmrc_init();
@@ -489,6 +534,7 @@ int main(void)
 	RUN(buffer);
 	RUN(bevel_out_and_in);
 	RUN(grooves);
+	RUN(toast);
 	mwmrc_done();
 	return unit_done();
 }

@@ -179,6 +179,14 @@ static int dump_state(int signal, void *data)
 	for (char *p = label; *p; p++)
 		*p = *p == ' ' ? '_' : *p;
 	fprintf(f, "feedback text=%s x=%d y=%d draws=%d\n", label, box.x, box.y, draws);
+	int toasts;
+	const char *toast = toast_get(&box, &toasts);
+	char toast_label[64];
+	snprintf(toast_label, sizeof(toast_label), "%s", toast);
+	for (char *p = toast_label; *p; p++)
+		*p = *p == ' ' ? '_' : *p;
+	fprintf(f, "toast text=%s x=%d y=%d w=%d h=%d shown=%d\n", toast_label,
+		box.x, box.y, box.width, box.height, toasts);
 	fprintf(f, "wallpaper decodes=%d\n", server->wallpaper_decodes);
 	fprintf(f, "theme border=%d thin=%d title=%d\n", theme.border,
 		theme.thin_border, theme.title_height);

@@ -22,6 +22,7 @@
  * Switching is for other programs to ask for, through ext-workspace-v1
  * (workspace.c); mwc binds no keys to it. A window moves through its window menu.
  */
+#include <stdio.h>
 #include <wlr/types/wlr_scene.h>
 #include "mwc.h"
 
@@ -138,6 +139,9 @@ void desktop_switch(struct server *server, int n)
 			lost = false;
 	}
 	focus_after(server, lost, false);
+	char text[32];
+	snprintf(text, sizeof(text), "Desktop %d", n + 1);
+	toast_show(server, text);
 }
 
 void view_set_desktop(struct view *view, int n)

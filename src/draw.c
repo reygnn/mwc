@@ -349,6 +349,40 @@ void cairo_buffer_drop(struct cairo_buffer *buf)
 	wlr_buffer_drop(&buf->base);
 }
 
+/* ---- toast --------------------------------------------------------------------- */
+
+/* screenShot's toast: a dark box with a grey line round it and white bold text, the
+ * same whatever the theme, as it stands over any window. */
+struct cairo_buffer *draw_toast(const char *text)
+{
+	if (!text || !*text)
+		return NULL;
+	int tw, th;
+	text_extent(TOAST_FONT, text, &tw, &th);
+	int w = tw + 2 * TOAST_PAD, h = th + 2 * TOAST_PAD;
+	struct cairo_buffer *buf = cairo_buffer_create(w, h);
+	if (!buf)
+		return NULL;
+	cairo_t *cr = buf->cr;
+	cairo_set_source_rgb(cr, 0x2b / 255.0, 0x2b / 255.0, 0x2b / 255.0);
+	cairo_paint(cr);
+	cairo_set_source_rgb(cr, 0x80 / 255.0, 0x80 / 255.0, 0x80 / 255.0);
+	cairo_set_line_width(cr, 1);
+	cairo_rectangle(cr, 0.5, 0.5, w - 1, h - 1);
+	cairo_stroke(cr);
+	cairo_save(cr);
+	cairo_set_antialias(cr, CAIRO_ANTIALIAS_DEFAULT);
+	PangoLayout *layout = pango_cairo_create_layout(cr);
+	pango_layout_set_font_description(layout, font_description(TOAST_FONT));
+	pango_layout_set_text(layout, text, -1);
+	cairo_set_source_rgb(cr, 1, 1, 1);
+	cairo_move_to(cr, TOAST_PAD, TOAST_PAD);
+	pango_cairo_show_layout(cr, layout);
+	g_object_unref(layout);
+	cairo_restore(cr);
+	return buf;
+}
+
 /* ---- bevelled rings --------------------------------------------------------- */
 
 void ring_strips(struct wlr_box out[4], int w, int h, int th, int tw)

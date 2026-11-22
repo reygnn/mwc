@@ -274,7 +274,10 @@ window opens on the current desktop, a dialog on its window's. "To Desktop" in t
 window menu moves a window with its dialogs and tab group; "On All Desktops" keeps it
 on every one. Docked programs and programs with `allDesktops` are on all desktops,
 with their dialogs; a program with `allDesktops` in a tab group takes the whole group
-there. A dialog that opens on another desktop marks that desktop urgent.
+there. A dialog that opens on another desktop marks that desktop urgent. Each switch
+shows "Desktop N" for a second in the middle of the pointer's monitor, not over a
+layer surface holding the keyboard, such as a screen locker; the next switch replaces
+it.
 
 
 ## Icons
