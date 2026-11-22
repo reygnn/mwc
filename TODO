@@ -120,3 +120,95 @@ TODO
   mtk-Session.
   Abnahme: Fälle in tests/unit/draw_test.c (gold, #aaaaaa gesetzt, ein
   gesetztes foreground geht vor, 0 lässt Motif), README unter Configuration.
+
+* Prio hoch: Monitore aufwecken, wenn alle aus sind (aus rediwm,
+  wakeIfAllDark in src/output_power.zig, 2026-11-22). Heute kann jeder Client
+  über wlr-output-power-management alle Monitore abschalten, und nur ein
+  Client bringt sie zurück. Die eine Ausnahme: sind alle Monitore aus, weckt
+  eine Eingabe (Taste, Zeiger) sie wieder. Ist einer an, bleibt es wie heute.
+  Für wayrdp eher gut: ein abgeschalteter headless-Monitor gibt mstsc nur
+  Schwarz, eine Eingabe über RDP holte ihn zurück. Zu prüfen: ob displayOff
+  damit zurechtkommt, wenn mwc vor ihm aufweckt.
+  Die Regel als reine Funktion in einem Modul ohne Anzeigecode.
+  Abnahme: Unit-Test der Regel (alle aus, einer an, kein Monitor), ein Fall in
+  tests/session.sh mit powerc und vinput, CAVEATS unter "Protocols open to
+  every client" angepasst.
+
+* Prio hoch: xdg-activation-v1 (aus rediwm, 2026-11-22). Ein Programm holt
+  ein anderes nach vorn, etwa Firefox nach einem Link-Klick in mwt, oder mfm
+  ein Programm, das es öffnet. Ein Token nur für ein Fenster, das den
+  Tastaturfokus hat (rediwm hält so Programme davon ab, sich den Fokus zu
+  holen); ein Token ohne gültigen Ursprung färbt höchstens das Icon oder den
+  Rahmen, statt zu fokussieren. Zu klären: was mwc mit einem ikonifizierten
+  Fenster oder einem auf einem anderen Desktop macht (zurückholen, Desktop
+  wechseln oder nur markieren). Die Regel in ein Modul mit Unit-Test.
+  Abnahme: Unit-Test der Regel, ein Fall in tests/window.sh (xdgc fordert ein
+  Token an und aktiviert ein zweites Fenster; ohne Fokus wird es nicht
+  fokussiert), README.
+
+* Prio hoch: cursor-shape-v1 (aus rediwm, 2026-11-22). Clients setzen das
+  Zeigerbild über einen Namen statt eines eigenen Bildes; wlroots macht fast
+  alles (wlr_cursor_shape_manager_v1), mwc setzt das Bild aus dem
+  xcursor-Thema wie für eigene Zeiger.
+  Abnahme: ein Fall in tests/pointer.sh (xdgc setzt eine Form, das Zeigerbild
+  wechselt), nur für den Client mit Zeigerfokus.
+
+* Prio hoch: Startfehler zeigen (aus rediwm, launch_feedback.zig,
+  2026-11-22). Ein Programm, das mwc startet (terminal, runDialog,
+  screenSaver, Screenshots, rootMenuItem), und das sofort scheitert, etwa ein
+  Tippfehler im Namen, zeigt heute nichts auf dem Bildschirm. mwc merkt sich
+  die Kindprozesse und meldet einen Exit ungleich 0 innerhalb kurzer Zeit
+  (127: nicht gefunden). Zu klären: wie (das Feedback-Feld wie beim
+  Verschieben, ein kurzes Fenster, oder nur ein Logeintrag mit dem Befehl).
+  Abnahme: ein Fall in tests/misc.sh mit einem falschen Befehl, CAVEATS unter
+  "Programs mwc starts" angepasst oder gestrichen.
+
+* Prio mittel: Zeiger einfangen, pointer-constraints-unstable-v1 und
+  relative-pointer-unstable-v1 (aus rediwm, src/input/pointer_constraints.zig,
+  2026-11-22). Für VM- und RDP-Viewer, Spiele, Blender. rediwms Regeln:
+  die Sperre gilt nur, solange das Fenster Zeiger- und Tastaturfokus hat und
+  mwc nichts selbst greift (Verschieben, Größe, Menüs); jeder Fokuswechsel
+  löst sie, so kommt man mit Alt+Tab immer heraus; sie greift erst, wenn der
+  Zeiger im erlaubten Bereich ist; beim Lösen springt der Zeiger an den
+  cursor_hint des Programms. Die Regeln in ein Modul mit Unit-Test.
+  Abnahme: Unit-Test der Regeln, ein Fall in tests/pointer.sh (xdgc sperrt,
+  vinput bewegt, Alt+Tab löst), CAVEATS "Pointer capture" gestrichen.
+
+* Prio mittel: Tastenkürzel an VM- und RDP-Viewer abgeben,
+  keyboard-shortcuts-inhibit-unstable-v1 (aus rediwm,
+  src/input/shortcuts_inhibit.zig, 2026-11-22). Das fokussierte Fenster
+  bekommt das Recht ohne Rückfrage, wie in sway. VT-Wechsel,
+  Ctrl+Alt+Backspace und der Sperrbildschirm bleiben bei mwc. Eine Taste nimmt
+  das Recht zurück, bis der Fokus wechselt. rediwm nimmt Super+Esc, bei mwc
+  der Bildschirmschoner; Vorschlag: Super+Esc nimmt das Recht zurück, solange
+  eines vergeben ist, sonst startet es den Schoner. Zusammen mit dem Zeiger
+  einfangen bauen.
+  Abnahme: ein Fall in tests/input.sh (mit Recht erreicht Alt+Tab den Client,
+  nach Super+Esc wieder mwc, nach einem Fokuswechsel gilt es neu), README,
+  CAVEATS "Shortcuts in VM and RDP viewers" gestrichen.
+
+* Prio niedrig: Rahmen in der Monitorskalierung zeichnen (aus rediwm,
+  devicePixels(logical, scale), 2026-11-22). Nur nötig mit outputScale über
+  1. In draw.c den Puffer um den Faktor größer anlegen, cairo_scale setzen,
+  wlr_scene_buffer_set_dest_size aufrufen; die Skalierung gehört zum
+  Cache-Schlüssel. Betrifft Rahmen, Menüs, Icons und Dock zugleich; ein
+  Fenster über zwei Monitoren mit verschiedener Skalierung nimmt die größere.
+  Fractional-Scale erst danach.
+  Abnahme: Fälle in tests/unit/draw_test.c (Puffergröße und Pixel bei 1, 1.5
+  und 2), ein Fall in tests/outputs.sh, CAVEATS "Scaled monitors" gestrichen.
+
+* Prio niedrig: Sandbox-Filter für privilegierte Protokolle (aus rediwm,
+  src/global_filter.zig, 2026-11-22). Ein Programm in einer Sandbox (Flatpak,
+  wp_security_context_v1) sieht von Bildschirmaufnahme, Zwischenablage,
+  virtueller Eingabe, Monitoren, Layer-Shell und ext-workspace nur die
+  Gruppen, die ihm per app_id erlaubt sind. Programme ohne Sandbox sehen
+  weiterhin alles, also nur sinnvoll mit Flatpak-Programmen. In C:
+  wl_display_set_global_filter, wlr_security_context_manager_v1_lookup_client;
+  die Entscheidung als reine Funktion mit Unit-Test.
+  Abnahme: Unit-Test der Entscheidung, ein Fall mit einem Client hinter
+  einem security context, CAVEATS "Protocols open to every client" angepasst.
+
+* Prio niedrig: Eingabemethoden (text-input-v3, input-method-v2),
+  Grafiktablett (tablet-v2) und Touchpad-Gesten (pointer-gestures-v1) (aus
+  rediwm, 2026-11-22). Mit Schweizerdeutsch-Layout und ohne IME kein Bedarf;
+  Tablett und Gesten nur, wenn die Hardware da ist.
