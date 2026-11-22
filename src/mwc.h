@@ -466,6 +466,8 @@ struct server {
 	struct wlr_idle_notifier_v1 *idle_notifier;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wl_listener new_idle_inhibitor;
+	struct wl_listener activation_new_token;
+	struct wl_listener activation_request;
 	struct wl_listener output_power_set_mode;
 	uint32_t dark_since; /* now_msec() of the last switch off */
 	bool wake_failed;    /* since then */
@@ -849,6 +851,24 @@ bool outputrc_position(const char *value, int *x, int *y);
  * at least OUTPUTRC_WAKE_AFTER_MS before now, in ms of the same clock. */
 #define OUTPUTRC_WAKE_AFTER_MS 1000
 bool outputrc_wakes(struct wl_list *outputs, uint32_t now, uint32_t dark_since);
+
+/* ---- activation.c ------------------------------------------------------- */
+
+struct activation_request {
+	bool from_input;       /* the token names an input event the client got */
+	bool source_had_focus; /* made by the window with the keys, or by a layer surface */
+	bool focus_kept;       /* the keys are where they were then, or on the target */
+	bool target_mapped;
+	bool target_docked;
+	bool target_off_desktop;
+};
+enum activation {
+	ACTIVATION_NONE,
+	ACTIVATION_FOCUS,
+	ACTIVATION_SWITCH, /* to its desktop, then the focus */
+	ACTIVATION_MARK,   /* its desktop, see desktop_attention() */
+};
+enum activation activation_decide(const struct activation_request *r);
 
 /* ---- config.c ----------------------------------------------------------- */
 

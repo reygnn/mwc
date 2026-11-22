@@ -121,18 +121,6 @@ TODO
   Abnahme: Fälle in tests/unit/draw_test.c (gold, #aaaaaa gesetzt, ein
   gesetztes foreground geht vor, 0 lässt Motif), README unter Configuration.
 
-* Prio hoch: xdg-activation-v1 (aus rediwm, 2026-11-22). Ein Programm holt
-  ein anderes nach vorn, etwa Firefox nach einem Link-Klick in mwt, oder mfm
-  ein Programm, das es öffnet. Ein Token nur für ein Fenster, das den
-  Tastaturfokus hat (rediwm hält so Programme davon ab, sich den Fokus zu
-  holen); ein Token ohne gültigen Ursprung färbt höchstens das Icon oder den
-  Rahmen, statt zu fokussieren. Zu klären: was mwc mit einem ikonifizierten
-  Fenster oder einem auf einem anderen Desktop macht (zurückholen, Desktop
-  wechseln oder nur markieren). Die Regel in ein Modul mit Unit-Test.
-  Abnahme: Unit-Test der Regel, ein Fall in tests/window.sh (xdgc fordert ein
-  Token an und aktiviert ein zweites Fenster; ohne Fokus wird es nicht
-  fokussiert), README.
-
 * Prio hoch: cursor-shape-v1 (aus rediwm, 2026-11-22). Clients setzen das
   Zeigerbild über einen Namen statt eines eigenen Bildes; wlroots macht fast
   alles (wlr_cursor_shape_manager_v1), mwc setzt das Bild aus dem

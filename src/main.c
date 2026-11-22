@@ -25,6 +25,7 @@
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
@@ -36,7 +37,9 @@
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_xdg_activation_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
+#include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 #include "mwc.h"
 #include "version.h"
@@ -327,6 +330,79 @@ static void idle_inhibitor_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&inhibitor->map.link);
 	wl_list_remove(&inhibitor->unmap.link);
 	free(inhibitor);
+}
+
+/* token->data of a good token made while the keys were on nothing. */
+static char keys_on_nothing;
+
+/* Whether s, or the surface its popups hang from, is a layer surface. */
+static bool from_layer(struct wlr_surface *s)
+{
+	for (int i = 0; s && i < 16; i++) {
+		s = wlr_surface_get_root_surface(s);
+		struct wlr_xdg_surface *xdg = wlr_xdg_surface_try_from_wlr_surface(s);
+		if (!xdg || xdg->role != WLR_XDG_SURFACE_ROLE_POPUP || !xdg->popup)
+			return wlr_layer_surface_v1_try_from_wlr_surface(s) != NULL;
+		s = xdg->popup->parent;
+	}
+	return false;
+}
+
+/* A good token is marked when it is made: from the window with the keyboard, or from a
+ * panel or launcher, which wlroots takes only with the keyboard or the pointer on it.
+ * It keeps where the keys were then; by the time it is used they may have moved on. */
+static void activation_new_token(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server, activation_new_token);
+	struct wlr_xdg_activation_token_v1 *token = data;
+	token->data = NULL;
+	struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+	if (!token->seat || !token->surface)
+		return;
+	struct view *view = view_from_surface(token->surface);
+	bool good = view ? focused && view == view_from_surface(focused) :
+		from_layer(token->surface);
+	if (good)
+		token->data = focused ? (void *)focused : &keys_on_nothing;
+}
+
+static void activation_request(struct wl_listener *listener, void *data)
+{
+	struct server *server = wl_container_of(listener, server, activation_request);
+	struct wlr_xdg_activation_v1_request_activate_event *event = data;
+	struct view *view = view_from_surface(event->surface);
+	if (!view)
+		return;
+	/* Only compared: the surface the keys were on may be gone. */
+	struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+	void *keys = focused ? (void *)focused : &keys_on_nothing;
+	struct activation_request r = {
+		.from_input = event->token->seat != NULL,
+		.source_had_focus = event->token->data != NULL,
+		.focus_kept = event->token->data == keys ||
+			(focused && view_from_surface(focused) == view),
+		.target_mapped = view->mapped,
+		.target_docked = view_docked(view),
+		.target_off_desktop = view->off_desktop,
+	};
+	enum activation a = activation_decide(&r);
+	const char *app = view_app_id(view);
+	wlr_log(WLR_INFO, "%s asks for the focus: %s", *app ? app : "a window",
+		a == ACTIVATION_NONE ? "not given" : a == ACTIVATION_MARK ?
+		"its desktop is marked" : "given");
+	switch (a) {
+	case ACTIVATION_SWITCH:
+		desktop_switch(server, view->desktop);
+		/* fall through */
+	case ACTIVATION_FOCUS:
+		view_focus(view);
+		break;
+	case ACTIVATION_MARK:
+		desktop_attention(view);
+		break;
+	case ACTIVATION_NONE:
+		break;
+	}
 }
 
 static void new_idle_inhibitor(struct wl_listener *listener, void *data)
@@ -978,6 +1054,12 @@ int main(int argc, char *argv[])
 	 * VNC or RDP server can send it apart, and the viewer draws it without delay. */
 	wlr_ext_image_copy_capture_manager_v1_create(server.display, 1);
 	wlr_ext_output_image_capture_source_manager_v1_create(server.display, 1);
+	struct wlr_xdg_activation_v1 *activation =
+		wlr_xdg_activation_v1_create(server.display);
+	server.activation_new_token.notify = activation_new_token;
+	wl_signal_add(&activation->events.new_token, &server.activation_new_token);
+	server.activation_request.notify = activation_request;
+	wl_signal_add(&activation->events.request_activate, &server.activation_request);
 	server.idle_notifier = wlr_idle_notifier_v1_create(server.display);
 	server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display);
 	server.new_idle_inhibitor.notify = new_idle_inhibitor;
@@ -1063,6 +1145,8 @@ int main(int argc, char *argv[])
 		wl_event_source_remove(server.pointer_refresh);
 	input_virtual_fini();
 	wl_list_remove(&server.new_idle_inhibitor.link);
+	wl_list_remove(&server.activation_new_token.link);
+	wl_list_remove(&server.activation_request.link);
 	wl_list_remove(&server.output_power_set_mode.link);
 	if (server.output_manager) {
 		wl_list_remove(&server.output_manager_apply.link);

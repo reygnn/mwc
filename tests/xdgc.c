@@ -35,7 +35,11 @@
  *     control=FIFO  once all else is done, read commands from FIFO, one a line, and
  *                  after each a roundtrip, say "did N" (N counts them): title T,
  *                  app A, size WxH (of its own accord), dialog NAME, undialog,
- *                  fullscreen, unfullscreen, maximize, unmaximize, minimize, quit
+ *                  fullscreen, unfullscreen, maximize, unmaximize, minimize, quit;
+ *                  token FILE (an xdg-activation token for the main window and the
+ *                  last input event it got, written to FILE), token_noinput FILE (one
+ *                  without an input event, as mwt's bell asks), activate FILE (the
+ *                  main window asks for the focus with the token in FILE)
  *     caps=1       print the wm_capabilities each window is offered:
  *                  "caps NAME max=M min=N"
  *     fs_output=N  a moment after mapping, ask for fullscreen on the Nth wl_output,
@@ -64,6 +68,7 @@
  *                  tooltips; says "sub added"
  */
 #define _GNU_SOURCE
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,6 +81,7 @@
 #include <wayland-client.h>
 #include "server-decoration-client.h"
 #include "viewporter-client.h"
+#include "xdg-activation-v1-client.h"
 #include "xdg-decoration-unstable-v1-client.h"
 #include "xdg-shell-client.h"
 
@@ -100,6 +106,9 @@ static int cursor_w, cursor_h, cursor_scale;
 static bool menu_asked;
 static int32_t menu_x, menu_y;
 static struct wl_seat *the_seat;
+static struct xdg_activation_v1 *activation;
+static uint32_t last_serial; /* of the last input event, for a token */
+static bool have_serial;
 static struct xdg_toplevel *menu_toplevel;
 static struct wl_surface *cursor_surf;
 static int shadow, titles;
@@ -199,6 +208,8 @@ static void draw(struct window *win)
 static void pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
 	struct wl_surface *surface, wl_fixed_t x, wl_fixed_t y)
 {
+	last_serial = serial;
+	have_serial = true;
 	if (cursor_scale <= 0)
 		return;
 	if (!cursor_surf) {
@@ -239,6 +250,8 @@ static void pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time
 static void pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
 	uint32_t time, uint32_t button, uint32_t state)
 {
+	last_serial = serial;
+	have_serial = true;
 	if (!menu_asked || state != WL_POINTER_BUTTON_STATE_PRESSED || !menu_toplevel)
 		return;
 	xdg_toplevel_show_window_menu(menu_toplevel, the_seat, serial, menu_x, menu_y);
@@ -268,6 +281,8 @@ static void keyboard_keymap(void *data, struct wl_keyboard *kb, uint32_t format,
 static void keyboard_enter(void *data, struct wl_keyboard *kb, uint32_t serial,
 	struct wl_surface *surface, struct wl_array *keys)
 {
+	last_serial = serial;
+	have_serial = true;
 }
 
 static void keyboard_leave(void *data, struct wl_keyboard *kb, uint32_t serial,
@@ -305,7 +320,7 @@ static const struct wl_keyboard_listener keyboard_listener = {
 static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t caps)
 {
 	static struct wl_keyboard *kb;
-	if (menu_asked && !kb && (caps & WL_SEAT_CAPABILITY_KEYBOARD)) {
+	if ((menu_asked || control) && !kb && (caps & WL_SEAT_CAPABILITY_KEYBOARD)) {
 		kb = wl_seat_get_keyboard(seat);
 		wl_keyboard_add_listener(kb, &keyboard_listener, NULL);
 	}
@@ -431,12 +446,14 @@ static void registry_global(void *data, struct wl_registry *registry,
 	else if (strcmp(interface, wl_subcompositor_interface.name) == 0)
 		subcompositor = wl_registry_bind(registry, name, &wl_subcompositor_interface, 1);
 	else if (strcmp(interface, wl_seat_interface.name) == 0 &&
-			(cursor_scale > 0 || menu_asked)) {
+			(cursor_scale > 0 || menu_asked || control)) {
 		/* The tests always have a pointer, so its capability is not awaited. */
 		the_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
 		wl_pointer_add_listener(wl_seat_get_pointer(the_seat), &pointer_listener, NULL);
 		wl_seat_add_listener(the_seat, &seat_listener, NULL);
 	}
+	else if (strcmp(interface, xdg_activation_v1_interface.name) == 0)
+		activation = wl_registry_bind(registry, name, &xdg_activation_v1_interface, 1);
 	else if (strcmp(interface, wl_output_interface.name) == 0 && n_outputs < 4)
 		outputs[n_outputs++] = wl_registry_bind(registry, name, &wl_output_interface, 1);
 	else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
@@ -635,6 +652,54 @@ static void add_subsurface(struct window *parent)
 	wl_surface_commit(parent->surface);
 }
 
+/* The token goes to the file whole: written beside it, then renamed. */
+static void token_done(void *data, struct xdg_activation_token_v1 *token, const char *name)
+{
+	char *file = data, tmp[PATH_MAX];
+	FILE *f = NULL;
+	if (snprintf(tmp, sizeof(tmp), "%s.tmp", file) < (int)sizeof(tmp))
+		f = fopen(tmp, "w");
+	if (f) {
+		fputs(name, f);
+		fclose(f);
+		rename(tmp, file);
+	} else {
+		fprintf(stderr, "xdgc: can't write the token to %s\n", file);
+	}
+	free(file);
+	xdg_activation_token_v1_destroy(token);
+}
+
+static const struct xdg_activation_token_v1_listener token_listener = { token_done };
+
+static void ask_token(const char *file, bool with_input)
+{
+	char *copy = strdup(file);
+	if (!copy)
+		return;
+	if (with_input && !have_serial)
+		fprintf(stderr, "xdgc: no input event yet, the token has none\n");
+	struct xdg_activation_token_v1 *token =
+		xdg_activation_v1_get_activation_token(activation);
+	xdg_activation_token_v1_add_listener(token, &token_listener, copy);
+	xdg_activation_token_v1_set_surface(token, main_win->surface);
+	if (with_input && have_serial)
+		xdg_activation_token_v1_set_serial(token, last_serial, the_seat);
+	xdg_activation_token_v1_commit(token);
+}
+
+static void activate_with(const char *file)
+{
+	char name[256];
+	FILE *f = fopen(file, "r");
+	if (!f)
+		return;
+	bool got = fgets(name, sizeof(name), f) != NULL;
+	fclose(f);
+	if (got)
+		xdg_activation_v1_activate(activation, name, main_win->surface);
+}
+
 /* One command of control=FIFO; false for quit. */
 static bool command(struct wl_display *display, char *line)
 {
@@ -670,6 +735,12 @@ static bool command(struct wl_display *display, char *line)
 		xdg_toplevel_unset_maximized(main_win->toplevel);
 	else if (!strcmp(line, "minimize"))
 		xdg_toplevel_set_minimized(main_win->toplevel);
+	else if (!strcmp(line, "token") && arg && activation)
+		ask_token(arg, true);
+	else if (!strcmp(line, "token_noinput") && arg && activation)
+		ask_token(arg, false);
+	else if (!strcmp(line, "activate") && arg && activation)
+		activate_with(arg);
 	return true;
 }
 

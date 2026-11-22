@@ -27,7 +27,7 @@ SRC = src/main.c src/view.c src/frame.c src/menu.c \
 	src/hints.c src/outline.c src/snap.c src/tile.c src/tabs.c src/testhook.c \
 	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c src/iconbox.c \
 	src/dock.c src/outputrc.c src/sizehints.c src/snaprules.c src/configview.c \
-	src/tilelayout.c src/color.c
+	src/tilelayout.c src/color.c src/activation.c
 # Protocols mwc implements itself, not through wlroots: their glue code too.
 PROTO_CODE = build/fifo-v1-protocol.c build/ext-workspace-v1-protocol.c
 OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)
@@ -139,7 +139,7 @@ check: build/mwc-asan
 # logic kept apart from the display code: real data and libraries, fakes the test
 # fills where needed, no mocks. Always with the sanitizers: an overflow fails the
 # test. Fast, and the first step of make test.
-UNIT = outputrc sizehints snaprules config draw tilelayout color
+UNIT = outputrc sizehints snaprules config draw tilelayout color activation
 # What a module needs of another: also linked, real.
 UNIT_WITH_config = src/draw.c src/color.c
 UNIT_WITH_draw = src/config.c src/color.c
@@ -316,14 +316,21 @@ XDGC_GEN = build/xdg-decoration-unstable-v1-client.h \
 	build/xdg-decoration-unstable-v1-code.c build/xdg-shell-client.h \
 	build/xdg-shell-code.c build/server-decoration-client.h \
 	build/server-decoration-code.c build/viewporter-client.h \
-	build/viewporter-code.c
+	build/viewporter-code.c build/xdg-activation-v1-client.h \
+	build/xdg-activation-v1-code.c
+
+build/xdg-activation-v1-client.h: $(WAYLAND_PROTOCOLS)/staging/xdg-activation/xdg-activation-v1.xml | build
+	$(WAYLAND_SCANNER) client-header $< $@
+
+build/xdg-activation-v1-code.c: $(WAYLAND_PROTOCOLS)/staging/xdg-activation/xdg-activation-v1.xml | build
+	$(WAYLAND_SCANNER) private-code $< $@
 
 build/xdgc: tests/xdgc.c $(XDGC_GEN)
 	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/xdgc.c \
 		build/xdg-decoration-unstable-v1-code.c build/xdg-shell-code.c \
 		build/server-decoration-code.c build/viewporter-code.c \
-		$(shell $(PKG_CONFIG) --libs wayland-client)
+		build/xdg-activation-v1-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
 
 build/badclient: tests/badclient.c build/xdg-shell-client.h build/xdg-shell-code.c
 	$(CC) -O2 -g -std=c11 -Wall -Wextra -Wno-unused-parameter -Ibuild \
@@ -411,7 +418,7 @@ build/workspacec: tests/workspacec.c build/ext-workspace-v1-client.h build/ext-w
 		$(shell $(PKG_CONFIG) --cflags wayland-client) -o $@ tests/workspacec.c \
 		build/ext-workspace-v1-code.c $(shell $(PKG_CONFIG) --libs wayland-client)
 
-desktop-test: mwc build/vinput build/xdgc build/workspacec build/outputc
+desktop-test: mwc build/vinput build/xdgc build/workspacec build/outputc build/layerc
 	tests/desktop.sh
 
 # What an RDP server such as wayrdp does: devices that go mid-press, fresh captures,

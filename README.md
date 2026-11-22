@@ -408,6 +408,15 @@ border and no Size or Maximize; functions a window lacks are grey in its menu.
 
 A fullscreen window smaller than the monitor sits in its middle, on black.
 
+A program may bring another to the front through xdg-activation-v1, a browser after a
+link was clicked elsewhere: with a token made by the window that had the keyboard, for
+a key or click it got, or by a panel or launcher, while the keys are still where they
+were. The window then comes back from its icon and from another desktop, which
+becomes the current one, and gets the focus. Any other token, from a program in the
+background, without an input event or made before the keys went elsewhere, only marks
+a window's desktop when it is on another one. Docked windows take the focus by a click
+only.
+
 Programs that wait for the refresh through wp_fifo_v1, as SDL 3 and Mesa's Vulkan FIFO
 mode do, get one update per refresh; when nobody sees them (minimized, on another
 desktop, under opaque windows, on a monitor that is off), about one a second.

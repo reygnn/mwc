@@ -7,7 +7,7 @@
 LOG=build/desktop.log
 . "$(dirname "$0")/lib.sh"
 
-for tool in build/vinput build/xdgc build/workspacec build/outputc; do
+for tool in build/vinput build/xdgc build/workspacec build/outputc build/layerc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 
@@ -429,6 +429,95 @@ on "and is gone from desktop 1" stick 3 0
 switch_to 3
 stop stick
 switch_to 1
+
+# ---- asking for the focus, xdg-activation-v1 -------------------------------------------
+
+# Only a token made while its window had the keyboard, for an input event the client
+# got, takes the focus. Then it brings a window back from its icon and switches to its
+# desktop; any other token marks the desktop of a window on another one.
+mkfifo "$SMOKE_DIR/src.ctl" "$SMOKE_DIR/dst.ctl"
+exec {srcfd}<>"$SMOKE_DIR/src.ctl" {dstfd}<>"$SMOKE_DIR/dst.ctl"
+send() { local fd="${1}fd"; echo "$2" >&"${!fd}"; }
+TOKEN=$SMOKE_DIR/token
+token() { # app [noinput]: a token made by app's window, in $TOKEN
+	rm -f "$TOKEN"
+	send "$1" "token${2:+_$2} $TOKEN"
+	wait_for "a token from $1" test -s "$TOKEN"
+}
+focus_src() { # near its left edge: dst, placed after it, covers the rest
+	do_input move $(($(get src x) + $(get src bw) + 5)) $(($(get src y) + $(get src th) + 30))
+	do_input click left
+	check "src has the focus" "[ \"\$(get src active)\" = 1 ]"
+}
+# mwc's answer to dst's next request, once it is in the log: else a token wlroots threw
+# out itself, which never reaches mwc, would look like one mwc refused.
+answered() { # what
+	local n
+	n=$(grep -c "dst asks for the focus: $1" "$LOG")
+	send dst "activate $TOKEN"
+	wait_for "mwc answers: $1" eval \
+		"[ \$(grep -c 'dst asks for the focus: $1' \"$LOG\") -gt $n ]"
+}
+stays_with() { # description app
+	answered "not given"
+	check "$1" "[ \"\$(get $2 active)\" = 1 ] && [ \"\$(get dst active)\" = 0 ]"
+}
+wayland src size=300x200 control="$SMOKE_DIR/src.ctl"
+wayland dst size=300x200 control="$SMOKE_DIR/dst.ctl"
+focus_src
+token src
+send dst "activate $TOKEN"
+check "a token from the window with the focus: dst takes it" "[ \"\$(get dst active)\" = 1 ]"
+wait_for "it is said" grep -q "dst asks for the focus: given" "$LOG"
+focus_src
+# The pointer over it, at its bottom right corner where src doesn't cover it: wlroots
+# itself takes a token only from a surface with the keyboard or the pointer, and for an
+# input event the client got. That much a window in the background has.
+do_input move $(($(get dst x) + $(get dst bw) + 290)) $(($(get dst y) + $(get dst fh) - $(get dst bw) - 5))
+token dst
+stays_with "one made in the background doesn't" src
+token src noinput
+stays_with "nor one without an input event, as mwt's bell makes" src
+focus_src
+token src
+wayland third size=200x100
+check "a third window takes the keys" "[ \"\$(get third active)\" = 1 ]"
+stays_with "nor one made before the keys went to another window" third
+stop third
+focus_src
+token src
+WAYLAND_DISPLAY=wayland-0 build/layerc layer=overlay keyboard=exclusive size=100x100 \
+	>"$SMOKE_DIR/lock.events" 2>&1 &
+PID_lock=$!
+wait_for "a layer surface takes the keys exclusively" grep -q configured "$SMOKE_DIR/lock.events"
+stays_with "nor once a screen locker took them" src
+kill "$PID_lock"
+wait "$PID_lock" 2>/dev/null
+send dst minimize
+check "dst is an icon" "[ \"\$(get dst min)\" = 1 ]"
+focus_src
+token src
+send dst "activate $TOKEN"
+check "a good token brings it back from its icon, with the focus" \
+	"[ \"\$(get dst min)\" = 0 ] && [ \"\$(get dst active)\" = 1 ]"
+to_desktop dst 3
+focus_src
+token src
+send dst "activate $TOKEN"
+check "and switches to its desktop" \
+	"[ \"\$(global desktop current)\" = 3 ] && [ \"\$(get dst active)\" = 1 ]"
+switch_to 1
+focus_src
+urgent_is "nothing is marked yet" ""
+token src noinput
+answered "its desktop is marked"
+check "any other token doesn't switch" "[ \"\$(global desktop current)\" = 1 ]"
+urgent_is "it marks its desktop" "3"
+switch_to 3
+stop dst
+switch_to 1
+stop src
+exec {srcfd}>&- {dstfd}>&-
 
 # ---- the group follows its output -------------------------------------------------------
 
