@@ -30,16 +30,13 @@ static struct mwc_color hex(uint32_t rgb)
 /* Environment first, then mwmrc, then the built-in default. With a non-NULL
  * none, the value "none" is accepted as well: *none is set and the fallback
  * returned. */
-/* *builtin, if given, says whether fallback was taken: nothing set, or nothing good. */
 static struct mwc_color setting_color(const char *env, const char *resource,
-	uint32_t fallback, bool *none, bool *builtin)
+	uint32_t fallback, bool *none)
 {
 	struct mwc_color c;
 	const char *s = getenv(env);
 	if (none)
 		*none = false;
-	if (builtin)
-		*builtin = false;
 	if (s && *s) {
 		if (none && strcasecmp(s, "none") == 0) {
 			*none = true;
@@ -59,8 +56,6 @@ static struct mwc_color setting_color(const char *env, const char *resource,
 			return c;
 		wlr_log(WLR_ERROR, "ignoring Mwm*%s: %s, not a colour", resource, s);
 	}
-	if (builtin)
-		*builtin = true;
 	return hex(fallback);
 }
 
@@ -178,27 +173,22 @@ static int setting_width(const char *resource, int fallback)
 
 void theme_init(void)
 {
-	/* Defaults are IRIX 6.5's Base scheme (IndigoMagic, docs/mwmrc.irix-schemes):
-	 * #aaaaaa grey, a light stone for the window that has the focus. Each one can
-	 * be set in mwmrc or overridden through the environment, e.g.
+	/* Defaults are color.h's: #b4b4b4 grey, blue for the window that has the focus.
+	 * Each one can be set in mwmrc or overridden through the environment, e.g.
 	 * MWC_ACTIVE=#b24d7a. Title text picks black or white unless set. */
-	bool builtin_inactive;
 	struct mwc_color inactive = setting_color("MWC_INACTIVE", "background",
-		COLOR_INACTIVE, NULL, &builtin_inactive);
+		COLOR_INACTIVE, NULL);
 	struct mwc_color active = setting_color("MWC_ACTIVE", "activeBackground",
-		COLOR_ACTIVE, NULL, NULL);
+		COLOR_ACTIVE, NULL);
 	/* "none" leaves the desktop to a wallpaper tool (swaybg); the colour
 	 * is then only used inside the default icon image. */
 	theme.root = setting_color("MWC_ROOT", "rootBackground", COLOR_ROOT,
-		&theme.root_none, NULL);
+		&theme.root_none);
 
 	theme.has_inactive_fg = text_color("foreground", &theme.inactive_fg);
 	theme.has_active_fg = text_color("activeForeground", &theme.active_fg);
-	/* The built-in grey takes the Base palette's black text; Motif would pick white,
-	 * at 67%. A background that is set, #aaaaaa too, gets Motif's choice. */
-	struct mwc_color inactive_fg = theme.has_inactive_fg ? theme.inactive_fg :
-		hex(color_inactive_text(rgb_of(inactive), builtin_inactive));
-	theme.inactive = shade_from(inactive, inactive_fg);
+	theme.inactive = shade_from(inactive, theme.has_inactive_fg ?
+		theme.inactive_fg : color_contrast(inactive));
 	theme.active = shade_from(active, theme.has_active_fg ?
 		theme.active_fg : color_contrast(active));
 	theme.menu = theme.inactive;

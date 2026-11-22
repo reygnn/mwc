@@ -6,7 +6,7 @@
 !
 ! Use: copy a scheme's four Mwm lines into mwmrc, without the leading "! ". Base
 ! (= IndigoMagic) is active here. Later lines win, so a scheme further down overrides it.
-! mwc's built-in default is Base with its optional black foreground.
+! mwc's built-in default is none of them: #2e5a8c and #b4b4b4, #c4c4c4 and #000000.
 !
 ! Frames and programs: activeBackground and background are 4Dwm's frame colours.
 ! basicBackground and textForeground are the colours IRIX's programs drew with; mwc

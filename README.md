@@ -92,8 +92,8 @@ It is read at startup, on SIGHUP and on "Reload" in the root menu. A Wayland com
 cannot restart and keep its windows, so a reload applies the file to what is running.
 
     ! global
-    Mwm*activeBackground:        #c6c1aa
-    Mwm*background:              #aaaaaa
+    Mwm*activeBackground:        #2e5a8c
+    Mwm*background:              #b4b4b4
     Mwm*fontList:                Sans Bold 10
     Mwm*wallpaper:               ~/pictures/desk.png
 
@@ -116,8 +116,8 @@ Global resources:
 |---|---|
 | `activeBackground` | frame colour while focused |
 | `background` | frame colour while unfocused; also menus and icons |
-| `activeForeground`, `foreground` | title text; default black or white, as Motif picks it, and black on the built-in grey as in IRIX |
-| `basicBackground`, `textForeground` | IRIX's client palette: the colours mtk's clients draw with instead of the frame colours, their text at 4.5:1 at least; mwc itself doesn't use them |
+| `activeForeground`, `foreground` | title text; default black or white, as Motif picks it |
+| `basicBackground`, `textForeground` | IRIX's client palette: the colours mtk's clients draw with instead of the frame colours, their text at 4.5:1 at least; default `#c4c4c4` and `#000000`; mwc itself doesn't use them |
 | `fontList` | font of titles and menus; title bars grow with it |
 | `resizeBorderWidth`, `frameBorderWidth` | frame width in pixels with resize handles and without, 3 to 64; default 7 and 5 |
 | `rootBackground` | desktop colour, or `none` for a wallpaper tool such as swaybg |
@@ -154,8 +154,8 @@ The environment overrides the global entries:
 
 | Variable | Default | |
 |---|---|---|
-| `MWC_ACTIVE` | `#c6c1aa` | focused frame colour; with `MWC_INACTIVE` IRIX's Base scheme |
-| `MWC_INACTIVE` | `#aaaaaa` | other frames, menus, icons |
+| `MWC_ACTIVE` | `#2e5a8c` | focused frame colour |
+| `MWC_INACTIVE` | `#b4b4b4` | other frames, menus, icons |
 | `MWC_ROOT` | `#5b7792` | desktop colour, `none`: not drawn |
 | `MWC_WALLPAPER` | none | PNG on the desktop |
 | `MWC_FONT` | `Sans Bold 10` | font of titles and menus |

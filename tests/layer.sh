@@ -118,7 +118,7 @@ pixel_is "the top layer covers windows" "$tx" 10 "$PANEL"
 layerc_start bgtool layer=bottom anchor=top,bottom,left,right size=0x0 color=112233
 pixel_is "the bottom layer shows on the desktop" 1270 700 112233
 refresh
-pixel_is "windows cover the bottom layer" $(($(get foot x) + 3)) $(($(get foot y) + 100)) c6c1aa
+pixel_is "windows cover the bottom layer" $(($(get foot x) + 3)) $(($(get foot y) + 100)) 2e5a8c
 layerc_stop bgtool
 
 # Fullscreen: only while it has the focus does it cover a top panel.

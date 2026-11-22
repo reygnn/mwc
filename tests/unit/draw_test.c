@@ -97,13 +97,12 @@ TEST(theme_defaults)
 {
 	no_env();
 	theme_from("");
-	/* IRIX's Base scheme, its title text and shadows as Motif derives them. */
-	CHECK(same(theme.inactive.bg, rgb(0xaaaaaa)));
-	CHECK(same(theme.active.bg, rgb(0xc6c1aa)));
-	CHECK(shade_is(theme.active.top, 0xe7e5db) && shade_is(theme.active.bottom, 0x6b685c));
-	CHECK(shade_is(theme.inactive.top, 0xdadada) && shade_is(theme.inactive.bottom, 0x5a5a5a));
-	/* Black on the grey too, as the Base palette has it; Motif would pick white. */
-	CHECK(same(theme.active.fg, rgb(0)) && same(theme.inactive.fg, rgb(0)));
+	/* color.h's, the title text and shadows as Motif derives them. */
+	CHECK(same(theme.inactive.bg, rgb(0xb4b4b4)));
+	CHECK(same(theme.active.bg, rgb(0x2e5a8c)));
+	CHECK(shade_is(theme.active.top, 0x9db2c9) && shade_is(theme.active.bottom, 0x152a42));
+	CHECK(shade_is(theme.inactive.top, 0xdfdfdf) && shade_is(theme.inactive.bottom, 0x616161));
+	CHECK(same(theme.active.fg, rgb(0xffffff)) && same(theme.inactive.fg, rgb(0)));
 	CHECK(same(theme.menu.fg, rgb(0)));
 	CHECK(same(theme.root, rgb(0x5b7792)) && !theme.root_none);
 	CHECK(!theme.has_active_fg && !theme.has_inactive_fg);
@@ -135,10 +134,10 @@ TEST(theme_from_mwmrc)
 	CHECK(same(theme.active.top, shade_from(rgb(0xffd700), rgb(0)).top));
 }
 
-/* Only the built-in grey takes black title text: a background that is set, the same grey
- * too, gets Motif's white, as in docs/mwmrc.irix-schemes. One that isn't a colour leaves
- * the built-in, and a foreground that is set goes first. */
-TEST(theme_builtin_grey)
+/* Unfocused title text is Motif's for any grey, IRIX's Base #aaaaaa white as in
+ * docs/mwmrc.irix-schemes. One that isn't a colour leaves the default, and a foreground
+ * that is set goes first. */
+TEST(theme_inactive_text)
 {
 	no_env();
 	theme_from("Mwm*background: #aaaaaa\n");
@@ -148,7 +147,7 @@ TEST(theme_builtin_grey)
 	CHECK(same(theme.inactive.fg, rgb(0xffffff)));
 	no_env();
 	theme_from("Mwm*background: nonsense\n");
-	CHECK(same(theme.inactive.bg, rgb(0xaaaaaa)) && same(theme.inactive.fg, rgb(0)));
+	CHECK(same(theme.inactive.bg, rgb(0xb4b4b4)) && same(theme.inactive.fg, rgb(0)));
 	CHECK_INT(log_lines("ignoring Mwm*background: nonsense"), 1);
 	theme_from("Mwm*foreground: #ffffff\n");
 	CHECK(same(theme.inactive.fg, rgb(0xffffff)));
@@ -187,8 +186,8 @@ TEST(theme_bad_foreground)
 	/* IRIX's client palette is mtk's: mwc's frames don't change, a bad one is said. */
 	theme_from("Mwm*basicBackground: #795f78\nMwm*textForeground: #fffffe\n");
 	CHECK_INT(log_lines(""), 0);
-	CHECK(same(theme.inactive.bg, rgb(0xaaaaaa)) && same(theme.active.bg, rgb(0xc6c1aa)));
-	CHECK(same(theme.inactive.fg, rgb(0)) && same(theme.menu.bg, rgb(0xaaaaaa)));
+	CHECK(same(theme.inactive.bg, rgb(0xb4b4b4)) && same(theme.active.bg, rgb(0x2e5a8c)));
+	CHECK(same(theme.inactive.fg, rgb(0)) && same(theme.menu.bg, rgb(0xb4b4b4)));
 	theme_from("Mwm*basicBackground: nonsense\nMwm*textForeground: #12\n");
 	CHECK_INT(log_lines("ignoring Mwm*basicBackground: nonsense"), 1);
 	CHECK_INT(log_lines("ignoring Mwm*textForeground: #12"), 1);
@@ -291,7 +290,7 @@ TEST(theme_root_none)
 	/* Only the root may be none. */
 	no_env();
 	theme_from("Mwm*activeBackground: none\n");
-	CHECK(same(theme.active.bg, rgb(0xc6c1aa)));
+	CHECK(same(theme.active.bg, rgb(0x2e5a8c)));
 	CHECK_INT(log_lines("ignoring Mwm*activeBackground: none"), 1);
 }
 
@@ -478,7 +477,7 @@ int main(void)
 	RUN(color_wrappers);
 	RUN(theme_defaults);
 	RUN(theme_from_mwmrc);
-	RUN(theme_builtin_grey);
+	RUN(theme_inactive_text);
 	RUN(theme_environment_first);
 	RUN(theme_root_none);
 	RUN(theme_bad_foreground);

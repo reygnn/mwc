@@ -3,9 +3,10 @@
  * starts, the keyboard and monitors, tiling and icons. Same syntax as mwm-x11's
  * file, so one can be copied to the other.
  *
- *   Mwm*activeBackground:          #c6c1aa    focused frames
- *   Mwm*background:                #aaaaaa    other frames, menus, icons
+ *   Mwm*activeBackground:          #2e5a8c    focused frames
+ *   Mwm*background:                #b4b4b4    other frames, menus, icons
  *   Mwm*activeForeground / foreground         title text (default: auto)
+ *   Mwm*basicBackground:           #c4c4c4    mtk's clients, with textForeground
  *   Mwm*fontList:                  Sans Bold 10
  *   Mwm*resizeBorderWidth:         7          frames with resize handles, 3 to 64
  *   Mwm*frameBorderWidth:          5          frames without

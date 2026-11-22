@@ -91,10 +91,10 @@ do_input move $((TX + 50)) $((TY + 30))
 outline_is "the outline follows the pointer" $((X + 50)) $((Y + 30)) "$OW" "$OH"
 geometry_is "the window stays where it is" mover "$X" "$Y" 300 200
 feedback_is "the box shows the position" "+$((X + 50))_+$((Y + 30))"
-pixel_is "the outline is drawn in the window's colour" $((X + 51)) $((Y + 100)) c6c1aa
-pixel_is "the title bar line is drawn too" $((X + 200)) $((Y + 30 + B + T - 1)) c6c1aa
+pixel_is "the outline is drawn in the window's colour" $((X + 51)) $((Y + 100)) 2e5a8c
+pixel_is "the title bar line is drawn too" $((X + 200)) $((Y + 30 + B + T - 1)) 2e5a8c
 refresh
-pixel_is "the box is drawn" $(($(global feedback x) + 2)) $(($(global feedback y) + 10)) aaaaaa
+pixel_is "the box is drawn" $(($(global feedback x) + 2)) $(($(global feedback y) + 10)) b4b4b4
 # A fast mouse: the box is drawn about once a refresh, not for every motion event,
 # and shows where the window ends up.
 draws=$(global feedback draws)

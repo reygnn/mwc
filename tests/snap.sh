@@ -72,7 +72,7 @@ zone() { # x y name preview:x y w h
 	do_input move "$1" "$2"
 	preview_is "dragging to $3: the target is shown" "$4" "$5" "$6" "$7"
 	check "dragging to $3: the box names it" "[ \"\$(global feedback text)\" = '$3' ]"
-	pixel_is "dragging to $3: the outline is drawn" $(($4 + 3)) $(($5 + $7 / 4)) c6c1aa
+	pixel_is "dragging to $3: the outline is drawn" $(($4 + 3)) $(($5 + $7 / 4)) 2e5a8c
 	do_input up left
 	if [ "$3" = Maximize ]; then
 		check "dropped: maximized" "[ \"\$(get win max)\" = 1 ] && [ \"\$(get win snap)\" = 0 ]"
