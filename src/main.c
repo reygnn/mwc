@@ -848,7 +848,7 @@ static void output_manager_test(struct wl_listener *listener, void *data)
 
 /* ---- startup ------------------------------------------------------------ */
 
-static bool in_path(const char *prog)
+bool in_path(const char *prog)
 {
 	const char *path = getenv("PATH");
 	if (!path)
@@ -1145,6 +1145,7 @@ int main(int argc, char *argv[])
 		wl_event_source_remove(server.pointer_refresh);
 	input_virtual_fini();
 	toast_fini();
+	spawn_fini();
 	wl_list_remove(&server.new_idle_inhibitor.link);
 	wl_list_remove(&server.activation_new_token.link);
 	wl_list_remove(&server.activation_request.link);

@@ -123,16 +123,6 @@ TODO
   Abnahme: Fälle in tests/unit/draw_test.c (gold, #aaaaaa gesetzt, ein
   gesetztes foreground geht vor, 0 lässt Motif), README unter Configuration.
 
-* Prio hoch: Startfehler zeigen (aus rediwm, launch_feedback.zig,
-  2026-11-22). Ein Programm, das mwc startet (terminal, runDialog,
-  screenSaver, Screenshots, rootMenuItem), und das sofort scheitert, etwa ein
-  Tippfehler im Namen, zeigt heute nichts auf dem Bildschirm. mwc merkt sich
-  die Kindprozesse und meldet einen Exit ungleich 0 innerhalb kurzer Zeit
-  (127: nicht gefunden). Zu klären: wie (das Feedback-Feld wie beim
-  Verschieben, ein kurzes Fenster, oder nur ein Logeintrag mit dem Befehl).
-  Abnahme: ein Fall in tests/misc.sh mit einem falschen Befehl, CAVEATS unter
-  "Programs mwc starts" angepasst oder gestrichen.
-
 * Prio mittel: Zeiger einfangen, pointer-constraints-unstable-v1 und
   relative-pointer-unstable-v1 (aus rediwm, src/input/pointer_constraints.zig,
   2026-11-22). Für VM- und RDP-Viewer, Spiele, Blender. rediwms Regeln:

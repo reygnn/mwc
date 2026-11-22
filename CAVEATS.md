@@ -87,9 +87,11 @@ title bar and stay without a Motif frame.
 ## Programs mwc starts
 
 `terminal`, `runDialog`, `screenSaver`, the screenshot commands and `rootMenuItem` run
-through `/bin/sh -c` without mwc waiting for them. A command that fails, such as a
-misspelt program name, shows nothing on the screen: the key or menu item does nothing,
-and only the shell's message ("not found") is in mwc's log.
+through `/bin/sh -c`. A command the shell doesn't find or may not run within a second
+shows a toast ("name: not found") and a line in mwc's log. One that fails otherwise,
+or later, shows nothing: only its own messages are in mwc's log. Nor does a missing
+command inside the autostart file. A wrapper that passes on its program's 127, as
+`foot -e`, is named whole, not the program inside it.
 
 
 ## Desktops and what clients see

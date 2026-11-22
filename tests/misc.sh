@@ -98,6 +98,88 @@ finish
 unset MWC_TERMINAL
 rm "$XDG_CONFIG_HOME/mwc/mwmrc"
 
+# A program that can't be started says so, in a toast and the log: a name the shell
+# doesn't find (127), a file it may not run (126). Not one that ends at once on its own,
+# nor one that keeps running. Each such toast has its own, below the desktop's, the
+# oldest first, and the same one again stays one. A minute here (MWC_TOAST_MS), so
+# that none goes before a check.
+error_is() { # description index text, spaces as _
+	WANT=$3
+	check "$1" "[ \"\$(global toasterror_$2 text)\" = \"\$WANT\" ]"
+}
+errors_are() { check "$1" "[ \"\$(global toasterrors n)\" = $2 ]"; }
+# Super+Return, and once its watcher has seen the second out or the program end, no
+# new toast.
+quiet() { # description
+	local n started
+	refresh
+	n=$(global toast shown) started=$(global launch started)
+	do_input key super+Return
+	check "$1: its watcher is done" \
+		"[ \"\$(global launch started)\" -gt $started ] && [ \"\$(global launch watching)\" = 0 ]"
+	check "$1" "[ \"\$(global toast shown)\" = $n ]"
+}
+terminal() { echo "Mwm*terminal: $1" >"$XDG_CONFIG_HOME/mwc/mwmrc"; reload_mwc; }
+export MWC_TOAST_MS=60000
+echo 'Mwm*terminal: no-such-program-here --flag' >"$XDG_CONFIG_HOME/mwc/mwmrc"
+begin
+do_input key super+Return
+error_is "a program not found says so" 0 "no-such-program-here:_not_found"
+wait_for "and the log too" grep -q '"no-such-program-here --flag": no-such-program-here: not found' "$LOG"
+printf 'true\n' >"$SMOKE_DIR/no-exec"
+chmod -x "$SMOKE_DIR/no-exec"
+terminal "$SMOKE_DIR/no-exec"
+do_input key super+Return
+error_is "a file that can't be run says so, below the first" 1 "$SMOKE_DIR/no-exec:_can't_be_run"
+refresh
+[ "$(global toasterror_1 y)" -ge $(($(global toasterror_0 y) + $(global toasterror_0 h))) ] ||
+	fail "the second isn't below the first: $(global toasterror_0 y) $(global toasterror_1 y)"
+echo "ok: the second below the first"
+n=$(global toast shown)
+do_input key super+Return
+wait_for "the same one again" eval '[ $(grep -c "no-exec: can.t be run" "$LOG") -ge 2 ]'
+errors_are "stays one" 2
+check "and shows nothing new" "[ \"\$(global toast shown)\" = $n ]"
+terminal "exec FOO=1 no-such-after-exec"
+do_input key super+Return
+error_is "the program past exec and assignments" 2 "no-such-after-exec:_not_found"
+terminal "env no-such-under-env"
+do_input key super+Return
+error_is "a program that is there names the whole command" 3 "env_no-such-under-env:_not_found"
+terminal false
+quiet "one that fails on its own says nothing"
+# The shell's parent is the watcher: it keeps none of mwc's files open, only the pipe as
+# 3 and, once it waits, the pidfd as 4. Not under valgrind, whose own files the watcher,
+# a fork of mwc, has too.
+if [ -z "${MWC_VALGRIND-}" ]; then
+	terminal "ls /proc/\$PPID/fd >$SMOKE_DIR/watcher.fds; sleep 3"
+	do_input key super+Return
+	wait_for "the watcher's files are listed" test -s "$SMOKE_DIR/watcher.fds"
+	fds=$(sort -n "$SMOKE_DIR/watcher.fds" | tr '\n' ' ')
+	case $fds in "0 1 2 3 " | "0 1 2 3 4 ") ;;
+	*) fail "its watcher keeps mwc's files open: $fds" ;; esac
+	echo "ok: its watcher keeps none of mwc's files open"
+fi
+terminal "sleep 3"
+quiet "nor one that keeps running"
+terminal "sleep 2.5; exit 127"
+quiet "nor one that is not found only after the second"
+finish
+
+# Five at most: the oldest goes for a sixth.
+echo 'Mwm*terminal: missing-0' >"$XDG_CONFIG_HOME/mwc/mwmrc"
+begin
+for i in 0 1 2 3 4 5; do
+	[ "$i" = 0 ] || terminal "missing-$i"
+	do_input key super+Return
+	error_is "missing-$i" $((i < 4 ? i : 4)) "missing-${i}:_not_found"
+done
+errors_are "five at most" 5
+error_is "the oldest went for the sixth" 0 "missing-1:_not_found"
+finish
+unset MWC_TOAST_MS
+rm "$XDG_CONFIG_HOME/mwc/mwmrc"
+
 export MWC_TERMINAL="touch $SMOKE_DIR/started-3"
 printf 'Mwm*under*geometry: +100+100\nMwm*over*geometry: +150+150\n' \
 	>"$XDG_CONFIG_HOME/mwc/mwmrc"

@@ -575,6 +575,20 @@ wait "$PID_lock" 2>/dev/null
 switch_to 2
 check "once it is gone, a switch shows one again" "[ \"\$(toast shown)\" = $((n + 4)) ]"
 switch_to 1
+# A program that couldn't be started keeps its toast over a switch, below the desktop's.
+printf 'Mwm*outputManagement: true\nMwm*terminal: missing-here\n' >"$XDG_CONFIG_HOME/mwc/mwmrc"
+reload_mwc
+do_input key super+Return
+check "a toast for a program not found" "[ \"\$(global toasterror_0 text)\" = missing-here:_not_found ]"
+switch_to 2
+check "a switch shows its own and leaves that one" \
+	"[ \"\$(toast text)\" = Desktop_2 ] && [ \"\$(global toasterror_0 text)\" = missing-here:_not_found ]"
+[ "$(global toasterror_0 y)" -ge $(($(toast y) + $(toast h))) ] ||
+	fail "the error isn't below the desktop's: $(toast y) $(global toasterror_0 y)"
+echo "ok: below the desktop's"
+echo 'Mwm*outputManagement: true' >"$XDG_CONFIG_HOME/mwc/mwmrc"
+reload_mwc
+switch_to 1
 
 # ---- the group follows its output -------------------------------------------------------
 

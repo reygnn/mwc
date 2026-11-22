@@ -137,6 +137,10 @@ Global resources:
 | `keyboardLayout`, `keyboardVariant`, `keyboardOptions`, `keyboardModel` | see Keyboard and monitors |
 | `outputManagement` | `true`: offer wlr-output-management, see Keyboard and monitors |
 
+A program in these that isn't found, or may not be run, shows a toast such as
+"mfmx: not found" for three seconds, each its own, below the desktop's; the same one
+again only shows longer.
+
 Per program:
 
 | Resource | Meaning |

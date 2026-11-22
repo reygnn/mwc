@@ -624,6 +624,7 @@ bool view_focusable(struct view *view);
 /* ---- main.c ------------------------------------------------------------- */
 
 void outputs_config_changed(struct server *server);
+bool in_path(const char *prog);
 /* Input: switches the monitors that are off through wlr-output-power back on, but only
  * when no monitor is on; true if it did. Once per dark spell if that fails. */
 bool outputs_wake(struct server *server);
@@ -729,6 +730,10 @@ void input_end_client_grab(struct server *server);
 void spawn(const char *cmd);
 /* No shell, no quoting. */
 void spawn_file(const char *path);
+/* The watchers of programs started in the last second. */
+void spawn_fini(void);
+/* For the tests: watchers waiting; started, how many there were. */
+int spawn_watching(int *started);
 
 /* ---- tilelayout.c ------------------------------------------------------- */
 
@@ -822,12 +827,16 @@ const char *feedback_get(struct wlr_box *box, int *draws);
 
 /* ---- toast.c ------------------------------------------------------------ */
 
-/* Replaces the one showing. */
-void toast_show(struct server *server, const char *text);
+/* The desktop's: replaces the one showing; for ms. */
+void toast_show(struct server *server, const char *text, int ms);
+/* One more below it, for ms; the same text showing only starts its time anew. */
+void toast_error(struct server *server, const char *text, int ms);
 void toast_hide(void);
 void toast_fini(void);
-/* "" while hidden; n: how many were shown. */
+/* The desktop's, "" while hidden; n: how many toasts were shown. */
 const char *toast_get(struct wlr_box *box, int *n);
+/* The ith error showing, from 0, the oldest; NULL past the last. */
+const char *toast_error_get(int i, struct wlr_box *box);
 
 /* ---- layer.c ------------------------------------------------------------ */
 
@@ -885,6 +894,13 @@ enum activation {
 	ACTIVATION_MARK,   /* its desktop, see desktop_attention() */
 };
 enum activation activation_decide(const struct activation_request *r);
+
+/* ---- launch.c ----------------------------------------------------------- */
+
+/* For the exit status of what, a shell command or a file: "name: why" in out, or false
+ * for nothing to say. found, if given, says whether a program is in PATH. */
+bool launch_failure(const char *what, bool shell, int status,
+	bool (*found)(const char *program), char *out, size_t size);
 
 /* ---- config.c ----------------------------------------------------------- */
 

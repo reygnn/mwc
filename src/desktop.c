@@ -141,7 +141,7 @@ void desktop_switch(struct server *server, int n)
 	focus_after(server, lost, false);
 	char text[32];
 	snprintf(text, sizeof(text), "Desktop %d", n + 1);
-	toast_show(server, text);
+	toast_show(server, text, 1000);
 }
 
 void view_set_desktop(struct view *view, int n)

@@ -12,6 +12,7 @@
  *   1280x720 one in instead.
  */
 #define _POSIX_C_SOURCE 200809L
+#include <ctype.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -203,6 +204,18 @@ static int dump_state(int signal, void *data)
 		*p = *p == ' ' ? '_' : *p;
 	fprintf(f, "toast text=%s x=%d y=%d w=%d h=%d shown=%d\n", toast_label,
 		box.x, box.y, box.width, box.height, toasts);
+	int errors = 0;
+	for (const char *e; (e = toast_error_get(errors, &box)); errors++) {
+		snprintf(toast_label, sizeof(toast_label), "%s", e);
+		for (char *p = toast_label; *p; p++)
+			*p = isspace((unsigned char)*p) ? '_' : *p;
+		fprintf(f, "toasterror_%d text=%s x=%d y=%d h=%d\n", errors, toast_label,
+			box.x, box.y, box.height);
+	}
+	fprintf(f, "toasterrors n=%d\n", errors);
+	int started;
+	int watching = spawn_watching(&started);
+	fprintf(f, "launch watching=%d started=%d\n", watching, started);
 	fprintf(f, "wallpaper decodes=%d\n", server->wallpaper_decodes);
 	fprintf(f, "theme border=%d thin=%d title=%d\n", theme.border,
 		theme.thin_border, theme.title_height);
