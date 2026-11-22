@@ -12,7 +12,7 @@
 ! basicBackground and textForeground are the colours IRIX's programs drew with; mwc
 ! draws nothing with them, mtk's clients (deskControl, pulseControl, digitalClock, ...)
 ! draw on them instead of the frame colours, their text at WCAG's 4.5:1 at least.
-! Without basicBackground they keep the frame colours.
+! Without basicBackground they draw on mwc's built-in #c4c4c4 with #000000 text.
 !
 ! Title text: deliberately unset. 4Dwm left it to Motif and so does mwc: black above 70%
 ! brightness, white otherwise. Where the palette says otherwise, an optional override is
