@@ -4,7 +4,7 @@
  *
  * The shown view is the window, the others don't exist for the rest of mwc: moving,
  * maximizing, tiling and Alt+Tab only ever see the shown one. What makes up a window's
- * place moves over to the next one when it is shown, see move_place().
+ * place moves over to the next one when it is shown, see view_hand_over_place().
  *
  * There is no group of one.
  */
@@ -31,36 +31,6 @@ static void tell_suspended(struct view *view, bool suspended)
 {
 	if (view->xdg_toplevel->base->initialized)
 		wlr_xdg_toplevel_set_suspended(view->xdg_toplevel, suspended);
-}
-
-/*
- * Everything that makes up the window's place on the screen. A new field of struct view
- * that belongs to the place rather than the client has to be added here.
- */
-static void move_place(struct view *to, struct view *from)
-{
-	to->x = from->x;
-	to->y = from->y;
-	to->saved = from->saved;
-	to->fit_px = from->fit_px;
-	to->fit_py = from->fit_py;
-	to->fit_output = from->fit_output;
-	to->maximized = from->maximized;
-	to->snap = from->snap;
-	to->tiled = from->tiled;
-	to->tile = from->tile;
-	to->tile_main = from->tile_main;
-	to->tile_seq = from->tile_seq;
-	to->shaded = from->shaded;
-	to->auto_shaded = from->auto_shaded;
-
-	from->maximized = false;
-	from->snap = SNAP_NONE;
-	from->tiled = false;
-	from->tile_main = false;
-	from->tile_back = false;
-	from->shaded = false;
-	from->auto_shaded = false;
 }
 
 /* Its dialogs go and come with it, as with an icon. */
@@ -137,7 +107,7 @@ static void switch_to(struct tab_group *g, struct view *to, struct view *from, b
 		w = from->saved.width;
 		h = from->saved.height;
 	}
-	move_place(to, from);
+	view_hand_over_place(to, from);
 	if (from_full) {
 		to->x = to->saved.x;
 		to->y = to->saved.y;
@@ -228,9 +198,8 @@ void tabs_own_size(struct view *view, int *w, int *h)
 static void back_to_own_size(struct view *view)
 {
 	int w = view->tab_own_w, h = view->tab_own_h;
-	if (view->maximized || view->snap != SNAP_NONE || view->tiled || view->fullscreen) {
-		view->saved.width = w;
-		view->saved.height = h;
+	if (view_placement(view) != PLACE_FREE) {
+		view_remember_size(view, w, h);
 		return;
 	}
 	if (w)
@@ -317,7 +286,7 @@ bool tabs_join(struct view *view, struct view *target)
 	}
 	/* It takes the group's place, and what it was doing until now is over. */
 	grab_give_way(view);
-	view->tiled = false;
+	view_drop_tiled(view);
 	view->tile_main = false;
 	view->shaded = false;
 	view->auto_shaded = false;

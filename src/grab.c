@@ -167,20 +167,15 @@ void grab_end(struct server *server)
 	if (zone != SNAP_NONE) {
 		/* Going back later means to where it was before this drag, not to
 		 * the screen edge it was dropped on. */
-		struct wlr_box before = view->saved;
+		struct wlr_box back = orig_snap != SNAP_NONE || orig_max ? view->saved : orig;
 		view->x = orig.x;
 		view->y = orig.y;
-		view_snap(view, zone, px, py);
-		view->saved = orig_snap != SNAP_NONE || orig_max ? before : orig;
+		view_snap_back_to(view, zone, px, py, back);
 		return;
 	}
 	/* A resized window is no longer snapped. */
-	if (mode == CURSOR_RESIZE && changed && view->snap != SNAP_NONE) {
-		struct wlr_box current = target;
-		view->saved = current;
-		view->snap = SNAP_NONE;
-		wlr_xdg_toplevel_set_tiled(view->xdg_toplevel, WLR_EDGE_NONE);
-	}
+	if (mode == CURSOR_RESIZE && changed && view->snap != SNAP_NONE)
+		view_unsnap_in_place(view, target);
 	if (!apply)
 		return;
 	if (mode == CURSOR_MOVE)
@@ -204,10 +199,8 @@ void grab_cancel(struct server *server)
 	if ((was_maximized && !view->maximized) ||
 			(was_snapped != SNAP_NONE && view->snap == SNAP_NONE)) {
 		/* What it restores to must survive this round trip. */
-		struct wlr_box saved = view->saved;
-		view_snap(view, was_maximized ? SNAP_MAXIMIZE : was_snapped,
-			orig.x + orig.width / 2.0, orig.y + orig.height / 2.0);
-		view->saved = saved;
+		view_snap_back_to(view, was_maximized ? SNAP_MAXIMIZE : was_snapped,
+			orig.x + orig.width / 2.0, orig.y + orig.height / 2.0, view->saved);
 	} else if (opaque && mode == CURSOR_MOVE) {
 		view_set_position(view, orig.x, orig.y);
 	} else if (opaque) {

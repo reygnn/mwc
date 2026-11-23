@@ -88,9 +88,9 @@ static int by_seq(const void *a, const void *b)
 	return (x->tile_seq > y->tile_seq) - (x->tile_seq < y->tile_seq);
 }
 
-/* The tiled windows of the current desktop in layout order, main window first. The
- * caller frees it. */
-static struct view **tiled_windows(struct server *server, int *n)
+/* The tiled windows of the current desktop in layout order, main window first, and
+ * with, if given, as if it were tiled too. The caller frees it. */
+static struct view **tiled_windows(struct server *server, int *n, struct view *with)
 {
 	struct view **list = calloc(wl_list_length(&server->views) + 1, sizeof(*list));
 	struct view *v;
@@ -98,7 +98,7 @@ static struct view **tiled_windows(struct server *server, int *n)
 	if (!list)
 		return NULL;
 	wl_list_for_each(v, &server->views, link) {
-		if (v->tiled && !v->off_desktop)
+		if ((v->tiled || v == with) && !v->off_desktop)
 			list[(*n)++] = v;
 	}
 	qsort(list, *n, sizeof(*list), by_seq);
@@ -171,13 +171,11 @@ static struct view *plan(struct server *server, struct view **list, int n,
  * counted in, but without tiling it. */
 static bool fits(struct server *server, struct view *view)
 {
-	view->tiled = true;
 	int n;
-	struct view **list = tiled_windows(server, &n);
+	struct view **list = tiled_windows(server, &n, view);
 	bool overflow = false;
 	struct view *misfit = n ? plan(server, list, n, &overflow) : view;
 	free(list);
-	view->tiled = false;
 	return misfit != view;
 }
 
@@ -215,7 +213,7 @@ void tile_arrange(struct server *server)
 			view_set_tiled(v, want, true);
 		}
 		int n;
-		struct view **list = tiled_windows(server, &n);
+		struct view **list = tiled_windows(server, &n, NULL);
 		bool overflow = false;
 		struct view *misfit = n ? plan(server, list, n, &overflow) : NULL;
 		if (misfit && overflow) {
@@ -273,7 +271,7 @@ void tile_iconify(struct view *view)
 		return;
 	}
 	int n;
-	struct view **list = tiled_windows(server, &n);
+	struct view **list = tiled_windows(server, &n, NULL);
 	if (n > 1) {
 		swap_seq(list[0], list[1]);
 		tile_arrange(server);
@@ -287,7 +285,7 @@ void tile_promote(struct view *view)
 	if (!view->tiled || view->tile_main)
 		return;
 	int n;
-	struct view **list = tiled_windows(server, &n);
+	struct view **list = tiled_windows(server, &n, NULL);
 	if (n > 1) {
 		view->shaded = false;
 		swap_seq(list[0], view);

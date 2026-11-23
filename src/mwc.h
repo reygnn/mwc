@@ -293,6 +293,34 @@ static inline bool view_decorated(const struct view *view)
 	return view->ssd && !view->fullscreen;
 }
 
+/* What decides its size and place: the uppermost of what applies. Under the last two
+ * the floating state, snap or maximized, is kept for later; see placement.c. */
+enum placement {
+	PLACE_FREE,       /* its own size, where the user or the cascade put it */
+	PLACE_SNAPPED,    /* a half or quarter of its output's usable area */
+	PLACE_MAXIMIZED,
+	PLACE_TILED,      /* a cell of the layout */
+	PLACE_FULLSCREEN,
+};
+
+static inline enum placement view_placement(const struct view *view)
+{
+	if (view->fullscreen)
+		return PLACE_FULLSCREEN;
+	if (view->tiled)
+		return PLACE_TILED;
+	if (view->maximized)
+		return PLACE_MAXIMIZED;
+	return view->snap != SNAP_NONE ? PLACE_SNAPPED : PLACE_FREE;
+}
+
+/* Fills a part of its output's usable area, and again whenever that changes. */
+static inline bool view_fills_area(const struct view *view)
+{
+	enum placement p = view_placement(view);
+	return p == PLACE_SNAPPED || p == PLACE_MAXIMIZED;
+}
+
 /* ---- menus -------------------------------------------------------------- */
 
 enum menu_action {
@@ -545,12 +573,8 @@ void view_set_position(struct view *view, int x, int y);
 void view_set_geometry(struct view *view, int x, int y, int w, int h);
 void view_close(struct view *view);
 void view_lower(struct view *view);
-void view_set_maximized(struct view *view, bool maximized);
-void view_set_fullscreen(struct view *view, bool fullscreen);
 void view_minimize(struct view *view);
 void view_restore(struct view *view);
-/* On the output at px, py. SNAP_NONE: the geometry from before. */
-void view_snap(struct view *view, enum snap s, double px, double py);
 void view_frame_changed(struct view *view);
 void view_theme_changed(struct view *view);
 const char *view_title(struct view *view);
@@ -564,9 +588,6 @@ void view_set_activated(struct view *view, bool activated);
 struct view *view_at(struct server *server, double lx, double ly,
 	struct wlr_surface **surface, double *sx, double *sy,
 	enum frame_part *part, uint32_t *edges, bool *on_icon);
-/* apply: back to its floating geometry or state. */
-void view_set_tiled(struct view *view, bool on, bool apply);
-void view_apply_tile(struct view *view);
 void view_focus_next(struct view *except);
 void view_focus_top(struct server *server);
 /* The same, but an on-demand layer surface keeps the keyboard, as for a window gone. */
@@ -577,13 +598,8 @@ void view_raise_one(struct view *view);
 /* With its dialogs above it. */
 void view_raise(struct view *view);
 void views_update_layers(struct server *server);
-void views_usable_area_changed(struct server *server);
-/* Only the dock's box changed: snapped windows refit. */
-void views_refit_snapped(struct server *server);
 /* Free windows the dock on output now covers move out of its strip. */
 void views_clear_dock(struct output *output);
-void views_layout_changed(struct server *server);
-void views_output_gone(struct output *output);
 /* wm_capabilities from funcs, sent on a change. */
 void xdg_publish_caps(struct view *view);
 /* The managed window a surface, a subsurface or a popup belongs to, or NULL. */
@@ -591,10 +607,44 @@ struct view *view_from_surface(struct wlr_surface *surface);
 /* Nothing else follows from it. */
 void view_show(struct view *view, bool show);
 void view_show_content(struct view *view);
+/* The client's surfaces inside the frame, after either changed; a fullscreen window's
+ * black behind it. */
+void view_update_content_pos(struct view *view);
+void view_place(struct view *view);
+
+/* ---- placement.c -------------------------------------------------------- */
+
+void view_set_maximized(struct view *view, bool maximized);
+void view_set_fullscreen(struct view *view, bool fullscreen);
+/* asked_output: on the output the client named with its request, if any. */
+void view_fullscreen_at(struct view *view, bool fullscreen, bool asked_output);
+/* On the output at px, py. SNAP_NONE: the geometry from before. */
+void view_snap(struct view *view, enum snap s, double px, double py);
+void view_snap_back_to(struct view *view, enum snap s, double px, double py,
+	struct wlr_box back);
+void view_unsnap_in_place(struct view *view, struct wlr_box now);
+/* The size it goes back to when it leaves its state. */
+void view_remember_size(struct view *view, int w, int h);
+/* apply: back to its floating geometry or state. */
+void view_set_tiled(struct view *view, bool on, bool apply);
+void view_apply_tile(struct view *view);
+/* Out of the layout with nothing applied: a tab's place is its group's. */
+void view_drop_tiled(struct view *view);
+/* The same for a window unmapped, which has nothing to come back into the layout for;
+ * view_reset_state() ends its floating state and fullscreen once the others closed up. */
+void view_untile_unmapped(struct view *view);
+void view_reset_state(struct view *view);
+void view_hand_over_place(struct view *to, struct view *from);
+void view_send_first_state(struct view *view);
+/* What the client is told of its state: tiled edges, maximized. */
 void view_publish_state(struct view *view);
 void view_refit(struct view *view);
 void view_refit_at(struct view *view, double px, double py);
-void view_place(struct view *view);
+void views_usable_area_changed(struct server *server);
+/* Only the dock's box changed: snapped windows refit. */
+void views_refit_snapped(struct server *server);
+void views_layout_changed(struct server *server);
+void views_output_gone(struct output *output);
 
 /* ---- sizehints.c -------------------------------------------------------- */
 

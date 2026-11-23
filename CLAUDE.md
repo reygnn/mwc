@@ -16,7 +16,7 @@ test tools. `distrobox enter mwc-dev -- bash -lc 'cd ~/data/C-Projects/mwc && ..
 | `make test` | the scripts in `tests/`; one alone: `make NAME-test`, log in `build/NAME.log` |
 | `make check` | the same under ASan and UBSan with `-Werror`, then the kept fuzz inputs |
 | `make analyze` | `gcc -fanalyzer` over the sources, findings as errors |
-| `make lint` | C lines over 100 columns, tabs as 8 |
+| `make lint` | C lines over 100 columns, tabs as 8; placement written outside `placement.c`, `struct grab` outside `grab.c` |
 | `make valgrind` | memcheck, slow, without the timing-dependent scripts |
 | `make fuzz` | libFuzzer on the mwmrc parser, `FUZZ_TIME` seconds |
 | `make schemes` | `docs/irix-schemes.html` from `docs/mwmrc.irix-schemes`; `schemes-test` in `make test` fails while it is out of date |

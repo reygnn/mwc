@@ -28,7 +28,7 @@ SRC = src/main.c src/view.c src/frame.c src/menu.c \
 	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c src/iconbox.c \
 	src/dock.c src/outputrc.c src/sizehints.c src/snaprules.c src/configview.c \
 	src/tilelayout.c src/color.c src/activation.c src/toast.c src/launch.c \
-	src/output.c src/spawn.c src/grab.c src/keys.c
+	src/output.c src/spawn.c src/grab.c src/keys.c src/placement.c
 # Protocols mwc implements itself, not through wlroots: their glue code too.
 PROTO_CODE = build/fifo-v1-protocol.c build/ext-workspace-v1-protocol.c
 OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)
@@ -218,6 +218,10 @@ analyze: $(PROTO) build/logo.h build/gitversion.h
 # conditions that read better whole.
 LINT_MAX = 100
 LINT_FILES = src/*.c src/*.h tests/*.c tests/unit/*.c tests/unit/*.h fuzz/*.c docs/*.c
+# And state one module alone may write, the others through its functions: what decides
+# a window's size and place (placement.c), and what the pointer has hold of (grab.c).
+PLACEMENT_WRITE = ->(maximized|fullscreen|snap|tiled|tile_back|fit_px|fit_py|fit_output) *=[^=]|->saved(\.[a-z]+)? *=[^=]
+GRAB_WRITE = ->grab\.[a-z_.]+ *(=[^=]|\+\+|--|[-+|&]=)
 
 lint:
 	@awk -v max=$(LINT_MAX) '{ \
@@ -226,6 +230,10 @@ lint:
 			n = substr($$0, i, 1) == "\t" ? n + 8 - n % 8 : n + 1; \
 		if (n > max) { print FILENAME ":" FNR ": " n " columns"; bad = 1 } \
 	} END { exit bad }' $(LINT_FILES)
+	@! grep -nE -- '$(PLACEMENT_WRITE)' $(filter-out src/placement.c,$(wildcard src/*.c)) || \
+		{ echo "make lint: a window's placement is written in src/placement.c only"; exit 1; }
+	@! grep -nE -- '$(GRAB_WRITE)' $(filter-out src/grab.c,$(wildcard src/*.c)) || \
+		{ echo "make lint: struct grab is written in src/grab.c only"; exit 1; }
 
 # make valgrind: the tests against mwc in valgrind's memcheck (tests/valgrind-mwc),
 # for what the sanitizers don't see: reads of uninitialized memory, and errors inside
