@@ -528,6 +528,7 @@ struct output {
 /* ---- view.c ------------------------------------------------------------- */
 
 void xdg_init(struct server *server);
+void xdg_fini(struct server *server);
 /* In base->data for as long as the tree lives: a surface can outlast its role. */
 void xdg_surface_set_tree(struct wlr_xdg_surface *base, struct wlr_scene_tree *tree);
 void view_focus(struct view *view);
@@ -573,16 +574,6 @@ void view_raise_one(struct view *view);
 /* With its dialogs above it. */
 void view_raise(struct view *view);
 void views_update_layers(struct server *server);
-/* The output there, or else the first; NULL when there are none. */
-struct output *output_at(struct server *server, double lx, double ly);
-/* False once a client switched it off. */
-bool output_in_layout(struct output *output);
-/* The oldest in the layout; NULL if clients switched all off. */
-struct output *output_first(struct server *server);
-struct wlr_box output_usable_area(struct server *server, double lx, double ly);
-/* Whether b reaches into the dock on o. */
-bool output_dock_in_the_way(struct output *o, struct wlr_box b);
-struct wlr_box output_full_area(struct server *server, double lx, double ly);
 void views_usable_area_changed(struct server *server);
 /* Only the dock's box changed: snapped windows refit. */
 void views_refit_snapped(struct server *server);
@@ -621,13 +612,31 @@ bool view_is_transient_of(struct view *view, struct view *ancestor);
 struct view *view_transient_root(struct view *view);
 bool view_focusable(struct view *view);
 
-/* ---- main.c ------------------------------------------------------------- */
+/* ---- output.c ----------------------------------------------------------- */
 
+/* Power, management, the layout and new outputs; before input_init(). */
+void outputs_init(struct server *server);
+/* The layout's changes; after input_init(), whose cursor has to hear of them first. */
+void outputs_watch_layout(struct server *server);
+void outputs_fini(struct server *server);
+/* The output there, or else the first; NULL when there are none. */
+struct output *output_at(struct server *server, double lx, double ly);
+/* False once a client switched it off. */
+bool output_in_layout(struct output *output);
+/* The oldest in the layout; NULL if clients switched all off. */
+struct output *output_first(struct server *server);
+struct wlr_box output_usable_area(struct server *server, double lx, double ly);
+/* Whether b reaches into the dock on o. */
+bool output_dock_in_the_way(struct output *o, struct wlr_box b);
+struct wlr_box output_full_area(struct server *server, double lx, double ly);
 void outputs_config_changed(struct server *server);
-bool in_path(const char *prog);
 /* Input: switches the monitors that are off through wlr-output-power back on, but only
  * when no monitor is on; true if it did. Once per dark spell if that fails. */
 bool outputs_wake(struct server *server);
+
+/* ---- main.c ------------------------------------------------------------- */
+
+bool in_path(const char *prog);
 const char *terminal_command(struct server *server);
 /* The clock input events are stamped with, in ms. */
 uint32_t now_msec(void);
@@ -706,6 +715,7 @@ void run_action(struct server *server, enum menu_action action,
 /* ---- input.c ------------------------------------------------------------ */
 
 void input_init(struct server *server);
+void input_fini(struct server *server);
 void input_config_changed(struct server *server);
 /* Opaque resize: the size held back while the client was busy goes out. */
 void grab_resize_caught_up(struct view *view);
@@ -727,6 +737,10 @@ bool input_pointer_on(struct server *server, struct wlr_surface *surface);
 void input_keyboard_enter(struct server *server, struct wlr_surface *surface);
 /* A client's menu holds the keyboard wherever the focus goes. Not during a drag. */
 void input_end_client_grab(struct server *server);
+
+/* ---- spawn.c ------------------------------------------------------------ */
+
+void spawn_init(struct server *server);
 void spawn(const char *cmd);
 /* No shell, no quoting. */
 void spawn_file(const char *path);
@@ -841,6 +855,7 @@ const char *toast_error_get(int i, struct wlr_box *box);
 /* ---- layer.c ------------------------------------------------------------ */
 
 void layer_init(struct server *server);
+void layer_fini(struct server *server);
 void layer_arrange(struct output *output);
 /* At once, then at most once per refresh. */
 void layer_arrange_soon(struct output *output);

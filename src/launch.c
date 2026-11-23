@@ -1,6 +1,6 @@
 /*
  * launch.c - what mwc says when a program it started fails at once: its name and
- * why, from the shell's exit status. input.c starts the program and acts on this.
+ * why, from the shell's exit status. spawn.c starts the program and acts on this.
  * Tested in tests/unit.
  */
 #define _POSIX_C_SOURCE 200809L

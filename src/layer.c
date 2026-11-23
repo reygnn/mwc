@@ -439,3 +439,8 @@ void layer_init(struct server *server)
 	server->new_layer_surface.notify = new_layer_surface;
 	wl_signal_add(&shell->events.new_surface, &server->new_layer_surface);
 }
+
+void layer_fini(struct server *server)
+{
+	wl_list_remove(&server->new_layer_surface.link);
+}

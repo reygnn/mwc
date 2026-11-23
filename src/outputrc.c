@@ -1,7 +1,7 @@
 /*
  * outputrc.c - what mwmrc says about an output, outputMode, outputScale,
  * outputTransform and outputPosition, from text to values, and when input wakes the
- * outputs. Nothing here touches an output: main.c applies them and logs what it
+ * outputs. Nothing here touches an output: output.c applies them and logs what it
  * ignores. Tested in tests/unit.
  */
 #define _POSIX_C_SOURCE 200809L

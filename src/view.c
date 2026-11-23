@@ -33,60 +33,6 @@ const char *view_app_id(struct view *view)
 	return t ? t : "";
 }
 
-struct output *output_at(struct server *server, double lx, double ly)
-{
-	struct wlr_output *o = wlr_output_layout_output_at(server->output_layout,
-		lx, ly);
-	if (o && o->data)
-		return o->data;
-	/* Not one a client switched off: its area is empty, and windows put there
-	 * would be out of reach. */
-	struct output *out;
-	wl_list_for_each(out, &server->outputs, link) {
-		if (output_in_layout(out))
-			return out;
-	}
-	wl_list_for_each(out, &server->outputs, link)
-		return out;
-	return NULL;
-}
-
-bool output_in_layout(struct output *output)
-{
-	return wlr_output_layout_get(output->server->output_layout, output->wlr_output);
-}
-
-struct output *output_first(struct server *server)
-{
-	struct output *o;
-	wl_list_for_each_reverse(o, &server->outputs, link) {
-		if (output_in_layout(o))
-			return o;
-	}
-	return NULL;
-}
-
-struct wlr_box output_full_area(struct server *server, double lx, double ly)
-{
-	struct wlr_box box = { 0, 0, 1024, 768 };
-	struct output *o = output_at(server, lx, ly);
-	if (o)
-		wlr_output_layout_get_box(server->output_layout, o->wlr_output, &box);
-	return box;
-}
-
-struct wlr_box output_usable_area(struct server *server, double lx, double ly)
-{
-	struct output *o = output_at(server, lx, ly);
-	return o ? o->usable : output_full_area(server, lx, ly);
-}
-
-bool output_dock_in_the_way(struct output *o, struct wlr_box b)
-{
-	struct wlr_box hit;
-	return o && wlr_box_intersection(&hit, &b, &o->dock);
-}
-
 static void view_place_within(struct view *view, struct wlr_box a, int x, int y);
 
 /* The area a window at box b may use: with the dock's strip unless b reaches into
@@ -2304,4 +2250,12 @@ void xdg_init(struct server *server)
 	server->new_server_decoration.notify = new_server_decoration;
 	wl_signal_add(&sdm->events.new_decoration,
 		&server->new_server_decoration);
+}
+
+void xdg_fini(struct server *server)
+{
+	wl_list_remove(&server->new_xdg_toplevel.link);
+	wl_list_remove(&server->new_xdg_popup.link);
+	wl_list_remove(&server->new_xdg_decoration.link);
+	wl_list_remove(&server->new_server_decoration.link);
 }
