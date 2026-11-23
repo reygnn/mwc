@@ -898,6 +898,8 @@ void tile_init(struct server *server);
 void tile_config_changed(struct server *server);
 void tile_toggle(struct server *server);
 void tile_arrange(struct server *server);
+/* For the tests: how often the layout was worked out. */
+int tile_rounds(void);
 /* What the layout fills: the first output's usable area, less the icons' strip. */
 struct wlr_box tile_layout_area(struct server *server);
 bool tile_can_shade(struct view *view);

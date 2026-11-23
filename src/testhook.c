@@ -173,9 +173,9 @@ static int dump_state(int signal, void *data)
 	struct output *first = output_first(server);
 	struct wlr_box ta = first ? tile_layout_area(server) : (struct wlr_box){ 0 };
 	struct wlr_box fu = first ? first->usable : (struct wlr_box){ 0 };
-	fprintf(f, "tiling on=%d area=%d,%d,%d,%d usable=%d,%d,%d,%d gap=%d\n",
+	fprintf(f, "tiling on=%d area=%d,%d,%d,%d usable=%d,%d,%d,%d gap=%d rounds=%d\n",
 		server->tiling, ta.x, ta.y, ta.width, ta.height, fu.x, fu.y, fu.width,
-		fu.height, MWC_GAP);
+		fu.height, MWC_GAP, tile_rounds());
 	fprintf(f, "desktop current=%d\n", server->desktop + 1);
 	int focused = 0;
 	wl_list_for_each(v, &server->views, link)

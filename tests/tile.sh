@@ -381,6 +381,42 @@ stop tb
 do_input key super+t
 finish
 
+# ---- how often the layout is worked out ----------------------------------------------------
+
+# tile_arrange() is called from wherever something a layout depends on changes, and a
+# window coming or going passes several such places. They add up to one round each time:
+# a second one would send clients sizes that hold for a moment only.
+rounds_since() { # description, the count before, how many more are allowed
+	refresh
+	local now
+	now=$(global tiling rounds)
+	[ $((now - $2)) -le "$3" ] || fail "$1: $((now - $2)) rounds of the layout, not $3"
+	[ "$now" -gt "$2" ] || fail "$1: no round of the layout at all"
+	echo "ok: $1: $((now - $2)) of at most $3"
+}
+begin
+do_input key super+t
+wayland ra
+wayland rb
+check "both are tiled" "[ \"\$(get ra tiled)\" = 1 ] && [ \"\$(get rb tiled)\" = 1 ]"
+settle
+refresh
+n=$(global tiling rounds)
+wayland rc
+check "a third joins the layout" "[ \"\$(get rc tile_main)\" = 1 ]"
+settle
+rounds_since "a window mapped" "$n" 1
+refresh
+n=$(global tiling rounds)
+stop rc
+check "the layout closes up" "[ \"\$(get rb tile_main)\" = 1 ]"
+settle
+rounds_since "a window gone" "$n" 1
+stop ra
+stop rb
+do_input key super+t
+finish
+
 # ---- the settings -----------------------------------------------------------------------
 
 cat >"$RC" <<'EOF'

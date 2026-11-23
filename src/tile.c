@@ -29,6 +29,7 @@
 #define TILE_MAIN_PCT 55
 
 static int main_pct = TILE_MAIN_PCT;
+static int rounds; /* for the tests */
 
 /* The environment over mwmrc, as for the other settings. */
 static void read_main_width(void)
@@ -189,6 +190,7 @@ void tile_arrange(struct server *server)
 	if (busy || !output_first(server))
 		return;
 	busy = true;
+	rounds++;
 
 	/* One being moved or resized: taking it into the layout ends that. */
 	struct view *held = server->grab.mode == CURSOR_MOVE ||
@@ -237,6 +239,11 @@ void tile_arrange(struct server *server)
 	}
 	busy = false;
 	input_pointer_changed(server);
+}
+
+int tile_rounds(void)
+{
+	return rounds;
 }
 
 bool tile_has_stack(struct server *server)
