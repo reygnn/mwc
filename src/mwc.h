@@ -768,6 +768,43 @@ void input_keyboard_enter(struct server *server, struct wlr_surface *surface);
 /* A client's menu holds the keyboard wherever the focus goes. Not during a drag. */
 void input_end_client_grab(struct server *server);
 
+/* ---- keys.c ------------------------------------------------------------- */
+
+enum key_action {
+	KEY_NONE,        /* not mwc's: the client's key */
+	KEY_SWITCH_VT,   /* arg: 1 to 12 */
+	KEY_QUIT,
+	KEY_TERMINAL,
+	KEY_SCREEN_SAVER,
+	KEY_SCREENSHOT,  /* arg: KEY_SHOT_* */
+	KEY_TAB_JOIN,
+	KEY_TAB_DETACH,
+	KEY_TAB_NEXT,
+	KEY_TAB_PREVIOUS,
+	KEY_TAB_NTH,     /* arg: from 0 */
+	KEY_TILE_TOGGLE,
+	KEY_SNAP,        /* arg: enum snap_dir */
+	KEY_EDGE,        /* arg: enum snap_dir */
+	KEY_WINDOW_MENU,
+	KEY_CYCLE,
+	KEY_CYCLE_BACK,
+	KEY_MENU_ACTION, /* arg: enum menu_action, as chosen from the window menu */
+	KEY_FULLSCREEN,
+};
+
+#define KEY_SHOT_FILE 1  /* to a file, not the clipboard */
+#define KEY_SHOT_WHOLE 2 /* the screen, not a rectangle */
+
+struct key_command {
+	enum key_action action;
+	int arg;
+	bool always; /* also under a menu, a grab or an exclusive layer surface */
+};
+
+/* What keysym sym means with these WLR_MODIFIER_*; has_view, in_group: whether a window
+ * has the focus, and is in a tab group. */
+struct key_command keys_lookup(uint32_t mods, uint32_t sym, bool has_view, bool in_group);
+
 /* ---- spawn.c ------------------------------------------------------------ */
 
 void spawn_init(struct server *server);

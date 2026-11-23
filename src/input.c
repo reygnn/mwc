@@ -1,6 +1,7 @@
 /*
  * Pointer and keyboard handling: what a press on a frame, an icon or the desktop
- * does, and mwm's default key bindings. A move or resize once begun is grab.c's.
+ * does, and the keys. A move or resize once begun is grab.c's; which key means what
+ * is in keys.c.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <math.h>
@@ -617,21 +618,96 @@ static void grab_key(struct server *server, uint32_t mods, xkb_keysym_t sym)
 	process_cursor_motion(server, 0);
 }
 
+/* What keys.c says a key means, done. view: the focused window, or NULL. */
+static bool run_key(struct server *server, struct key_command cmd, struct view *view)
+{
+	static const struct {
+		const char *resource, *fallback;
+	} shots[2][2] = {
+		{ { "clipboardRectangleScreenshot", "screenShot -c -r" },
+		  { "clipboardScreenshot", "screenShot -c" } },
+		{ { "rectangleScreenshot", "screenShot -r" },
+		  { "screenshot", "screenShot" } },
+	};
+	switch (cmd.action) {
+	case KEY_NONE:
+		return false;
+	case KEY_SWITCH_VT:
+		if (server->session)
+			wlr_session_change_vt(server->session, cmd.arg);
+		break;
+	case KEY_QUIT:
+		wl_display_terminate(server->display);
+		break;
+	case KEY_TERMINAL:
+		spawn(terminal_command(server));
+		break;
+	case KEY_SCREEN_SAVER: {
+		const char *saver = config_get("screenSaver");
+		spawn(saver ? saver : "displayOff --stars");
+		break;
+	}
+	case KEY_SCREENSHOT: {
+		bool file = cmd.arg & KEY_SHOT_FILE, whole = cmd.arg & KEY_SHOT_WHOLE;
+		const char *shot = config_get(shots[file][whole].resource);
+		spawn(shot ? shot : shots[file][whole].fallback);
+		break;
+	}
+	case KEY_TAB_JOIN:
+		if (tabs_previous(view))
+			tabs_join(view, tabs_previous(view));
+		break;
+	case KEY_TAB_DETACH:
+		tabs_detach(view);
+		break;
+	case KEY_TAB_NEXT:
+		tabs_step(view, true);
+		break;
+	case KEY_TAB_PREVIOUS:
+		tabs_step(view, false);
+		break;
+	case KEY_TAB_NTH:
+		tabs_show_nth(view, cmd.arg);
+		break;
+	case KEY_TILE_TOGGLE:
+		tile_toggle(server);
+		break;
+	case KEY_SNAP:
+		snap_step(view, cmd.arg);
+		break;
+	case KEY_EDGE:
+		view_move_to_edge(view, cmd.arg);
+		break;
+	case KEY_WINDOW_MENU:
+		if (view)
+			menu_open_window(server, view, view->x + frame_border(view),
+				view->y + frame_top(view));
+		break;
+	case KEY_CYCLE:
+		view_cycle(server, false);
+		break;
+	case KEY_CYCLE_BACK:
+		view_cycle(server, true);
+		break;
+	case KEY_MENU_ACTION:
+		run_action(server, cmd.arg, view);
+		break;
+	case KEY_FULLSCREEN:
+		if (view)
+			view_set_fullscreen(view, !view->fullscreen);
+		break;
+	}
+	return true;
+}
+
 static bool handle_keybinding(struct server *server, uint32_t mods,
 	xkb_keysym_t sym)
 {
-	/* These two work whatever else is going on, or there is no way out. */
-	if (sym >= XKB_KEY_XF86Switch_VT_1 && sym <= XKB_KEY_XF86Switch_VT_12) {
-		if (server->session)
-			wlr_session_change_vt(server->session,
-				sym - XKB_KEY_XF86Switch_VT_1 + 1);
-		return true;
-	}
-	if ((mods & WLR_MODIFIER_CTRL) && (mods & WLR_MODIFIER_ALT) &&
-			sym == XKB_KEY_BackSpace) {
-		wl_display_terminate(server->display);
-		return true;
-	}
+	/* The VT keys and quitting work whatever else is going on, or there is no way
+	 * out. They need no window. */
+	struct key_command cmd = keys_lookup(mods, sym, false, false);
+	if (cmd.always)
+		return run_key(server, cmd, NULL);
 
 	/* Its keys are its own, even with a menu or a grab from the mouse going on. Those
 	 * still end with the mouse. */
@@ -651,139 +727,7 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		return true;
 
 	struct view *view = view_focused(server);
-	bool alt = mods & WLR_MODIFIER_ALT;
-	bool ctrl = mods & WLR_MODIFIER_CTRL;
-	bool shift = mods & WLR_MODIFIER_SHIFT;
-	bool logo = mods & WLR_MODIFIER_LOGO;
-
-	if ((ctrl && alt && sym == XKB_KEY_Return) ||
-			(logo && sym == XKB_KEY_Return)) {
-		spawn(terminal_command(server));
-		return true;
-	}
-	if (logo && !alt && !ctrl && !shift && sym == XKB_KEY_Escape) {
-		const char *saver = config_get("screenSaver");
-		spawn(saver ? saver : "displayOff --stars");
-		return true;
-	}
-	/* Print: a rectangle to the clipboard, the more common need; Shift for the whole
-	 * screen, Ctrl to a file instead. Shift+Print and Ctrl+Print still give Print in
-	 * the usual layouts, Alt+Print gives Sys_Req. */
-	if (!alt && !logo && sym == XKB_KEY_Print) {
-		static const struct {
-			const char *resource, *fallback;
-		} shots[2][2] = {
-			{ { "clipboardRectangleScreenshot", "screenShot -c -r" },
-			  { "clipboardScreenshot", "screenShot -c" } },
-			{ { "rectangleScreenshot", "screenShot -r" },
-			  { "screenshot", "screenShot" } },
-		};
-		const char *shot = config_get(shots[ctrl][shift].resource);
-		spawn(shot ? shot : shots[ctrl][shift].fallback);
-		return true;
-	}
-	if (logo && !alt && !ctrl) {
-		enum snap_dir dir;
-		/* Tabs, while there are any: otherwise these are the client's. */
-		if (view && xkb_keysym_to_lower(sym) == XKB_KEY_g) {
-			if (shift)
-				tabs_detach(view);
-			else if (tabs_previous(view))
-				tabs_join(view, tabs_previous(view));
-			return true;
-		}
-		if (view && view->group && sym == XKB_KEY_Tab) {
-			tabs_step(view, true);
-			return true;
-		}
-		if (view && view->group && sym == XKB_KEY_ISO_Left_Tab) {
-			tabs_step(view, false);
-			return true;
-		}
-		if (view && view->group && !shift && sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
-			tabs_show_nth(view, sym - XKB_KEY_1);
-			return true;
-		}
-		/* Letters by their lower case, or Caps Lock would turn them off. */
-		switch (xkb_keysym_to_lower(sym)) {
-		case XKB_KEY_t:
-			if (shift)
-				return false;
-			tile_toggle(server);
-			return true;
-		case XKB_KEY_Left:
-			dir = SNAP_DIR_LEFT;
-			break;
-		case XKB_KEY_Right:
-			dir = SNAP_DIR_RIGHT;
-			break;
-		case XKB_KEY_Up:
-			dir = SNAP_DIR_UP;
-			break;
-		case XKB_KEY_Down:
-			dir = SNAP_DIR_DOWN;
-			break;
-		default:
-			return false;
-		}
-		if (shift)
-			view_move_to_edge(view, dir);
-		else
-			snap_step(view, dir);
-		return true;
-	}
-	if (shift && !alt && !ctrl && sym == XKB_KEY_Escape && view) {
-		/* mwm: Shift+Escape posts the window menu */
-		menu_open_window(server, view, view->x + frame_border(view),
-			view->y + frame_top(view));
-		return true;
-	}
-	if (!alt || ctrl)
-		return false;
-
-	switch (sym) {
-	case XKB_KEY_Tab:
-		view_cycle(server, false);
-		return true;
-	case XKB_KEY_ISO_Left_Tab:
-		view_cycle(server, true);
-		return true;
-	case XKB_KEY_Escape:
-		view_cycle(server, true);
-		return true;
-	case XKB_KEY_space:
-		if (view)
-			menu_open_window(server, view,
-				view->x + frame_border(view),
-				view->y + frame_top(view));
-		return true;
-	case XKB_KEY_F3:
-		run_action(server, ACT_LOWER, view);
-		return true;
-	case XKB_KEY_F4:
-		run_action(server, ACT_CLOSE, view);
-		return true;
-	case XKB_KEY_F5:
-		run_action(server, ACT_RESTORE, view);
-		return true;
-	case XKB_KEY_F7:
-		run_action(server, ACT_MOVE, view);
-		return true;
-	case XKB_KEY_F8:
-		run_action(server, ACT_SIZE, view);
-		return true;
-	case XKB_KEY_F9:
-		run_action(server, ACT_MINIMIZE, view);
-		return true;
-	case XKB_KEY_F10:
-		run_action(server, ACT_TOGGLE_MAXIMIZE, view);
-		return true;
-	case XKB_KEY_F11:
-		if (view)
-			view_set_fullscreen(view, !view->fullscreen);
-		return true;
-	}
-	return false;
+	return run_key(server, keys_lookup(mods, sym, view != NULL, view && view->group), view);
 }
 
 static void keyboard_modifiers(struct wl_listener *listener, void *data)

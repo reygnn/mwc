@@ -27,7 +27,7 @@ CI (`.github/workflows/ci.yml`) runs `make lint`, a `-Werror` build, `make analy
 
 Unit-tested logic lives in modules that call nothing of the display code:
 `outputrc.c`, `sizehints.c`, `snaprules.c`, `tilelayout.c`, `activation.c`, `config.c`,
-`draw.c`, `color.c`. `color.c` and `color.h` hold the colours mtk shares: no
+`draw.c`, `color.c`, `keys.c`. `color.c` and `color.h` hold the colours mtk shares: no
 dependencies beyond the C library, changed here and copied to mtk unchanged.
 `NAME_test.c` is linked with `src/NAME.c` (and `UNIT_WITH_NAME`) and gets real data:
 views, outputs and wlroots' client state on the stack, mwmrc files
