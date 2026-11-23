@@ -206,11 +206,15 @@ schemes-test: build/schemes-html
 # NULL dereferences, use after free, double free, leaks on a path. Clean today, so a
 # new finding stops it. At -O0: optimizing first lets GCC drop the very paths that
 # dereference NULL. clang's analyzer is left out: wayland's list macros make it
-# report what isn't there.
+# report what isn't there. Where a function has too many paths GCC gives up on the rest
+# and says nothing; twice its limits take six more files to the end for a few seconds.
+# More takes far longer, gives up elsewhere and reports what isn't there; CAVEATS.md.
+ANALYZE_FLAGS = -O0 -fanalyzer -Werror --param=analyzer-bb-explosion-factor=10 \
+	--param=analyzer-max-enodes-per-program-point=16
 analyze: $(PROTO) build/logo.h build/gitversion.h
 	@for f in $(SRC); do \
 		echo "analyze $$f"; \
-		$(CC) $(MWC_CFLAGS) $(CPPFLAGS) -O0 -fanalyzer -Werror -c $$f -o /dev/null || exit 1; \
+		$(CC) $(MWC_CFLAGS) $(CPPFLAGS) $(ANALYZE_FLAGS) -c $$f -o /dev/null || exit 1; \
 	done
 
 # make lint: C lines longer than LINT_MAX columns, tabs to every eighth column as the

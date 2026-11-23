@@ -145,3 +145,18 @@ session they don't open there.
 
 `fontList` takes Pango names such as `Sans Bold 10`. Forms like `Sans:bold:size=10` or
 `Sans-12` from an mwm-x11 file are logged and ignored.
+
+
+## Static analysis
+
+`make analyze` doesn't follow every path. Where a function has too many, GCC's
+analyzer stops there and reports nothing about the rest; `-Wanalyzer-too-complex`
+shows where. With the limits `make analyze` sets, twice GCC's own, that is part of
+`config.c`, `desktop.c`, `draw.c`, `frame.c`, `iconbox.c`, `input.c`, `main.c`,
+`menu.c`, `output.c`, `tabs.c`, `testhook.c`, `tile.c`, `tilelayout.c` and inline
+functions of `mwc.h`.
+
+Four times the limits take `input.c` and five more to the end, but take 33 seconds
+instead of 20 and report an overread in `config.c` that can't happen: the analyzer doesn't see
+that `n_root_items` stays at most 20 between calls. Ten times leaves `config.c`,
+`main.c`, `menu.c`, `testhook.c` and `tile.c` unfinished still, in 105 seconds.
