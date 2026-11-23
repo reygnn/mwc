@@ -235,12 +235,20 @@ static void open_at(struct server *server, int x, int y)
 	m->x = x;
 	m->y = y;
 	m->armed = -1;
-	m->open = true;
 	if (!m->tree) {
 		m->tree = wlr_scene_tree_create(server->layer_menu);
-		m->body = wlr_scene_buffer_create(m->tree, NULL);
-		m->highlight = wlr_scene_buffer_create(m->tree, NULL);
+		m->body = m->tree ? wlr_scene_buffer_create(m->tree, NULL) : NULL;
+		m->highlight = m->tree ? wlr_scene_buffer_create(m->tree, NULL) : NULL;
+		if (!m->body || !m->highlight) {
+			/* No menu this time: the next one tries again. */
+			if (m->tree)
+				wlr_scene_node_destroy(&m->tree->node);
+			m->tree = NULL;
+			m->target = NULL;
+			return;
+		}
 	}
+	m->open = true;
 	wlr_scene_node_set_position(&m->tree->node, x, y);
 	wlr_scene_node_set_enabled(&m->tree->node, true);
 	render_menu(server);

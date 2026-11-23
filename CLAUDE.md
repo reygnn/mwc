@@ -37,7 +37,9 @@ fontconfig (`tests/unit/lsan.supp`).
 
 Polling helpers: `check`, `wait_for`, `pixel_is`, `pixel_isnt`, `reload_mwc` in
 `tests/lib.sh`. When a test client can't do what a test needs, extend it
-(`tests/xdgc.c`, `layerc.c`, `badclient.c`, `vinput.c`, `idlec.c`).
+(`tests/xdgc.c`, `layerc.c`, `badclient.c`, `vinput.c`, `idlec.c`). A scene node wlroots
+can't make, as without memory: `build/mwc-nomem`, with `tests/nomem.c` wrapped in
+(`-Wl,--wrap`), in `tests/nomem.sh`.
 
 What must hold for the window state at any moment is in `tests/invariants.awk`, what
 users and clients do in `tests/ops.sh`; `matrix.sh` and `walk.sh` combine them. A new

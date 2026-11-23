@@ -901,16 +901,21 @@ void iconbox_state(FILE *f)
 		d->scroll, d->sel, ib.focused, ib.maximized, d->minimized);
 }
 
-void iconbox_init(struct server *server)
+bool iconbox_init(struct server *server)
 {
 	ib.server = server;
 	ib.tree = wlr_scene_tree_create(server->layer_icons);
+	if (!ib.tree)
+		return false;
 	ib.chrome = wlr_scene_buffer_create(ib.tree, NULL);
 	ib.logo = wlr_scene_buffer_create(ib.tree, NULL);
+	if (!ib.chrome || !ib.logo)
+		return false;
 	wlr_scene_node_set_enabled(&ib.chrome->node, false);
 	wlr_scene_node_set_enabled(&ib.logo->node, false);
 	/* Below every window, as if it had been lowered: Alt+Tab, which brings the bottom
 	 * one to the front, comes to it first, Alt+Shift+Tab last. */
 	iconbox_lowered(server);
 	iconbox_config_changed(server);
+	return true;
 }

@@ -198,6 +198,33 @@ static void session_fini(struct server *server)
 	wl_list_remove(&server->activation_request.link);
 }
 
+/* The scene and its layers, bottom to top. Panels in the top layer stay above
+ * windows, and only the overlay layer goes above a fullscreen window. False without
+ * the memory for all of it: every later node hangs from one of these. */
+static bool scene_init(struct server *server)
+{
+	server->scene = wlr_scene_create();
+	if (!server->scene)
+		return false;
+	server->scene_layout = wlr_scene_attach_output_layout(server->scene,
+		server->output_layout);
+	struct wlr_scene_tree *root = &server->scene->tree;
+	return server->scene_layout &&
+		(server->layer_bg = wlr_scene_tree_create(root)) &&
+		(server->layer_shell[0] = wlr_scene_tree_create(root)) &&
+		(server->layer_shell[1] = wlr_scene_tree_create(root)) &&
+		(server->layer_icons = wlr_scene_tree_create(root)) &&
+		iconbox_init(server) &&
+		(server->layer_views = wlr_scene_tree_create(root)) &&
+		dock_init(server) &&
+		(server->layer_shell[2] = wlr_scene_tree_create(root)) &&
+		(server->layer_fullscreen = wlr_scene_tree_create(root)) &&
+		(server->layer_shell[3] = wlr_scene_tree_create(root)) &&
+		(server->layer_menu = wlr_scene_tree_create(root)) &&
+		(server->layer_feedback = wlr_scene_tree_create(root)) &&
+		(server->layer_drag = wlr_scene_tree_create(root));
+}
+
 static int throttle_rested(void *data)
 {
 	struct throttle *t = data;
@@ -452,25 +479,10 @@ int main(int argc, char *argv[])
 	session_init(&server);
 	outputs_init(&server);
 
-	server.scene = wlr_scene_create();
-	server.scene_layout = wlr_scene_attach_output_layout(server.scene,
-		server.output_layout);
-	/* Bottom to top. Panels in the top layer stay above windows, and only
-	 * the overlay layer goes above a fullscreen window. */
-	struct wlr_scene_tree *root = &server.scene->tree;
-	server.layer_bg = wlr_scene_tree_create(root);
-	server.layer_shell[0] = wlr_scene_tree_create(root);
-	server.layer_shell[1] = wlr_scene_tree_create(root);
-	server.layer_icons = wlr_scene_tree_create(root);
-	iconbox_init(&server);
-	server.layer_views = wlr_scene_tree_create(root);
-	dock_init(&server);
-	server.layer_shell[2] = wlr_scene_tree_create(root);
-	server.layer_fullscreen = wlr_scene_tree_create(root);
-	server.layer_shell[3] = wlr_scene_tree_create(root);
-	server.layer_menu = wlr_scene_tree_create(root);
-	server.layer_feedback = wlr_scene_tree_create(root);
-	server.layer_drag = wlr_scene_tree_create(root);
+	if (!scene_init(&server)) {
+		wlr_log(WLR_ERROR, "out of memory for the scene");
+		return 1;
+	}
 
 	wl_list_init(&server.views);
 	xdg_init(&server);

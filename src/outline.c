@@ -88,6 +88,8 @@ void outline_show(struct view *view, struct wlr_box b)
 		struct wlr_box s = rel[i];
 		if (!strip[i]) {
 			strip[i] = wlr_scene_buffer_create(server->layer_feedback, NULL);
+			if (!strip[i])
+				continue; /* an outline short of a side */
 			strip[i]->point_accepts_input = scene_buffer_no_input;
 		}
 		if (!s.width) {

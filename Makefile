@@ -130,11 +130,28 @@ build/asan/main.o: src/version.h build/gitversion.h
 build/mwc-asan: $(SAN_OBJ)
 	$(CC) $(SAN_FLAGS) -o $@ $(SAN_OBJ) $(MWC_LIBS)
 
+# mwc with the scene's constructors wrapped by tests/nomem.c, for tests/nomem.sh: one
+# of them returns NULL as without memory when the test asks.
+comma := ,
+NOMEM_WRAP = wlr_scene_create wlr_scene_attach_output_layout wlr_scene_tree_create \
+	wlr_scene_rect_create wlr_scene_buffer_create wlr_scene_xdg_surface_create \
+	wlr_scene_layer_surface_v1_create wlr_scene_output_create
+NOMEM_LDFLAGS = $(foreach f,$(NOMEM_WRAP),-Wl$(comma)--wrap=$(f))
+
+build/mwc-nomem: $(OBJ) tests/nomem.c
+	$(CC) $(MWC_CFLAGS) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(NOMEM_LDFLAGS) -o $@ $(OBJ) \
+		tests/nomem.c $(MWC_LIBS) $(LDLIBS)
+
+build/mwc-asan-nomem: $(SAN_OBJ) tests/nomem.c
+	$(CC) $(MWC_CFLAGS) $(CPPFLAGS) $(SAN_FLAGS) $(NOMEM_LDFLAGS) -o $@ $(SAN_OBJ) \
+		tests/nomem.c $(MWC_LIBS)
+
 # A short walk too, after the tests (not beside them under -j), from a new seed each
 # time; its output and build/walk-ops.log say which.
-CHECK_ENV = MWC=build/mwc-asan MWC_SANITIZED=1 ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 \
+CHECK_ENV = MWC=build/mwc-asan MWC_NOMEM=build/mwc-asan-nomem MWC_SANITIZED=1 \
+	ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 \
 	UBSAN_OPTIONS=print_stacktrace=1
-check: build/mwc-asan
+check: build/mwc-asan build/mwc-asan-nomem
 	$(CHECK_ENV) $(MAKE) test; status=$$?; \
 		$(CHECK_ENV) $(MAKE) walk WALK_STEPS=150 && exit $$status
 	@if command -v $(FUZZ_CC) >/dev/null; then $(MAKE) fuzz-replay; \
@@ -464,6 +481,9 @@ pointer-test: mwc build/vinput build/pngtool build/badclient build/xdgc build/ca
 crash-test: mwc build/vinput build/xdgc build/badclient build/layerc
 	tests/crash.sh
 
+nomem-test: build/mwc-nomem build/vinput build/pngtool build/xdgc build/layerc
+	tests/nomem.sh
+
 outputs-test: mwc build/vinput build/pngtool build/xdgc build/layerc build/badclient \
 	build/outputc
 	tests/outputs.sh
@@ -508,7 +528,7 @@ build-test: mwc
 	tests/build.sh
 
 test: unit schemes-test smoke input-test wallpaper-test config-test layer-test window-test \
-	move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test desktop-test iconbox-test dock-test \
+	move-test snap-test outputs-test tile-test crash-test nomem-test pointer-test state-test misc-test session-test tabs-test fifo-test rdp-test desktop-test iconbox-test dock-test \
 	matrix-test build-test
 
 clean:
@@ -517,4 +537,4 @@ clean:
 .SECONDARY: $(VINPUT_CODE) $(LAYERC_GEN) $(XDGC_GEN) $(POWERC_GEN) $(OUTPUTC_GEN) \
 	$(CAPTUREC_GEN) $(FIFOC_GEN) $(IDLEC_GEN) build/ext-workspace-v1-client.h \
 	build/ext-workspace-v1-code.c
-.PHONY: matrix-test walk unit schemes schemes-test build-test lint analyze valgrind check fuzz fuzz-replay dock-test iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test pointer-test state-test misc-test session-test test clean
+.PHONY: matrix-test walk unit schemes schemes-test build-test lint analyze valgrind check fuzz fuzz-replay dock-test iconbox-test desktop-test rdp-test fifo-test tabs-test all install uninstall smoke input-test wallpaper-test config-test layer-test window-test move-test snap-test outputs-test tile-test crash-test nomem-test pointer-test state-test misc-test session-test test clean

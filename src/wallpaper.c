@@ -87,6 +87,11 @@ void wallpaper_place(struct output *output, bool force)
 	if (!output->wallpaper)
 		output->wallpaper = wlr_scene_buffer_create(
 			output->server->layer_bg, NULL);
+	if (!output->wallpaper) {
+		/* The desktop's colour instead; the next placing tries again. */
+		output->wallpaper_w = output->wallpaper_h = 0;
+		return;
+	}
 
 	struct wlr_box box;
 	wlr_output_layout_get_box(output->server->output_layout,

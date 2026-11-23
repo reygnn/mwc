@@ -371,8 +371,12 @@ static void layer_new_popup(struct wl_listener *listener, void *data)
 {
 	struct layer_surface *ls = wl_container_of(listener, ls, new_popup);
 	struct wlr_xdg_popup *popup = data;
-	xdg_surface_set_tree(popup->base, wlr_scene_xdg_surface_create(
-		ls->popups, popup->base));
+	struct wlr_scene_tree *tree = wlr_scene_xdg_surface_create(ls->popups, popup->base);
+	if (!tree) {
+		wl_resource_post_no_memory(popup->resource);
+		return;
+	}
+	xdg_surface_set_tree(popup->base, tree);
 	wlr_scene_node_raise_to_top(&ls->popups->node);
 }
 
@@ -405,6 +409,16 @@ static void new_layer_surface(struct wl_listener *listener, void *data)
 	ls->scene = wlr_scene_layer_surface_v1_create(
 		server->layer_shell[ls->layer], wlr);
 	ls->popups = wlr_scene_tree_create(popups_parent(server, ls->layer));
+	if (!ls->scene || !ls->popups) {
+		if (ls->scene)
+			wlr_scene_node_destroy(&ls->scene->tree->node);
+		if (ls->popups)
+			wlr_scene_node_destroy(&ls->popups->node);
+		wlr->data = NULL;
+		free(ls);
+		wl_resource_post_no_memory(wlr->resource);
+		return;
+	}
 	wl_list_insert(&output->layers[ls->layer], &ls->link);
 
 	ls->map.notify = layer_map;

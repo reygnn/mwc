@@ -403,7 +403,7 @@ struct server {
 
 	/* Bottom to top. */
 	struct wlr_scene_tree *layer_bg;
-	struct wlr_scene_tree *layer_shell[MWC_SHELL_LAYERS]; /* see main() */
+	struct wlr_scene_tree *layer_shell[MWC_SHELL_LAYERS]; /* see scene_init() */
 	struct wlr_scene_tree *layer_icons;
 	struct wlr_scene_tree *layer_views;
 	struct wlr_scene_tree *layer_fullscreen; /* when focused */
@@ -1072,7 +1072,8 @@ void workspace_output_leaving(struct wlr_output *output);
 /* ---- iconbox.c ------------------------------------------------------------ */
 
 bool iconbox_enabled(void); /* Mwm*useIconBox */
-void iconbox_init(struct server *server);
+/* False without the memory for its nodes, as dock_init(): mwc doesn't start then. */
+bool iconbox_init(struct server *server);
 /* For icons_arrange(). */
 void iconbox_arrange(struct server *server);
 /* Chosen with the arrows, and the box has the keyboard. */
@@ -1107,7 +1108,7 @@ void iconbox_state(FILE *f);
 /* ---- dock.c -------------------------------------------------------------- */
 
 /* Between the normal windows' layer and the top layer. */
-void dock_init(struct server *server);
+bool dock_init(struct server *server);
 /* When a docked window comes or goes, or the outputs change. */
 void dock_arrange(struct server *server);
 /* From layer_arrange(): takes the dock's strip off the usable area. */

@@ -477,8 +477,12 @@ static void new_output(struct wl_listener *listener, void *data)
 	}
 
 	struct output *output = calloc(1, sizeof(*output));
-	if (!output) {
+	float c[4] = { theme.root.r, theme.root.g, theme.root.b, 1 };
+	if (output)
+		output->background = wlr_scene_rect_create(server->layer_bg, 0, 0, c);
+	if (!output || !output->background) {
 		wlr_log(WLR_ERROR, "out of memory: output %s not used", wlr_output->name);
+		free(output);
 		return;
 	}
 	output->server = server;
@@ -495,14 +499,19 @@ static void new_output(struct wl_listener *listener, void *data)
 	output->destroy.notify = output_destroy;
 	wl_signal_add(&wlr_output->events.destroy, &output->destroy);
 
-	float c[4] = { theme.root.r, theme.root.g, theme.root.b, 1 };
-	output->background = wlr_scene_rect_create(server->layer_bg, 0, 0, c);
 	wlr_scene_node_set_enabled(&output->background->node, !theme.root_none);
 	wl_list_insert(&server->outputs, &output->link);
 
 	struct wlr_output_layout_output *lo = output_place(server, wlr_output);
 	struct wlr_scene_output *so = wlr_scene_output_create(server->scene,
 		wlr_output);
+	if (!so) {
+		/* In the layout already, and the others may have moved: gone again as if
+		 * unplugged. */
+		wlr_log(WLR_ERROR, "out of memory: output %s not used", wlr_output->name);
+		output_destroy(&output->destroy, NULL);
+		return;
+	}
 	wlr_scene_output_layout_add_output(server->scene_layout, lo, so);
 	/* No image of mwc's here: layout_change() asks what is under the pointer, and
 	 * wlr_cursor gives the output what there is, a client's image or shape too. */

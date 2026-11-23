@@ -288,12 +288,18 @@ void dock_state(FILE *f)
 		dk.box.height);
 }
 
-void dock_init(struct server *server)
+bool dock_init(struct server *server)
 {
 	dk.frame = wlr_scene_tree_create(&server->scene->tree);
+	if (!dk.frame)
+		return false;
 	const float none[4] = { 0 };
 	dk.fill = wlr_scene_rect_create(dk.frame, 0, 0, none);
-	for (int i = 0; i < 4; i++)
+	bool ok = dk.fill;
+	for (int i = 0; i < 4; i++) {
 		dk.strip[i] = wlr_scene_buffer_create(dk.frame, NULL);
+		ok = ok && dk.strip[i];
+	}
 	wlr_scene_node_set_enabled(&dk.frame->node, false);
+	return ok;
 }

@@ -1221,23 +1221,34 @@ struct view *view_at(struct server *server, double lx, double ly,
 
 /* ---- view lifecycle --------------------------------------------------- */
 
-static void view_init_common(struct view *view)
+/* False without the memory for its nodes; those it got are gone again. */
+static bool view_init_common(struct view *view)
 {
 	struct server *server = view->server;
+	view->tree = wlr_scene_tree_create(server->layer_views);
+	if (!view->tree)
+		return false;
+	view->tree->node.data = view;
+	const float black[4] = { 0, 0, 0, 1 };
+	view->backdrop = wlr_scene_rect_create(view->tree, 0, 0, black);
+	view->frame_fill = wlr_scene_rect_create(view->tree, 0, 0, black);
+	bool ok = view->backdrop && view->frame_fill;
+	for (int i = 0; i < 4; i++) {
+		view->frame_nodes[i] = wlr_scene_buffer_create(view->tree, NULL);
+		ok = ok && view->frame_nodes[i];
+	}
+	view->icon_node = wlr_scene_buffer_create(server->layer_icons, NULL);
+	if (!ok || !view->icon_node) {
+		if (view->icon_node)
+			wlr_scene_node_destroy(&view->icon_node->node);
+		wlr_scene_node_destroy(&view->tree->node); /* with what is in it */
+		return false;
+	}
 	static unsigned ids;
 	view->id = ++ids;
 	view->title_redraw = (struct throttle){ .ms = 16, .run = title_redraw, .data = view };
-	view->tree = wlr_scene_tree_create(server->layer_views);
-	view->tree->node.data = view;
-	view->backdrop = wlr_scene_rect_create(view->tree, 0, 0,
-		(const float[4]){ 0, 0, 0, 1 });
 	wlr_scene_node_set_enabled(&view->backdrop->node, false);
-	view->frame_fill = wlr_scene_rect_create(view->tree, 0, 0,
-		(const float[4]){ 0, 0, 0, 1 });
 	wlr_scene_node_set_enabled(&view->frame_fill->node, false);
-	for (int i = 0; i < 4; i++)
-		view->frame_nodes[i] = wlr_scene_buffer_create(view->tree, NULL);
-	view->icon_node = wlr_scene_buffer_create(server->layer_icons, NULL);
 	view->icon_node->node.data = view;
 	wlr_scene_node_set_enabled(&view->icon_node->node, false);
 	wlr_scene_node_set_enabled(&view->tree->node, false);
@@ -1248,6 +1259,7 @@ static void view_init_common(struct view *view)
 	view->decor = DECOR_ALL;
 	view->funcs = FUNC_ALL;
 	view->dock_order = -1;
+	return true;
 }
 
 /* Inside a, keeping at least the title bar reachable. */
@@ -1786,7 +1798,11 @@ static void new_xdg_toplevel(struct wl_listener *listener, void *data)
 	}
 	view->server = server;
 	view->xdg_toplevel = toplevel;
-	view_init_common(view);
+	if (!view_init_common(view)) {
+		free(view);
+		wl_resource_post_no_memory(toplevel->resource);
+		return;
+	}
 	/* KDE's protocol goes by the surface, which may ask before it has this role. */
 	struct wlr_server_decoration *kde;
 	wl_list_for_each(kde, &server->kde_decorations->decorations, link) {
@@ -1795,6 +1811,11 @@ static void new_xdg_toplevel(struct wl_listener *listener, void *data)
 	}
 	view->content_tree = wlr_scene_xdg_surface_create(view->tree,
 		toplevel->base);
+	if (!view->content_tree) {
+		view_handle_destroy(view); /* nothing listens yet */
+		wl_resource_post_no_memory(toplevel->resource);
+		return;
+	}
 	xdg_surface_set_tree(toplevel->base, view->content_tree);
 
 	view->map.notify = xdg_map;
@@ -2011,8 +2032,14 @@ static void new_xdg_popup(struct wl_listener *listener, void *data)
 			return;
 		}
 		struct wlr_scene_tree *parent_tree = parent->data;
-		xdg_surface_set_tree(xdg_popup->base, wlr_scene_xdg_surface_create(
-			parent_tree, xdg_popup->base));
+		struct wlr_scene_tree *tree = wlr_scene_xdg_surface_create(parent_tree,
+			xdg_popup->base);
+		if (!tree) {
+			wl_resource_post_no_memory(xdg_popup->resource);
+			free(popup);
+			return;
+		}
+		xdg_surface_set_tree(xdg_popup->base, tree);
 	}
 
 	popup->commit.notify = popup_commit;

@@ -68,8 +68,11 @@
  *                  says "fixed"
  *     sub=X,Y,W,H  once mapped, a WxH subsurface at X,Y, 2040a0, as GTK3 shows its
  *                  tooltips; says "sub added"
+ *
+ * Disconnected by mwc, it says why when it ends: "error: no memory", or the error.
  */
 #define _GNU_SOURCE
+#include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -164,6 +167,13 @@ struct window {
 };
 
 static struct wl_display *the_display;
+
+static void say_error(void)
+{
+	int err = the_display ? wl_display_get_error(the_display) : 0;
+	if (err)
+		printf("error: %s\n", err == ENOMEM ? "no memory" : strerror(err));
+}
 
 /* Wait that long while still answering the compositor. */
 static void wait_dispatching(struct wl_display *display, int ms)
@@ -949,6 +959,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	the_display = display;
+	atexit(say_error);
 	struct wl_registry *registry = wl_display_get_registry(display);
 	wl_registry_add_listener(registry, &registry_listener, NULL);
 	wl_display_roundtrip(display);

@@ -12,8 +12,11 @@
  *     repaint=N                             commit some state every N ms, forever
  *     popup=rrggbb                          also open a 100x50 popup, like a
  *                                           panel's menu
+ *
+ * Disconnected by mwc, it says why when it ends: "error: no memory", or the error.
  */
 #define _GNU_SOURCE
+#include <errno.h>
 #include <poll.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -30,6 +33,15 @@ static struct wl_shm *shm;
 static struct wl_seat *seat;
 static struct zwlr_layer_shell_v1 *layer_shell;
 static struct xdg_wm_base *wm_base;
+
+static struct wl_display *display;
+
+static void say_error(void)
+{
+	int err = display ? wl_display_get_error(display) : 0;
+	if (err)
+		printf("error: %s\n", err == ENOMEM ? "no memory" : strerror(err));
+}
 
 static struct wl_surface *surface;
 static struct zwlr_layer_surface_v1 *layer_surface;
@@ -350,11 +362,12 @@ int main(int argc, char *argv[])
 	}
 	setvbuf(stdout, NULL, _IOLBF, 0);
 
-	struct wl_display *display = wl_display_connect(NULL);
+	display = wl_display_connect(NULL);
 	if (!display) {
 		fprintf(stderr, "layerc: cannot connect to the compositor\n");
 		return 1;
 	}
+	atexit(say_error);
 	struct wl_registry *registry = wl_display_get_registry(display);
 	wl_registry_add_listener(registry, &registry_listener, NULL);
 	wl_display_roundtrip(display);
