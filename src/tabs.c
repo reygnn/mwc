@@ -432,8 +432,8 @@ void tabs_sync_sizes(struct view *view)
 {
 	struct tab_group *g = view->group;
 	struct server *server = view->server;
-	if (!g || view->tab_hidden || g->busy || (server->grabbed_view == view &&
-			server->cursor_mode == CURSOR_RESIZE))
+	if (!g || view->tab_hidden || g->busy || (server->grab.view == view &&
+			server->grab.mode == CURSOR_RESIZE))
 		return;
 	int w, h;
 	asked_size(view, &w, &h);

@@ -246,7 +246,7 @@ static void open_at(struct server *server, int x, int y)
 	render_menu(server);
 	place_highlight(m);
 
-	server->cursor_mode = CURSOR_MENU;
+	grab_menu(server, true);
 	cursor_set_name(server, "default");
 	wlr_seat_pointer_notify_clear_focus(server->seat);
 }
@@ -255,8 +255,8 @@ void menu_open_window(struct server *server, struct view *view, int x, int y)
 {
 	struct menu *m = &server->menu;
 	/* A client can ask for this at any time, also while a grab is going on. */
-	if (!view->mapped || (server->cursor_mode != CURSOR_PASSTHROUGH &&
-			server->cursor_mode != CURSOR_MENU))
+	if (!view->mapped || (server->grab.mode != CURSOR_PASSTHROUGH &&
+			server->grab.mode != CURSOR_MENU))
 		return;
 	if (m->open)
 		menu_close(server);
@@ -391,8 +391,8 @@ void menu_close(struct server *server)
 	m->open = false;
 	m->target = NULL;
 	wlr_scene_node_set_enabled(&m->tree->node, false);
-	if (server->cursor_mode == CURSOR_MENU) {
-		server->cursor_mode = CURSOR_PASSTHROUGH;
+	if (server->grab.mode == CURSOR_MENU) {
+		grab_menu(server, false);
 		input_pointer_changed(server);
 	}
 }
@@ -559,7 +559,7 @@ void run_action(struct server *server, enum menu_action action,
 		/* The pointer only jumps if there will be a grab to go with it. Restoring
 		 * above may have put it into the layout, without these functions. */
 		if (!(view->funcs & FUNC_MOVE) || view->fullscreen ||
-				server->cursor_mode != CURSOR_PASSTHROUGH)
+				server->grab.mode != CURSOR_PASSTHROUGH)
 			break;
 		/* Like f.move from a menu: the pointer jumps to the title and
 		 * the window follows it until the next click. */
@@ -574,7 +574,7 @@ void run_action(struct server *server, enum menu_action action,
 		if (view->minimized)
 			view_restore(view);
 		if (!(view->funcs & FUNC_RESIZE) || view->fullscreen || view->maximized ||
-				server->cursor_mode != CURSOR_PASSTHROUGH)
+				server->grab.mode != CURSOR_PASSTHROUGH)
 			break;
 		wlr_cursor_warp(c, NULL,
 			view->x + view->width + frame_extra_w(view) - 1,

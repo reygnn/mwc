@@ -117,7 +117,7 @@ void view_set_geometry(struct view *view, int x, int y, int w, int h)
 static bool view_left_alone(struct view *view)
 {
 	return !view->maximized && !view->fullscreen && view->snap == SNAP_NONE &&
-		!view->tiled && !view->group && view->server->grabbed_view != view;
+		!view->tiled && !view->group && view->server->grab.view != view;
 }
 
 /* Where the frame goes when the client resizes itself, keeping gravity_edges. */
@@ -1006,8 +1006,8 @@ void views_layout_changed(struct server *server)
 	bool moved = layout_moved(server);
 	if (server->menu.open && moved)
 		menu_close(server);
-	if (server->grabbed_view && moved)
-		grab_give_way(server->grabbed_view);
+	if (server->grab.view && moved)
+		grab_give_way(server->grab.view);
 	if (wl_list_empty(&server->outputs))
 		return;
 	struct view *v;
@@ -1172,89 +1172,6 @@ void view_cycle(struct server *server, bool backwards)
 			return;
 		}
 	}
-}
-
-void view_begin_interactive(struct view *view, enum cursor_mode mode,
-	uint32_t edges, bool until_click)
-{
-	struct server *server = view->server;
-	/* A client can ask for this at any time: before it is mapped, while minimized,
-	 * or during another grab. Only something visible and free can be grabbed. */
-	if (!view->mapped || view_hidden(view) ||
-			server->cursor_mode != CURSOR_PASSTHROUGH)
-		return;
-	if (view->fullscreen)
-		return;
-	if (mode == CURSOR_RESIZE &&
-			(view->maximized || !(view->funcs & FUNC_RESIZE)))
-		return;
-	if (mode == CURSOR_MOVE && !(view->funcs & FUNC_MOVE))
-		return;
-	server->grabbed_view = view;
-	server->cursor_mode = mode;
-	server->grab_until_click = until_click;
-	server->grab_outline = outline_wanted();
-	server->grab_detached = false;
-	server->grab_changed = false;
-	server->grab_px = server->cursor->x;
-	server->grab_py = server->cursor->y;
-	/* The size last asked for: the client may not have got there yet. */
-	int w = view->requested_w, h = view->requested_h;
-	server->grab_orig = (struct wlr_box){ view->x, view->y, w, h };
-	server->grab_orig_maximized = view->maximized;
-	server->grab_orig_snap = view->snap;
-	server->grab_zone = SNAP_NONE;
-	server->grab_target = server->grab_orig;
-	server->grab_geobox = (struct wlr_box){ view->x, view->y,
-		w + frame_extra_w(view), h + frame_extra_h(view) };
-
-	if (mode == CURSOR_MOVE) {
-		server->grab_x = server->cursor->x - view->x;
-		server->grab_y = server->cursor->y - view->y;
-		cursor_set_name(server, "move");
-	} else {
-		/* The edge where it is drawn stays under the pointer, also while the
-		 * client has yet to get the size last sent. */
-		double bx = view->x + ((edges & WLR_EDGE_RIGHT) ?
-			view->width + frame_extra_w(view) : 0);
-		double by = view->y + ((edges & WLR_EDGE_BOTTOM) ?
-			view->height + frame_extra_h(view) : 0);
-		server->grab_x = server->cursor->x - bx;
-		server->grab_y = server->cursor->y - by;
-		server->resize_edges = edges;
-		view->anchor_edges = edges;
-		view->anchor_right = view->x + server->grab_geobox.width;
-		view->anchor_bottom = view->y + server->grab_geobox.height;
-		if (!server->grab_outline)
-			wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, true);
-		view->anchor_serial = view->xdg_toplevel->base->scheduled_serial;
-	}
-	wlr_seat_pointer_notify_clear_focus(server->seat);
-	grab_started(server);
-}
-
-void view_drag_free(struct view *view)
-{
-	struct server *server = view->server;
-	double frac = (server->cursor->x - view->x) /
-		(double)(view->width + frame_extra_w(view));
-	/* Maximized since its first commit, it has no size of its own yet, and will
-	 * choose one. Until then the outline needs something to show. */
-	int w = view->saved.width ? view->saved.width : view->width / 2;
-	int h = view->saved.height ? view->saved.height : view->height / 2;
-	server->grab_detaching = true;
-	view_snap(view, SNAP_NONE, 0, 0);
-	server->grab_detaching = false;
-	int nw = w + frame_extra_w(view);
-	view_set_position(view, server->cursor->x - frac * nw,
-		server->cursor->y - frame_border(view) - frame_title(view) / 2);
-	server->grab_x = server->cursor->x - view->x;
-	server->grab_y = server->cursor->y - view->y;
-	/* The client hasn't committed its old size yet, so don't go by view->width. */
-	server->grab_target.width = w;
-	server->grab_target.height = h;
-	server->grab_geobox.width = nw;
-	server->grab_geobox.height = h + frame_extra_h(view);
 }
 
 struct view *view_at(struct server *server, double lx, double ly,
@@ -1512,7 +1429,7 @@ static bool hidden_above(struct view *v, struct view *going)
 static void view_handle_unmap(struct view *view)
 {
 	struct server *server = view->server;
-	if (server->grabbed_view == view || server->grab_take == view)
+	if (server->grab.view == view || server->grab.take == view)
 		grab_forget(server);
 	if (server->menu.open && server->menu.target == view)
 		menu_close(server);
@@ -1571,7 +1488,7 @@ static void view_handle_destroy(struct view *view)
 {
 	/* A window that was never mapped gets here without view_handle_unmap(). */
 	struct server *server = view->server;
-	if (server->grabbed_view == view)
+	if (server->grab.view == view)
 		grab_forget(server);
 	if (server->menu.open && server->menu.target == view)
 		menu_close(server);
@@ -1720,8 +1637,8 @@ static void xdg_commit(struct wl_listener *listener, void *data)
 		grab_resize_caught_up(view);
 	/* The drag is over and the client has answered the last size request. */
 	struct server *server = view->server;
-	bool grabbed = server->cursor_mode == CURSOR_RESIZE &&
-		server->grabbed_view == view;
+	bool grabbed = server->grab.mode == CURSOR_RESIZE &&
+		server->grab.view == view;
 	if (view->anchor_edges && !grabbed &&
 			base->current.configure_serial >= view->anchor_serial)
 		view->anchor_edges = 0;

@@ -193,8 +193,8 @@ void tile_arrange(struct server *server)
 	busy = true;
 
 	/* One being moved or resized: taking it into the layout ends that. */
-	struct view *held = server->cursor_mode == CURSOR_MOVE ||
-		server->cursor_mode == CURSOR_RESIZE ? server->grabbed_view : NULL;
+	struct view *held = server->grab.mode == CURSOR_MOVE ||
+		server->grab.mode == CURSOR_RESIZE ? server->grab.view : NULL;
 	struct view *v;
 	wl_list_for_each(v, &server->views, link)
 		v->tile_nofit = false;

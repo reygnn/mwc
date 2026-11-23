@@ -428,8 +428,8 @@ static void cancel_button(void)
 		return;
 	ib.pressed = P_NONE;
 	struct server *server = ib.server;
-	if (server->cursor_mode == CURSOR_BUTTON && !server->grabbed_view)
-		server->cursor_mode = CURSOR_PASSTHROUGH;
+	if (server->grab.mode == CURSOR_BUTTON && !server->grab.view)
+		grab_release_button(server);
 }
 
 static void hide_all(void)
@@ -805,7 +805,7 @@ bool iconbox_press(struct server *server, uint32_t button, double lx, double ly,
 		/* As on a window: it acts on the release, if that is still on it. */
 		ib.pressed = part;
 		ib.pressed_inside = true;
-		server->cursor_mode = CURSOR_BUTTON;
+		grab_hold_button(server, NULL);
 		render_chrome();
 		break;
 	case P_TITLE:
@@ -847,7 +847,7 @@ void iconbox_button_release(struct server *server)
 	enum part part = ib.pressed;
 	bool inside = ib.pressed_inside;
 	ib.pressed = P_NONE;
-	server->cursor_mode = CURSOR_PASSTHROUGH;
+	grab_release_button(server);
 	if (!inside) {
 		if (ib.shown)
 			render_chrome();

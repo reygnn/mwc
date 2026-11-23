@@ -1,6 +1,6 @@
 /*
- * Pointer and keyboard handling: frame interaction, interactive move and
- * resize, mwm's default key bindings.
+ * Pointer and keyboard handling: what a press on a frame, an icon or the desktop
+ * does, and mwm's default key bindings. A move or resize once begun is grab.c's.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <math.h>
@@ -28,7 +28,6 @@
 #include "mwc.h"
 
 #define DOUBLE_CLICK_MS 400
-#define DRAG_THRESHOLD 4
 #define MAX_SWALLOWED_KEYS 32
 
 struct keyboard {
@@ -76,352 +75,13 @@ static const char *edge_cursor(uint32_t edges)
 	}
 }
 
-/* ---- interactive move / resize ---------------------------------------- */
-
-static void update_feedback(struct server *server)
-{
-	struct view *view = server->grabbed_view;
-	const struct wlr_box *t = &server->grab_target;
-	char buf[64];
-	if (server->cursor_mode == CURSOR_MOVE && server->grab_zone != SNAP_NONE) {
-		snprintf(buf, sizeof(buf), "%s", snap_name(server->grab_zone));
-	} else if (server->cursor_mode == CURSOR_MOVE) {
-		snprintf(buf, sizeof(buf), "%+d %+d", t->x, t->y);
-	} else {
-		snprintf(buf, sizeof(buf), "%d x %d", t->width, t->height);
-	}
-	feedback_show(server, buf, view->x + 1, view->y + 1);
-}
-
-static void show_outline(struct server *server)
-{
-	struct view *view = server->grabbed_view;
-	const struct wlr_box *t = &server->grab_target;
-	outline_show(view, (struct wlr_box){ t->x, t->y,
-		t->width + frame_extra_w(view), t->height + frame_extra_h(view) });
-}
-
-void grab_started(struct server *server)
-{
-	/* From the menu or keyboard there is no press to drag from yet, so show
-	 * where the window is. A drag shows it on the first motion. */
-	if (server->grab_outline && server->grab_until_click)
-		show_outline(server);
-	update_feedback(server);
-}
-
-/* The grab is over; the caller decides what becomes of the window. */
-static void clear_grab(struct server *server)
-{
-	struct view *pressed = server->cursor_mode == CURSOR_BUTTON ?
-		server->grabbed_view : NULL;
-	if (pressed) {
-		pressed->pressed = PART_NONE;
-		pressed->pressed_inside = false;
-		frame_render(pressed);
-	}
-	server->cursor_mode = CURSOR_PASSTHROUGH;
-	server->grabbed_view = NULL;
-	server->grab_until_click = false;
-	server->grab_tab = -1;
-	server->grab_take = NULL;
-	server->grab_drop = NULL;
-	server->cursor_name = NULL;
-	server->grab_zone = SNAP_NONE;
-	server->grab_resize_waiting = false;
-	outline_hide();
-	feedback_hide();
-	snap_preview_hide();
-}
-
-/* No more configures for a window going away: its surface may be half gone. */
-void grab_forget(struct server *server)
-{
-	clear_grab(server);
-}
-
-static void stop_resizing_state(struct server *server)
-{
-	struct view *view = server->grabbed_view;
-	if (!server->grab_outline && server->cursor_mode == CURSOR_RESIZE)
-		wlr_xdg_toplevel_set_resizing(view->xdg_toplevel, false);
-}
-
-void grab_give_way(struct view *view)
-{
-	struct server *server = view->server;
-	if (server->grabbed_view != view || server->grab_detaching ||
-			(server->cursor_mode != CURSOR_MOVE &&
-			server->cursor_mode != CURSOR_RESIZE))
-		return;
-	stop_resizing_state(server);
-	clear_grab(server);
-}
-
-static void resize_to(struct view *view, const struct wlr_box *b)
-{
-	/* The client answers later, and its anchor keeps the opposite edge until then,
-	 * also for the size applied as the grab ends. */
-	view_send_size(view, b->width, b->height);
-}
-
-static void finish_take(struct server *server, struct view *view, struct view *take,
-	bool moved, struct wlr_box target, uint32_t button);
-
-static void end_grab(struct server *server)
-{
-	struct view *view = server->grabbed_view;
-	struct view *resized = server->cursor_mode == CURSOR_RESIZE ? view : NULL;
-	int tab = server->grab_detached ? -1 : server->grab_tab;
-	struct view *take = server->grab_take;
-	bool moved = server->grab_detached;
-	enum cursor_mode mode = server->cursor_mode;
-	/* Opaque: the size it got to while the client was still busy. */
-	bool apply = (server->grab_outline || server->grab_resize_waiting) &&
-		server->grab_changed;
-	bool changed = server->grab_changed;
-	struct wlr_box target = server->grab_target, orig = server->grab_orig;
-	enum snap zone = server->grab_zone, orig_snap = server->grab_orig_snap;
-	bool orig_max = server->grab_orig_maximized;
-	double px = server->cursor->x, py = server->cursor->y;
-	stop_resizing_state(server);
-	clear_grab(server);
-	/* Put somewhere else by hand: from now on it grows from there. */
-	if (changed)
-		view->gravity_edges = 0;
-	if (take) {
-		finish_take(server, view, take, moved, target, server->grab_button);
-		return;
-	}
-	if (tab >= 0) {
-		tabs_show_nth(view, tab);
-		/* The second click of a double click lands on the view now shown. */
-		if (view->group && server->last_click_view == view)
-			server->last_click_view = view->group->shown;
-		return;
-	}
-	if (zone != SNAP_NONE) {
-		/* Going back later means to where it was before this drag, not to
-		 * the screen edge it was dropped on. */
-		struct wlr_box before = view->saved;
-		view->x = orig.x;
-		view->y = orig.y;
-		view_snap(view, zone, px, py);
-		view->saved = orig_snap != SNAP_NONE || orig_max ? before : orig;
-		return;
-	}
-	/* A resized window is no longer snapped. */
-	if (mode == CURSOR_RESIZE && changed && view->snap != SNAP_NONE) {
-		struct wlr_box current = target;
-		view->saved = current;
-		view->snap = SNAP_NONE;
-		wlr_xdg_toplevel_set_tiled(view->xdg_toplevel, WLR_EDGE_NONE);
-	}
-	if (!apply)
-		return;
-	if (mode == CURSOR_MOVE)
-		view_set_position(view, target.x, target.y);
-	else
-		resize_to(view, &target);
-	if (resized)
-		tabs_sync_sizes(resized);
-}
-
-/* Escape: back to where it was, including out of a maximized state. */
-static void cancel_grab(struct server *server)
-{
-	struct view *view = server->grabbed_view;
-	enum cursor_mode mode = server->cursor_mode;
-	bool opaque = !server->grab_outline;
-	bool was_maximized = server->grab_orig_maximized;
-	enum snap was_snapped = server->grab_orig_snap;
-	struct wlr_box orig = server->grab_orig;
-	stop_resizing_state(server);
-	clear_grab(server);
-	if ((was_maximized && !view->maximized) ||
-			(was_snapped != SNAP_NONE && view->snap == SNAP_NONE)) {
-		/* What it restores to must survive this round trip. */
-		struct wlr_box saved = view->saved;
-		view_snap(view, was_maximized ? SNAP_MAXIMIZE : was_snapped,
-			orig.x + orig.width / 2.0, orig.y + orig.height / 2.0);
-		view->saved = saved;
-	} else if (opaque && mode == CURSOR_MOVE) {
-		view_set_position(view, orig.x, orig.y);
-	} else if (opaque) {
-		resize_to(view, &orig);
-	}
-}
-
-/* What is under the pointer. */
-static struct view *view_under_pointer(struct server *server)
-{
-	struct wlr_surface *surface;
-	double sx, sy;
-	enum frame_part part;
-	uint32_t edges;
-	bool on_icon;
-	struct view *view = view_at(server, server->cursor->x, server->cursor->y, &surface,
-		&sx, &sy, &part, &edges, &on_icon);
-	return on_icon ? NULL : view;
-}
-
-/* The window that one being taken along would join if dropped here, or NULL. */
-static struct view *take_target(struct server *server, struct view *take)
-{
-	struct view *view = view_under_pointer(server);
-	return view && tabs_fit_together(take, view) ? view : NULL;
-}
-
-/* A press on a title or tab that turned out to be a click or a drag of just that window:
- * onto another window it joins that one, within its own group nothing happens, and
- * anywhere else it goes there, on its own. */
-static void finish_take(struct server *server, struct view *view, struct view *take,
-	bool moved, struct wlr_box target, uint32_t button)
-{
-	if (!moved) {
-		if (button == BTN_MIDDLE)
-			view_lower(view);
-		else
-			tabs_show(take);
-		return;
-	}
-	struct view *drop = take_target(server, take);
-	if (drop) {
-		tabs_join(take, drop);
-		return;
-	}
-	struct view *under = view_under_pointer(server);
-	if (take->group && under && under->group == take->group)
-		return;
-	if (take->group)
-		tabs_detach(take);
-	view_set_position(take, target.x, target.y);
-}
-
-static void process_move(struct server *server)
-{
-	struct view *view = server->grabbed_view;
-	if (!server->grab_detached) {
-		/* From the menu or keyboard every step counts, down to the 1 px
-		 * of Shift+arrow. A drag needs to get going first: a click on the
-		 * title must leave the window alone, or a double click could
-		 * never un-maximize it. */
-		double t = server->grab_until_click ? 1 : DRAG_THRESHOLD;
-		if (fabs(server->cursor->x - server->grab_px) < t &&
-				fabs(server->cursor->y - server->grab_py) < t)
-			return;
-		server->grab_detached = true;
-		/* Taking one window along leaves the rest where it is. Without a group
-		 * there is no rest: the window itself goes. */
-		bool rest_stays = server->grab_take && server->grab_take->group;
-		if (!rest_stays && (view->maximized || view->snap != SNAP_NONE))
-			view_drag_free(view);
-	}
-	/* The pointer has sub-pixel positions: round, don't truncate, or the
-	 * window ends up a pixel off and jumps when crossing zero. */
-	server->grab_target.x = lround(server->cursor->x - server->grab_x);
-	server->grab_target.y = lround(server->cursor->y - server->grab_y);
-	server->grab_changed = true;
-	if (server->grab_outline)
-		show_outline(server);
-	else
-		view_set_position(view, server->grab_target.x, server->grab_target.y);
-
-	if (server->grab_take) {
-		struct view *drop = take_target(server, server->grab_take);
-		if (drop != server->grab_drop) {
-			server->grab_drop = drop;
-			if (drop)
-				snap_preview_box(view, (struct wlr_box){
-					drop->x, drop->y,
-					drop->width + frame_extra_w(drop), frame_height(drop) });
-			else
-				snap_preview_hide();
-		}
-		update_feedback(server);
-		return;
-	}
-
-	enum snap zone = snap_zone_at(view, server->cursor->x, server->cursor->y);
-	if (zone != server->grab_zone) {
-		server->grab_zone = zone;
-		snap_preview(view, zone, server->cursor->x, server->cursor->y);
-	}
-	update_feedback(server);
-}
-
-static void process_resize(struct server *server)
-{
-	struct view *view = server->grabbed_view;
-	struct wlr_box *g = &server->grab_geobox;
-	uint32_t edges = server->resize_edges;
-	int bx = lround(server->cursor->x - server->grab_x);
-	int by = lround(server->cursor->y - server->grab_y);
-
-	int left = g->x, right = g->x + g->width;
-	int top = g->y, bottom = g->y + g->height;
-	if (edges & WLR_EDGE_LEFT)
-		left = bx;
-	else if (edges & WLR_EDGE_RIGHT)
-		right = bx;
-	if (edges & WLR_EDGE_TOP)
-		top = by;
-	else if (edges & WLR_EDGE_BOTTOM)
-		bottom = by;
-
-	/* Never so small that the frame's buttons don't fit, unless the client
-	 * insists; then what the client asks for. The opposite edge stays. */
-	int cw = right - left - frame_extra_w(view);
-	int ch = bottom - top - frame_extra_h(view);
-	int min_cw = frame_title(view) ? 3 * theme.title_height + 24 : 16;
-	if (cw < min_cw)
-		cw = min_cw;
-	if (ch < 8)
-		ch = 8;
-	view_apply_size_hints(view, &cw, &ch);
-	/* The axis not dragged keeps its size. */
-	if (!(edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)))
-		cw = server->grab_orig.width;
-	if (!(edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)))
-		ch = server->grab_orig.height;
-	if (edges & WLR_EDGE_LEFT)
-		left = right - cw - frame_extra_w(view);
-	if (edges & WLR_EDGE_TOP)
-		top = bottom - ch - frame_extra_h(view);
-
-	struct wlr_box target = { left, top, cw, ch };
-	if (wlr_box_equal(&target, &server->grab_target))
-		return;
-	server->grab_target = target;
-	server->grab_changed = true;
-	if (server->grab_outline)
-		show_outline(server);
-	else if (view->xdg_toplevel->base->current.configure_serial < view->anchor_serial)
-		/* Still busy with the last size: a mouse sends far more events than a
-		 * client can draw frames. This one goes out when it has acked it. */
-		server->grab_resize_waiting = true;
-	else
-		resize_to(view, &target);
-	update_feedback(server);
-}
-
-void grab_resize_caught_up(struct view *view)
-{
-	struct server *server = view->server;
-	if (!server->grab_resize_waiting || server->grabbed_view != view ||
-			server->cursor_mode != CURSOR_RESIZE)
-		return;
-	server->grab_resize_waiting = false;
-	resize_to(view, &server->grab_target);
-}
-
 /* ---- pointer ------------------------------------------------------------ */
 
 static void process_cursor_motion(struct server *server, uint32_t time);
 
 void input_pointer_changed(struct server *server)
 {
-	if (server->cursor_mode == CURSOR_PASSTHROUGH)
+	if (server->grab.mode == CURSOR_PASSTHROUGH)
 		process_cursor_motion(server, now_msec());
 }
 
@@ -452,18 +112,16 @@ static void process_cursor_motion(struct server *server, uint32_t time)
 	if (server->seat->drag)
 		wlr_scene_node_set_position(&server->layer_drag->node,
 			lround(server->cursor->x), lround(server->cursor->y));
-	switch (server->cursor_mode) {
+	switch (server->grab.mode) {
 	case CURSOR_MOVE:
-		process_move(server);
-		return;
 	case CURSOR_RESIZE:
-		process_resize(server);
+		grab_motion(server);
 		return;
 	case CURSOR_MENU:
 		menu_motion(server, server->cursor->x, server->cursor->y);
 		return;
 	case CURSOR_BUTTON: {
-		struct view *v = server->grabbed_view;
+		struct view *v = server->grab.view;
 		if (!v) {
 			iconbox_button_motion(server->cursor->x, server->cursor->y);
 			return;
@@ -655,7 +313,7 @@ static bool handle_press(struct server *server, uint32_t button,
 			uint32_t e = (cx < mx ? WLR_EDGE_LEFT : WLR_EDGE_RIGHT) |
 				(cy < my ? WLR_EDGE_TOP : WLR_EDGE_BOTTOM);
 			view_begin_interactive(view, CURSOR_RESIZE, e, false);
-			if (server->cursor_mode == CURSOR_RESIZE)
+			if (server->grab.mode == CURSOR_RESIZE)
 				cursor_set_name(server, edge_cursor(e));
 			return true;
 		}
@@ -674,17 +332,9 @@ static bool handle_press(struct server *server, uint32_t button,
 		/* The middle button, or Ctrl on a touchpad without one: this one window. */
 		if (button == BTN_MIDDLE || (button == BTN_LEFT && ctrl_held(server))) {
 			view_begin_interactive(view, CURSOR_MOVE, 0, false);
-			if (server->cursor_mode == CURSOR_MOVE) {
+			if (server->grab.mode == CURSOR_MOVE) {
 				struct view *one = tabs_nth(view, tab);
-				server->grab_take = one ? one : view;
-				server->grab_outline = true;
-				/* The outline shows what it will be on its own. */
-				int own_w, own_h;
-				tabs_own_size(server->grab_take, &own_w, &own_h);
-				if (own_w) {
-					server->grab_target.width = own_w;
-					server->grab_target.height = own_h;
-				}
+				grab_take_one(server, one ? one : view);
 			} else if (button == BTN_MIDDLE) {
 				view_lower(view);
 			} else if (tab >= 0) {
@@ -702,8 +352,8 @@ static bool handle_press(struct server *server, uint32_t button,
 					false);
 				/* A tab is shown on release, unless this becomes a drag. Where
 				 * nothing can be moved, there is no drag to wait for. */
-				if (server->cursor_mode == CURSOR_MOVE)
-					server->grab_tab = tab;
+				if (server->grab.mode == CURSOR_MOVE)
+					grab_click_shows_tab(server, tab);
 				else if (tab >= 0)
 					tabs_show_nth(view, tab);
 			}
@@ -726,8 +376,7 @@ static bool handle_press(struct server *server, uint32_t button,
 			return true;
 		view->pressed = part;
 		view->pressed_inside = true;
-		server->grabbed_view = view;
-		server->cursor_mode = CURSOR_BUTTON;
+		grab_hold_button(server, view);
 		frame_render(view);
 		return true;
 	case PART_RESIZE:
@@ -740,13 +389,12 @@ static bool handle_press(struct server *server, uint32_t button,
 
 static void handle_button_release(struct server *server)
 {
-	struct view *v = server->grabbed_view;
+	struct view *v = server->grab.view;
 	enum frame_part part = v->pressed;
 	bool inside = v->pressed_inside;
 	v->pressed = PART_NONE;
 	v->pressed_inside = false;
-	server->cursor_mode = CURSOR_PASSTHROUGH;
-	server->grabbed_view = NULL;
+	grab_release_button(server);
 	frame_render(v);
 	if (!inside)
 		return;
@@ -811,25 +459,25 @@ static void cursor_button(struct wl_listener *listener, void *data)
 	if (client_saw_it)
 		forward_release(seat, event->time_msec, event->button);
 
-	switch (server->cursor_mode) {
+	switch (server->grab.mode) {
 	case CURSOR_MENU:
 		menu_button(server, cx, cy, pressed, event->time_msec);
-		if (server->cursor_mode == CURSOR_PASSTHROUGH)
+		if (server->grab.mode == CURSOR_PASSTHROUGH)
 			process_cursor_motion(server, event->time_msec);
 		return;
 	case CURSOR_MOVE:
 	case CURSOR_RESIZE:
 		/* Any click ends what began without a button, only its own release a drag. */
-		if (server->grab_until_click ? pressed :
-				!pressed && event->button == server->grab_button) {
-			end_grab(server);
+		if (server->grab.until_click ? pressed :
+				!pressed && event->button == server->grab.button) {
+			grab_end(server);
 			process_cursor_motion(server, event->time_msec);
 		}
 		return;
 	case CURSOR_BUTTON:
 		/* A frame button, or with no window one of the icon box's. */
-		if (!pressed && event->button == server->grab_button) {
-			if (server->grabbed_view)
+		if (!pressed && event->button == server->grab.button) {
+			if (server->grab.view)
 				handle_button_release(server);
 			else
 				iconbox_button_release(server);
@@ -866,7 +514,7 @@ static void cursor_button(struct wl_listener *listener, void *data)
 	 * a click on whatever the pointer has been dragged over. So during its drag. */
 	bool implicit_grab = seat->drag || (server->n_forwarded > 0 &&
 		seat->pointer_state.focused_surface && !wlr_seat_pointer_has_grab(seat));
-	server->grab_button = event->button;
+	grab_pressed(server, event->button);
 	if (!implicit_grab && handle_press(server, event->button, event->time_msec))
 		return;
 	if (server->n_forwarded < (int)(sizeof(server->forwarded_buttons) /
@@ -895,7 +543,7 @@ static void cursor_axis(struct wl_listener *listener, void *data)
 	input_activity(server);
 	outputs_wake(server);
 	/* The wheel over the tabs of a group, one step at a time on any wheel. */
-	if (server->cursor_mode == CURSOR_PASSTHROUGH &&
+	if (server->grab.mode == CURSOR_PASSTHROUGH &&
 			!server->seat->pointer_state.focused_surface &&
 			event->source == WL_POINTER_AXIS_SOURCE_WHEEL &&
 			event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL) {
@@ -941,12 +589,12 @@ static void grab_key(struct server *server, uint32_t mods, xkb_keysym_t sym)
 	int dx = 0, dy = 0;
 	switch (sym) {
 	case XKB_KEY_Escape:
-		cancel_grab(server);
+		grab_cancel(server);
 		process_cursor_motion(server, 0);
 		return;
 	case XKB_KEY_Return:
 	case XKB_KEY_KP_Enter:
-		end_grab(server);
+		grab_end(server);
 		process_cursor_motion(server, 0);
 		return;
 	case XKB_KEY_Left:
@@ -991,13 +639,13 @@ static bool handle_keybinding(struct server *server, uint32_t mods,
 		return false;
 	if (server->menu.open)
 		return menu_key(server, sym);
-	if (server->cursor_mode == CURSOR_MOVE ||
-			server->cursor_mode == CURSOR_RESIZE) {
+	if (server->grab.mode == CURSOR_MOVE ||
+			server->grab.mode == CURSOR_RESIZE) {
 		grab_key(server, mods, sym);
 		return true;
 	}
 	/* A frame button is held down: no other action until it is released. */
-	if (server->cursor_mode == CURSOR_BUTTON)
+	if (server->grab.mode == CURSOR_BUTTON)
 		return false;
 	if (iconbox_key(server, mods, sym))
 		return true;
@@ -1155,8 +803,8 @@ static bool is_arrow(xkb_keysym_t sym)
 /* Where mwc steers with the arrows itself. */
 static bool navigating(struct server *server)
 {
-	return server->menu.open || server->cursor_mode == CURSOR_MOVE ||
-		server->cursor_mode == CURSOR_RESIZE || iconbox_has_focus();
+	return server->menu.open || server->grab.mode == CURSOR_MOVE ||
+		server->grab.mode == CURSOR_RESIZE || iconbox_has_focus();
 }
 
 static void repeat_stop(struct keyboard *kb)
@@ -1513,7 +1161,7 @@ static void request_cursor(struct wl_listener *listener, void *data)
 	struct server *server = wl_container_of(listener, server,
 		request_cursor);
 	struct wlr_seat_pointer_request_set_cursor_event *event = data;
-	if (server->cursor_mode != CURSOR_PASSTHROUGH)
+	if (server->grab.mode != CURSOR_PASSTHROUGH)
 		return;
 	if (server->seat->pointer_state.focused_client == event->seat_client) {
 		wlr_cursor_set_surface(server->cursor, event->surface,
@@ -1590,7 +1238,7 @@ void input_init(struct server *server)
 	/* The default cursor may be asked for before any output has needed it. */
 	wlr_xcursor_manager_load(server->cursor_mgr, 1);
 
-	server->cursor_mode = CURSOR_PASSTHROUGH;
+	grab_init(server);
 	server->cursor_motion.notify = cursor_motion;
 	wl_signal_add(&server->cursor->events.motion, &server->cursor_motion);
 	server->cursor_motion_absolute.notify = cursor_motion_absolute;
@@ -1603,7 +1251,6 @@ void input_init(struct server *server)
 	server->cursor_frame.notify = cursor_frame;
 	wl_signal_add(&server->cursor->events.frame, &server->cursor_frame);
 
-	server->grab_tab = -1;
 	wl_list_init(&server->keyboards);
 	server->new_input.notify = new_input;
 	wl_signal_add(&server->backend->events.new_input, &server->new_input);

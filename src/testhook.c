@@ -223,7 +223,7 @@ static int dump_state(int signal, void *data)
 	struct wlr_surface *cs = server->cursor_name ? NULL : server->client_cursor;
 	const char *shape = server->client_shape ? server->client_shape : "none";
 	fprintf(f, "cursor x=%d y=%d mode=%d cw=%d ch=%d cscale=%d name=%s shape=%s\n",
-		(int)server->cursor->x, (int)server->cursor->y, server->cursor_mode,
+		(int)server->cursor->x, (int)server->cursor->y, server->grab.mode,
 		cs ? cs->current.buffer_width : 0, cs ? cs->current.buffer_height : 0,
 		cs ? cs->current.scale : 0,
 		server->cursor_name ? server->cursor_name : "client", shape);

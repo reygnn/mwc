@@ -28,7 +28,7 @@ SRC = src/main.c src/view.c src/frame.c src/menu.c \
 	src/shmalloc.c src/fifo.c src/desktop.c src/workspace.c src/iconbox.c \
 	src/dock.c src/outputrc.c src/sizehints.c src/snaprules.c src/configview.c \
 	src/tilelayout.c src/color.c src/activation.c src/toast.c src/launch.c \
-	src/output.c src/spawn.c
+	src/output.c src/spawn.c src/grab.c
 # Protocols mwc implements itself, not through wlroots: their glue code too.
 PROTO_CODE = build/fifo-v1-protocol.c build/ext-workspace-v1-protocol.c
 OBJ = $(SRC:src/%.c=build/%.o) $(PROTO_CODE:.c=.o)

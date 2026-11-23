@@ -209,7 +209,7 @@ void dock_admit(struct view *view)
 {
 	/* A drag would pull it back out, and a held frame button act on a docked one. */
 	grab_give_way(view);
-	if (view->server->grabbed_view == view)
+	if (view->server->grab.view == view)
 		grab_forget(view->server);
 	if (view->group)
 		tabs_detach(view);

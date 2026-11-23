@@ -352,7 +352,7 @@ struct menu {
 	double open_x, open_y;
 };
 
-/* ---- server ------------------------------------------------------------- */
+/* ---- the pointer's grab --------------------------------------------------- */
 
 enum cursor_mode {
 	CURSOR_PASSTHROUGH,
@@ -361,6 +361,34 @@ enum cursor_mode {
 	CURSOR_BUTTON, /* a frame or icon box button held down */
 	CURSOR_MENU,
 };
+
+/* What the pointer is doing other than pointing: a window moved or resized, a button
+ * of a frame or the icon box held down, the menu. grab.c alone writes it. */
+struct grab {
+	enum cursor_mode mode;
+	struct view *view;     /* NULL: none, or the icon box's button */
+	double x, y;           /* the pointer in the frame, from the edge dragged */
+	struct wlr_box geobox; /* the frame as the grab began */
+	uint32_t edges;        /* of a resize */
+	bool until_click;      /* from the menu or keyboard */
+	uint32_t button;       /* the press: its release ends a drag */
+	int tab;               /* shown unless this becomes a drag */
+	struct view *take;     /* the one window a drag takes along */
+	struct view *drop;     /* the window it would join */
+	bool outline;
+	bool detached;         /* past the drag threshold */
+	bool changed;
+	bool detaching;        /* the grab is freeing the window */
+	double px, py;         /* the pointer as the grab began */
+	struct wlr_box orig;   /* for Escape */
+	bool orig_maximized;
+	enum snap orig_snap;
+	enum snap zone;
+	struct wlr_box target;
+	bool resize_waiting;   /* opaque: not sent, the client is busy */
+};
+
+/* ---- server ------------------------------------------------------------- */
 
 struct server {
 	struct wl_display *display;
@@ -425,30 +453,9 @@ struct server {
 	double grab_surface_x, grab_surface_y; /* that surface's origin */
 	struct wl_list keyboards;
 
-	enum cursor_mode cursor_mode;
-	struct view *grabbed_view;
-	double grab_x, grab_y;
-	struct wlr_box grab_geobox;
-	uint32_t resize_edges;
-	bool grab_until_click; /* from the menu or keyboard */
-	uint32_t grab_button;
-	int grab_tab;          /* shown unless this becomes a drag */
-	struct view *grab_take; /* the one window a drag takes along */
-	struct view *grab_drop; /* the window it would join */
+	struct grab grab;
 	int tab_wheel;         /* fractions of a wheel step */
 	int icon_wheel;
-	enum frame_part grab_part;
-	bool grab_outline;
-	bool grab_detached;  /* past the drag threshold */
-	bool grab_changed;
-	bool grab_detaching; /* the grab is freeing the window */
-	double grab_px, grab_py;
-	struct wlr_box grab_orig;   /* for Escape */
-	bool grab_orig_maximized;
-	enum snap grab_orig_snap;
-	enum snap grab_zone;
-	struct wlr_box grab_target;
-	bool grab_resize_waiting;   /* opaque: not sent, the client is busy */
 
 	uint32_t last_click_msec;
 	struct view *last_click_view;
@@ -542,10 +549,6 @@ void view_set_maximized(struct view *view, bool maximized);
 void view_set_fullscreen(struct view *view, bool fullscreen);
 void view_minimize(struct view *view);
 void view_restore(struct view *view);
-void view_begin_interactive(struct view *view, enum cursor_mode mode,
-	uint32_t edges, bool until_click);
-/* Free size again under the pointer, the grab point in proportion. */
-void view_drag_free(struct view *view);
 /* On the output at px, py. SNAP_NONE: the geometry from before. */
 void view_snap(struct view *view, enum snap s, double px, double py);
 void view_frame_changed(struct view *view);
@@ -712,17 +715,44 @@ bool menu_key(struct server *server, uint32_t keysym);
 void run_action(struct server *server, enum menu_action action,
 	struct view *view);
 
+/* ---- grab.c ------------------------------------------------------------- */
+
+void grab_init(struct server *server);
+/* A move or resize, if the window can be: from a press, or until_click from the menu
+ * or the keyboard. */
+void view_begin_interactive(struct view *view, enum cursor_mode mode,
+	uint32_t edges, bool until_click);
+/* Free size again under the pointer, the grab point in proportion. */
+void view_drag_free(struct view *view);
+/* A press: the button whose release ends what it starts. */
+void grab_pressed(struct server *server, uint32_t button);
+/* The move just begun takes only this window along, out of its group. */
+void grab_take_one(struct server *server, struct view *take);
+/* The move just begun shows this tab if it stays a click. */
+void grab_click_shows_tab(struct server *server, int tab);
+/* The pointer moved during a move or resize. */
+void grab_motion(struct server *server);
+/* The window stays where the move or resize brought it. */
+void grab_end(struct server *server);
+/* Escape: back to where it was, including out of a maximized state. */
+void grab_cancel(struct server *server);
+/* A button of view's frame is held down; no view: one of the icon box's. */
+void grab_hold_button(struct server *server, struct view *view);
+void grab_release_button(struct server *server);
+/* The menu has the pointer, or gives it back. */
+void grab_menu(struct server *server, bool on);
+/* Opaque resize: the size held back while the client was busy goes out. */
+void grab_resize_caught_up(struct view *view);
+/* No more configures for a window going away: its surface may be half gone. */
+void grab_forget(struct server *server);
+/* Its state changes under a move or resize: the grab ends, the window stays. */
+void grab_give_way(struct view *view);
+
 /* ---- input.c ------------------------------------------------------------ */
 
 void input_init(struct server *server);
 void input_fini(struct server *server);
 void input_config_changed(struct server *server);
-/* Opaque resize: the size held back while the client was busy goes out. */
-void grab_resize_caught_up(struct view *view);
-void grab_started(struct server *server);
-void grab_forget(struct server *server);
-/* Its state changes under a move or resize: the grab ends, the window stays. */
-void grab_give_way(struct view *view);
 /* Clients type and click as the user: wayrdp, the tests. */
 void input_virtual_init(struct server *server);
 void input_virtual_fini(void);

@@ -68,7 +68,7 @@ static void apply(struct view *view)
 		struct server *server = view->server;
 		grab_give_way(view);
 		/* A frame button held down on it would act on it hidden. */
-		if (server->grabbed_view == view)
+		if (server->grab.view == view)
 			grab_forget(server);
 		if (view->activated)
 			view_set_activated(view, false);
