@@ -6,7 +6,7 @@ mwc is a small Wayland compositor with the look and behaviour of the Motif windo
 manager. Frames are drawn server side: bevelled borders with corner grooves, a window
 menu button, minimize and maximize, desktop icons, and mwm's menus and key bindings.
 It runs Wayland programs only: there is no Xwayland, so X11 programs don't start. It is
-built on wlroots 0.20.
+built on wlroots 0.20 or 0.19.
 
 
 ## Build
@@ -18,9 +18,17 @@ On Arch Linux:
     make
     sudo make install
 
-`make install` puts `mwc` in `/usr/local/bin` and adds a session entry for display
-managers such as GDM. Ubuntu 26.04 has wlroots 0.19 only; the last commit of mwc built
-on it is 11f8c4d.
+On Ubuntu 26.04, with wlroots 0.19:
+
+    sudo apt install build-essential pkg-config libwlroots-0.19-dev \
+        wayland-protocols libwayland-dev libxkbcommon-dev libpixman-1-dev \
+        libcairo2-dev libpango1.0-dev
+    make
+    sudo make install
+
+`make` takes wlroots 0.20 where it finds it, else 0.19. Ubuntu's 0.19.2 lacks two
+fixes mwc relies on, see CAVEATS. `make install` puts `mwc` in `/usr/local/bin` and
+adds a session entry for display managers such as GDM.
 
 
 ## Run

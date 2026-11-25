@@ -1,0 +1,21 @@
+# The same on Ubuntu 26.04, which has wlroots 0.19 only: mwc builds against either,
+# and this image keeps the older one tested. The packages are README's for Ubuntu and
+# what tests/Containerfile adds for the tests.
+#
+#   podman build -t mwc-test-ubuntu -f tests/Containerfile.ubuntu tests
+#   podman run --rm --network=none -v "$PWD:/src/mwc:ro" mwc-test-ubuntu \
+#       sh -c 'cp -r /src/mwc /tmp/mwc && cd /tmp/mwc && make clean && make -k test'
+FROM docker.io/library/ubuntu:26.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential pkg-config libwlroots-0.19-dev \
+    wayland-protocols libwayland-dev libxkbcommon-dev \
+    libpixman-1-dev libcairo2-dev libpango1.0-dev \
+    foot grim xkb-data fonts-dejavu-core adwaita-icon-theme procps valgrind \
+    clang libclang-rt-dev git \
+    && rm -rf /var/lib/apt/lists/*
+RUN useradd -m tester
+USER tester
+ENV XDG_RUNTIME_DIR=/tmp/xdg
+RUN mkdir -m 700 /tmp/xdg
+WORKDIR /home/tester

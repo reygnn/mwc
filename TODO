@@ -25,14 +25,14 @@ TODO
   /dev/shm: ein größerer Puffer brächte mwc dort mit SIGBUS zu Fall. Der Test
   hält fest, dass shmalloc.c das verhindert.
 
-* Server mit wayrdp auf Ubuntu (docs/WAYLAND-RDP.md,
-  docs/wayland-rdp-upgrade.sh). Beide setzen Ubuntu 26.04 mit
-  libwlroots-0.19-dev voraus, mwc braucht seit dem Umstieg 0.20. Zu
-  entscheiden: die Server auf eine Distribution mit wlroots 0.20, oder dort
-  mwc 11f8c4d (der letzte Stand auf 0.19) bis Ubuntu 0.20 hat.
+* wlroots 0.19 fallen lassen, sobald Ubuntu 0.20 hat (libwlroots-0.20-dev;
+  ab und zu mit apt policy nachsehen). Dann tests/Containerfile.ubuntu, den
+  CI-Job ubuntu, wlroots_fixed in tests/lib.sh und den Abschnitt wlroots 0.19.2
+  in CAVEATS streichen. Bis dahin baut mwc gegen beide (Server mit wayrdp auf
+  Ubuntu 26.04, docs/WAYLAND-RDP.md).
 
 * ext-workspace-v1 aus wlroots (wlr_ext_workspace_v1, seit 0.20) statt
-  src/workspace.c. Kein Fehler, nur weniger eigener Code; nur wenn es die
+  src/workspace.c. Erst ohne wlroots 0.19 (siehe oben). Kein Fehler, nur weniger eigener Code; nur wenn es die
   festen Desktops und das Umschalten beim Commit genauso abbildet.
   Abnahme: tests/desktop.sh unverändert.
 

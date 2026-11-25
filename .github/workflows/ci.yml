@@ -1,9 +1,10 @@
 # On every push and pull request: lines longer than 100 columns (make lint), a build
 # with warnings as errors, GCC's static analyzer (make analyze), then make check,
 # the whole test suite under AddressSanitizer and UndefinedBehaviorSanitizer and the
-# kept fuzz inputs. GitHub's Ubuntu has no wlroots 0.20, so it all runs in
-# tests/Containerfile's Arch image, as on a developer's machine. The test logs come out
-# of the container and stay with a failed run.
+# kept fuzz inputs. It all runs in containers, as on a developer's machine: check in
+# tests/Containerfile's Arch image (wlroots 0.20), ubuntu make check again in
+# tests/Containerfile.ubuntu's (Ubuntu 26.04, wlroots 0.19). The test logs come out of
+# the container and stay with a failed run.
 name: CI
 
 on:
@@ -35,4 +36,29 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-logs
+          path: logs/
+
+  ubuntu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image
+        run: docker build -t mwc-test-ubuntu -f tests/Containerfile.ubuntu tests
+
+      - name: build with -Werror, make check against wlroots 0.19
+        run: |
+          mkdir -m 777 logs
+          docker run --rm --network=none \
+            -v "$PWD:/src/mwc:ro" -v "$PWD/logs:/logs" mwc-test-ubuntu sh -c '
+              cp -r /src/mwc /tmp/mwc && cd /tmp/mwc && make clean &&
+              make CFLAGS="-O2 -g -Werror" && make -k check; status=$?
+              cp build/*.log build/*.png /logs/ 2>/dev/null; exit $status'
+
+      - name: Test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-ubuntu
           path: logs/

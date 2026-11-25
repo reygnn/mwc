@@ -23,7 +23,8 @@ test tools. `distrobox enter mwc-dev -- bash -lc 'cd ~/data/C-Projects/mwc && ..
 | `make walk` | random operations with invariants after each, `WALK_STEPS`, `WALK_SEED`; `make check` takes 150 |
 
 CI (`.github/workflows/ci.yml`) runs `make lint`, a `-Werror` build, `make analyze` and
-`make check` in `tests/Containerfile`'s image.
+`make check` in `tests/Containerfile`'s image (Arch, wlroots 0.20), and `make check` in
+`tests/Containerfile.ubuntu`'s (Ubuntu 26.04, wlroots 0.19).
 
 Unit-tested logic lives in modules that call nothing of the display code:
 `outputrc.c`, `sizehints.c`, `snaprules.c`, `tilelayout.c`, `activation.c`, `config.c`,
@@ -48,6 +49,8 @@ window state or way to change one goes there too.
 
 ## Rules
 
+- mwc builds against wlroots 0.20 and 0.19 (Ubuntu 26.04): nothing only one of them
+  has. A case needing a fix 0.19.2 lacks checks `wlroots_fixed` (`tests/lib.sh`).
 - No workarounds for wlroots bugs fixed upstream; mwc waits for the release. The
   wlroots source is in `~/data/src/wlroots` (tag 0.20.2) for checking what it does.
 - In `mwc.h` one comment line for a contract, none for what the name says.

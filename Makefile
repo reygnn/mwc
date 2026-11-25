@@ -2,7 +2,10 @@
 
 PREFIX ?= /usr/local
 PKG_CONFIG ?= pkg-config
-PKGS = wlroots-0.20 wayland-server xkbcommon pixman-1 cairo pangocairo
+# wlroots 0.20, else 0.19 (Ubuntu 26.04); mwc uses nothing that differs between them.
+WLROOTS := $(or $(firstword $(foreach p,wlroots-0.20 wlroots-0.19,\
+	$(if $(shell $(PKG_CONFIG) --exists $(p) && echo ok),$(p)))),wlroots-0.20)
+PKGS = $(WLROOTS) wayland-server xkbcommon pixman-1 cairo pangocairo
 
 ifeq ($(filter clean uninstall,$(MAKECMDGOALS)),)
 MISSING := $(foreach p,$(PKGS) wayland-protocols wayland-scanner,\
