@@ -597,13 +597,14 @@ check "it leaves 680 px" "[ \"\$(global output uh)\" = 680 ]"
 check "the toast from before has gone" "[ \"\$(global toasterrors n)\" = 0 ]"
 do_input key super+Return
 check "the toast sits 16 px above the panel" \
-	"[ \$((\$(global toasterror_0 y) + \$(global toasterror_0 h))) = $((680 - 16)) ]"
+	"[ -n \"\$(global toasterror_0 h)\" ] && \
+	[ \$((\$(global toasterror_0 y) + \$(global toasterror_0 h))) = $((680 - 16)) ]"
 kill "$PID_panel"
 wait "$PID_panel" 2>/dev/null
 check "the panel is gone" "[ \"\$(global output uh)\" = 720 ]"
 do_input key super+Return
 check "the same one again, still showing, moves down with it" \
-	"[ \"\$(global toasterrors n)\" = 1 ] && \
+	"[ \"\$(global toasterrors n)\" = 1 ] && [ -n \"\$(global toasterror_0 h)\" ] && \
 	[ \$((\$(global toasterror_0 y) + \$(global toasterror_0 h))) = $((720 - 16)) ]"
 echo 'Mwm*outputManagement: true' >"$XDG_CONFIG_HOME/mwc/mwmrc"
 reload_mwc
