@@ -1,8 +1,8 @@
 # On every push and pull request: lines longer than 100 columns (make lint), a build
 # with warnings as errors, GCC's static analyzer (make analyze), then make check,
 # the whole test suite under AddressSanitizer and UndefinedBehaviorSanitizer and the
-# kept fuzz inputs. GitHub has no Ubuntu with wlroots 0.19 yet, so it all runs in
-# tests/Containerfile's image, as on a developer's machine. The test logs come out
+# kept fuzz inputs. GitHub's Ubuntu has no wlroots 0.20, so it all runs in
+# tests/Containerfile's Arch image, as on a developer's machine. The test logs come out
 # of the container and stay with a failed run.
 name: CI
 

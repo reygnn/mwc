@@ -421,6 +421,18 @@ captured_is() { # description file x y rrggbb
 	echo "ok: $1"
 }
 echo 'Mwm*rootBackground: #204060' >"$RC"
+# The first capture of a monitor that is off: wlroots before 0.19.3 and 0.20.2 kept
+# the source it made then, with no size and no formats, after the monitor came back.
+begin
+power off
+check "the monitor is off" "[ \"\$(global output on)\" = 0 ]"
+capturec frame HEADLESS-1 "$SMOKE_DIR/dark.png" >>"$LOG" 2>&1
+power on
+check "and on again" "[ \"\$(global output on)\" = 1 ]"
+capturec frame HEADLESS-1 "$SMOKE_DIR/lit.png" || fail "capturing after it came back"
+captured_is "a capture first asked for while it was off brings it once it is on" \
+	"$SMOKE_DIR/lit.png" 600 300 204060
+finish
 begin
 WAYLAND_DISPLAY=wayland-0 build/outputc list 2>&1 | grep -q 'no output manager' ||
 	fail "wlr-output-management is offered without Mwm*outputManagement"

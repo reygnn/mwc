@@ -14,6 +14,7 @@
  *   caps on|off        lock or unlock Caps
  *   group N            lock layout group N, counting from 0, of the LAYOUTS given
  *   wheel N            turn the wheel N steps
+ *   scroll DX DY       scroll with two fingers, on both axes in one frame
  *
  * Usage: vinput WIDTH HEIGHT [LAYOUTS]: the size of the headless output, and the XKB
  * layouts of its keymap, default "us" (e.g. "us,ru" for a second group). Key names
@@ -299,6 +300,17 @@ static const char *run_command(char *line)
 		zwlr_virtual_pointer_v1_axis_source(pointer, WL_POINTER_AXIS_SOURCE_WHEEL);
 		zwlr_virtual_pointer_v1_axis_discrete(pointer, now_msec(),
 			WL_POINTER_AXIS_VERTICAL_SCROLL, wl_fixed_from_int(15 * atoi(a)), atoi(a));
+		zwlr_virtual_pointer_v1_frame(pointer);
+		return NULL;
+	}
+	if (strcmp(cmd, "scroll") == 0 && a && b) {
+		int dx = atoi(a), dy = atoi(b);
+		uint32_t t = now_msec();
+		zwlr_virtual_pointer_v1_axis_source(pointer, WL_POINTER_AXIS_SOURCE_FINGER);
+		zwlr_virtual_pointer_v1_axis(pointer, t, WL_POINTER_AXIS_VERTICAL_SCROLL,
+			wl_fixed_from_int(dy));
+		zwlr_virtual_pointer_v1_axis(pointer, t, WL_POINTER_AXIS_HORIZONTAL_SCROLL,
+			wl_fixed_from_int(dx));
 		zwlr_virtual_pointer_v1_frame(pointer);
 		return NULL;
 	}

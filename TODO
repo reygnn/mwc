@@ -19,70 +19,22 @@ TODO
   Abnahme: session.sh fängt den Zeiger nach einer Aufnahme mit "cursors"
   und bekommt ein Bild; ein Upstream-Bericht an wlroots.
 
-* wlroots 0.19.3 (Review 2026-11-18). Wartet auf das Ubuntu-Paket: apt hat
-  libwlroots-0.19-dev 0.19.3 noch nicht (2026-11-19); ab und zu mit
-  apt policy libwlroots-0.19-dev nachsehen. Selbst bauen lohnt nicht: das
-  installierte mwc linkt gegen die libwlroots des Hosts.
-  Erschienen, mit dem Fix, auf den mwc wartet: 0f9a1f1 (Aufnahmequelle nach
-  dem Einschalten, siehe unten), dazu
-  878aebf (virtueller Zeiger setzt die Achsenquelle bei jeder Achse; bis dahin
-  in CAVEATS unter Virtual input). 4279ee5 (wlr_buffer_finish in den
-  Allocatoren) betrifft mwc nur noch, wo wlroots udmabuf wählt, was in mwcs
-  üblichen Setups nicht vorkommt; den shm-Allocator ersetzt src/shmalloc.c.
-  Keine API-Änderung: ein kleiner Schritt, unabhängig vom Umstieg auf 0.20.
-  src/shmalloc.c bleibt (entschieden 2026-11-18): wlroots' shm-Allocator legt
-  seine Puffer auch in 0.19.3 und 0.20.2 mit shm_open in /dev/shm an, und ein
-  Puffer größer als der freie Platz in /dev/shm (Docker und Podman: 64 MiB)
-  brächte mwc mit SIGBUS zu Fall. main.c nimmt shmalloc.c ohne
-  Versionsabfrage: mwcs eigener Allocator, keine Umgehung.
-  Nach dem Umstieg den Abschnitt Virtual input aus CAVEATS streichen.
-  Abnahme: make check gegen 0.19.3, tests/fifo.sh und die Aufnahme nach dem
-  Einschalten (session.sh mit powerc und capturec) bestehen; ein Fall in
-  tests/pointer.sh, in dem vinput mit Achsenquelle finger auf beiden Achsen
-  scrollt (erst ab 0.19.3, auf 0.19.2 bricht mwc ab; vinput kann bisher nur
-  "wheel N", senkrecht mit Quelle wheel, und braucht dafür einen neuen
-  Befehl).
-  Unabhängig davon: ein Test mit einem Output größer als /dev/shm (headless,
-  im Container aus tests/Containerfile).
+* Ein Test mit einem Output größer als /dev/shm (headless, im Container aus
+  tests/Containerfile, dort 64 MiB). src/shmalloc.c legt seine Puffer mit
+  memfd_create an, wlroots' shm-Allocator auch in 0.20.2 mit shm_open in
+  /dev/shm: ein größerer Puffer brächte mwc dort mit SIGBUS zu Fall. Der Test
+  hält fest, dass shmalloc.c das verhindert.
 
-* Bildschirmaufnahme eines Monitors, der aus war. wlroots 0.19.2 legt die
-  Aufnahmequelle eines Monitors beim ersten Aufnahmewunsch an und nimmt Größe
-  und Formate aus einem Swapchain-Test. Ist der Monitor da aus, bleibt sie bei
-  0x0 ohne Formate und erneuert sich nur bei einem Commit mit neuem Modus oder
-  Renderformat; mwc schaltet ihn aber mit dem alten Modus wieder ein. Ein wayvnc,
-  der während DPMS-aus startet, bekommt so nie ein Bild, bis jemand den Modus
-  ändert. wlroots 0.19.3 und 0.20.2 beheben das (die Quelle hört dort auch auf
-  ENABLED; 0.19.3: 0f9a1f1).
-  Bestätigt von wayrdp im Code und im Versuch (2026-11-11): erste Aufnahme bei
-  ausgeschaltetem Monitor, dann ein: kein Bild; nach einem Moduswechsel wieder.
-  Ein erzwungener Moduswechsel beim Einschalten würde es in mwc umgehen, wird
-  aber bewusst nicht gebaut (Entscheidung 2026-11-11: keine Umgehungen für
-  Fehler, die wlroots schon behoben hat). Erledigt sich mit dem Umstieg auf
-  0.19.3 oder 0.20.2; bis dahin hilft ein Moduswechsel per Hand (outputc apply, wlr-randr).
-  wayrdp löst es nicht selbst aus (schaltet vor jeder Aufnahme ein), bleibt
-  aber ohne Bild, wenn ein anderes Programm (grim, wayvnc, capturec) zuerst
-  bei abgeschaltetem Monitor aufgenommen hat: Es bekommt dieselbe leere Quelle.
-  Abnahme nach dem Umstieg: session.sh schaltet mit powerc aus, startet
-  capturec, schaltet ein und bekommt ein Bild.
+* Server mit wayrdp auf Ubuntu (docs/WAYLAND-RDP.md,
+  docs/wayland-rdp-upgrade.sh). Beide setzen Ubuntu 26.04 mit
+  libwlroots-0.19-dev voraus, mwc braucht seit dem Umstieg 0.20. Zu
+  entscheiden: die Server auf eine Distribution mit wlroots 0.20, oder dort
+  mwc 11f8c4d (der letzte Stand auf 0.19) bis Ubuntu 0.20 hat.
 
-* wlroots 0.20. Ubuntu-Paket libwlroots-0.20-dev prüfen. Den Fix für die
-  Aufnahmequelle (auf 0.19: 0f9a1f1) hat 0.20.2; 0.20.0 und 0.20.1 sind
-  ungeprüft. Ob der Fix für den virtuellen Zeiger (auf 0.19: 878aebf,
-  "wlr_virtual_pointer: Set axis source on all axis") in 0.20.2 ist, am Titel
-  prüfen: auf 0.20 hätte er einen anderen Hash. src/shmalloc.c bleibt auch
-  mit 0.20. Nicht behoben ist der Absturz in wlr-output-management
-  (head_send_state, 40640950 nur auf master):
-  Mwm*outputManagement bleibt nötig. src/fifo.c bleibt: wlroots hat auch in
-  0.20.2 kein wp_fifo_v1 (geprüft am Quellbaum von 0.20.2 und master).
-  Verdeckte FIFO-Fenster: 0.19 schickt einer Oberfläche, die ganz unter
-  undurchsichtigen Fenstern liegt, wl_surface.leave, und src/fifo.c gibt ihr
-  dann ein Update pro Sekunde. 0.20 schickt bei null Outputs kein leave mehr
-  (9c3bfbe, Absicht), sie bliebe beim Takt des Monitors. Vorher einen Fall in
-  tests/fifo.sh (fifoc cued unter einem undurchsichtigen Fenster, 2.5 bis 6 s),
-  dann das outputs_update-Ereignis des Scene-Buffers (size 0) in fifo.c nehmen.
-  Versteckte Fenster regelt fifo.c schon selbst über view_from_surface(); ihr
-  Fall in fifo.sh muss mit 0.20 weiter bestehen.
-  Ein eigener Branch, mit allen API-Änderungen von 0.19 auf 0.20.
+* ext-workspace-v1 aus wlroots (wlr_ext_workspace_v1, seit 0.20) statt
+  src/workspace.c. Kein Fehler, nur weniger eigener Code; nur wenn es die
+  festen Desktops und das Umschalten beim Commit genauso abbildet.
+  Abnahme: tests/desktop.sh unverändert.
 
 * Sloppy Focus als Alternative zu Click-to-Focus. Der Fokus folgt dem Zeiger
   in ein Fenster und bleibt dort, wenn der Zeiger auf den Desktop, eine Lücke

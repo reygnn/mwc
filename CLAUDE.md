@@ -49,7 +49,7 @@ window state or way to change one goes there too.
 ## Rules
 
 - No workarounds for wlroots bugs fixed upstream; mwc waits for the release. The
-  wlroots 0.19.2 source is in `~/data/src/wlroots` for checking what it does.
+  wlroots source is in `~/data/src/wlroots` (tag 0.20.2) for checking what it does.
 - In `mwc.h` one comment line for a contract, none for what the name says.
 - The running session reads `~/.config/mwc/mwmrc`; SIGHUP to `mwc` reloads it, a new
   binary needs a restart.

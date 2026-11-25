@@ -8,15 +8,17 @@
 #
 # The sources stay read-only and the build happens in a copy; make clean drops what
 # a host build left in build/.
-FROM docker.io/library/ubuntu:26.04
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential pkg-config libwlroots-0.19-dev \
-    wayland-protocols libwayland-dev libxkbcommon-dev \
-    libpixman-1-dev libcairo2-dev libpango1.0-dev \
-    foot grim xkb-data fonts-dejavu-core adwaita-icon-theme procps valgrind \
-    clang libclang-rt-dev git \
-    && rm -rf /var/lib/apt/lists/*
+FROM docker.io/library/archlinux:latest
+# valgrind needs glibc's symbols, which Arch ships apart; the tests run offline,
+# without debuginfod.
+RUN printf '[core-debug]\nServer = https://geo.mirror.pkgbuild.com/$repo/os/$arch\n' \
+    >>/etc/pacman.conf
+RUN pacman -Syu --noconfirm --needed \
+    base-devel pkgconf wlroots0.20 \
+    wayland wayland-protocols libxkbcommon pixman cairo pango \
+    foot grim xkeyboard-config ttf-dejavu adwaita-icon-theme procps-ng valgrind \
+    clang compiler-rt git glibc-debug \
+    && pacman -Scc --noconfirm
 RUN useradd -m tester
 USER tester
 ENV XDG_RUNTIME_DIR=/tmp/xdg

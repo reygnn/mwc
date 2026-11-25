@@ -151,12 +151,14 @@ static void find_buffer(struct wlr_scene_buffer *buffer, int sx, int sy, void *d
 }
 
 /* The output wlroots paces it by: frame callbacks and presentation feedback come from
- * the one most of it is on. */
-static struct wlr_output *primary_output(struct wlr_surface *surface, struct view *view)
+ * the one most of it is on. *in_scene says whether it has a buffer in the scene. */
+static struct wlr_output *primary_output(struct wlr_surface *surface, struct view *view,
+	bool *in_scene)
 {
 	struct surface_buffer sb = { surface, NULL };
 	wlr_scene_node_for_each_buffer(view ? &view->tree->node :
 		&fifo_server->scene->tree.node, find_buffer, &sb);
+	*in_scene = sb.buffer;
 	struct wlr_scene_output *so = sb.buffer ? sb.buffer->primary_output : NULL;
 	return so && so->output->enabled ? so->output : NULL;
 }
@@ -172,15 +174,16 @@ static void watch_output(void *data)
 
 	struct wlr_output *output = NULL;
 	struct wlr_surface_output *so;
-	/* A window mwc hides keeps its outputs: wlroots 0.19 doesn't update them for a
-	 * switched-off scene node, 0.20 keeps them on purpose (9c3bfbe). It is on none. */
+	/* A window mwc hides is on none, whatever wlroots keeps for it. */
 	struct view *view = view_from_surface(fifo->surface);
 	bool hidden = view && (view_hidden(view) || view->shaded);
+	bool in_scene = false;
 	if (!hidden)
-		output = primary_output(fifo->surface, view);
-	/* No buffer in the scene yet: any output it is on. */
+		output = primary_output(fifo->surface, view, &in_scene);
+	/* No buffer in the scene yet: any output it is on. Not once it has one: wlroots
+	 * 0.20 keeps a surface on its outputs when it goes out of sight (9c3bfbe). */
 	wl_list_for_each(so, &fifo->surface->current_outputs, link) {
-		if (!output && so->output->enabled && !hidden)
+		if (!output && so->output->enabled && !hidden && !in_scene)
 			output = so->output;
 	}
 	if (!output) {

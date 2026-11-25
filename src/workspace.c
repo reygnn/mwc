@@ -10,7 +10,7 @@
  * create workspaces and workspaces can't be removed, assigned or deactivated;
  * the capabilities say so.
  *
- * wlroots 0.19 has no implementation. Each client that binds the manager gets its
+ * mwc's own, from before wlroots had one (0.20 has). Each client that binds the manager gets its
  * own group and workspace objects; their user data points back to it, or is NULL
  * once the manager is gone.
  */

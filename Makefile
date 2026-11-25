@@ -2,13 +2,13 @@
 
 PREFIX ?= /usr/local
 PKG_CONFIG ?= pkg-config
-PKGS = wlroots-0.19 wayland-server xkbcommon pixman-1 cairo pangocairo
+PKGS = wlroots-0.20 wayland-server xkbcommon pixman-1 cairo pangocairo
 
 ifeq ($(filter clean uninstall,$(MAKECMDGOALS)),)
 MISSING := $(foreach p,$(PKGS) wayland-protocols wayland-scanner,\
 	$(if $(shell $(PKG_CONFIG) --exists $(p) && echo ok),,$(p)))
 ifneq ($(strip $(MISSING)),)
-$(error Missing build dependencies: $(strip $(MISSING)) -- see README.md for the apt install line)
+$(error Missing build dependencies: $(strip $(MISSING)) -- see README.md for the packages)
 endif
 endif
 
@@ -49,14 +49,14 @@ build/xdg-shell-protocol.h: $(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml 
 build/ext-image-copy-capture-v1-protocol.h: $(WAYLAND_PROTOCOLS)/staging/ext-image-copy-capture/ext-image-copy-capture-v1.xml | build
 	$(WAYLAND_SCANNER) server-header $< $@
 
-# wp_fifo_v1, in wayland-protocols from 1.38 on; wlroots 0.19 has no implementation.
+# wp_fifo_v1, in wayland-protocols from 1.38 on; wlroots 0.20 has no implementation.
 build/fifo-v1-protocol.h: $(WAYLAND_PROTOCOLS)/staging/fifo/fifo-v1.xml | build
 	$(WAYLAND_SCANNER) server-header $< $@
 
 build/fifo-v1-protocol.c: $(WAYLAND_PROTOCOLS)/staging/fifo/fifo-v1.xml | build
 	$(WAYLAND_SCANNER) private-code $< $@
 
-# ext-workspace-v1, in wayland-protocols from 1.40 on; none in wlroots 0.19 either.
+# ext-workspace-v1, in wayland-protocols from 1.40 on; mwc's own, see src/workspace.c.
 build/ext-workspace-v1-protocol.h: $(WAYLAND_PROTOCOLS)/staging/ext-workspace/ext-workspace-v1.xml | build
 	$(WAYLAND_SCANNER) server-header $< $@
 
@@ -455,7 +455,7 @@ build/fifoc: tests/fifoc.c $(FIFOC_GEN)
 		build/xdg-decoration-unstable-v1-code.c \
 		$(shell $(PKG_CONFIG) --libs wayland-client)
 
-fifo-test: mwc build/fifoc build/powerc build/workspacec build/vinput
+fifo-test: mwc build/fifoc build/powerc build/workspacec build/vinput build/xdgc
 	tests/fifo.sh
 
 # Lists and switches the desktops, as a pager does.

@@ -47,6 +47,8 @@
  *                  counting from 0; says "fullscreen asked"
  *     own_size=1   keep its own size whatever a configure says, as a game with a
  *                  fixed resolution does
+ *     opaque=1     an XRGB buffer: the scene takes it as opaque and leaves out what
+ *                  lies under it
  *     clear=1      draw nothing (fully transparent) and take no clicks: an empty
  *                  input region
  *     viewport=1   a 1x1 buffer, stretched to the window's size by wp_viewporter:
@@ -107,7 +109,7 @@ static const char *late_frame, *pre_late;
 static bool early_frame, unparent;
 static struct org_kde_kwin_server_decoration_manager *kde_manager;
 static struct wp_viewporter *viewporter;
-static bool use_viewport, clear;
+static bool use_viewport, clear, opaque;
 static int cursor_w, cursor_h, cursor_scale;
 static bool menu_asked;
 static int32_t menu_x, menu_y;
@@ -234,7 +236,7 @@ static void draw(struct window *win)
 	munmap(px, size);
 	struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
 	struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0, bw, bh,
-		bw * 4, WL_SHM_FORMAT_ARGB8888);
+		bw * 4, opaque ? WL_SHM_FORMAT_XRGB8888 : WL_SHM_FORMAT_ARGB8888);
 	wl_shm_pool_destroy(pool);
 	close(fd);
 	wl_surface_attach(win->surface, buffer, 0, 0);
@@ -890,6 +892,8 @@ int main(int argc, char *argv[])
 			log_states = atoi(v);
 		else if (!strcmp(argv[i], "clear"))
 			clear = atoi(v);
+		else if (!strcmp(argv[i], "opaque"))
+			opaque = atoi(v);
 		else if (!strcmp(argv[i], "own_size"))
 			own_size = atoi(v);
 		else if (!strcmp(argv[i], "caps"))

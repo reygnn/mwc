@@ -5,7 +5,7 @@
 LOG=build/fifo.log
 . "$(dirname "$0")/lib.sh"
 
-for tool in build/fifoc build/powerc build/workspacec build/vinput; do
+for tool in build/fifoc build/powerc build/workspacec build/vinput build/xdgc; do
 	[ -x "$tool" ] || { echo "FAIL: $tool not built"; exit 1; }
 done
 fifoc() { WAYLAND_DISPLAY=wayland-0 timeout 10 build/fifoc "$@" 2>&1; }
@@ -79,6 +79,25 @@ awk -v t="${t:-0}" 'BEGIN { exit !(t >= 2.5 && t <= 6) }' ||
 	fail "on another desktop: ${t:-no result} s, expected 2.5 to 6"
 echo "ok: so does one on another desktop ($t s)"
 WAYLAND_DISPLAY=wayland-0 build/workspacec activate 1 >/dev/null || fail "desktop 1"
+# All of it under an opaque window: wlroots 0.20 keeps the surface on its output
+# then (no wl_surface.leave), but the scene buffer is on none.
+rm -f "$SMOKE_DIR/go"
+FIFOC_GO=$SMOKE_DIR/go WAYLAND_DISPLAY=wayland-0 timeout 15 build/fifoc cued 5 \
+	>"$SMOKE_DIR/cued.out" 2>&1 &
+cued=$!
+wait_for "a window to cover" grep -q '^mapped' "$SMOKE_DIR/cued.out"
+WAYLAND_DISPLAY=wayland-0 build/xdgc app=cover pre=full opaque=1 \
+	>"$SMOKE_DIR/cover.events" 2>&1 &
+cover=$!
+check "an opaque window covers it" "[ \"\$(get cover full)\" = 1 ]"
+touch "$SMOKE_DIR/go"
+wait "$cued" || fail "fifoc cued: $(cat "$SMOKE_DIR/cued.out")"
+t=$(sed -n 's/^seconds=\([0-9.]*\).*/\1/p' "$SMOKE_DIR/cued.out")
+awk -v t="${t:-0}" 'BEGIN { exit !(t >= 2.5 && t <= 6) }' ||
+	fail "under an opaque window: ${t:-no result} s, expected 2.5 to 6"
+echo "ok: so does one under an opaque window ($t s)"
+kill "$cover"
+wait "$cover" 2>/dev/null
 WAYLAND_DISPLAY=wayland-0 build/powerc off || fail "powerc off"
 seconds_between "so does one on a monitor switched off" 2.5 6 unseen 5
 WAYLAND_DISPLAY=wayland-0 build/powerc on || fail "powerc on"

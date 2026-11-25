@@ -54,7 +54,7 @@ static bool fails(const char *function)
 	return true;
 }
 
-/* Each as wlroots 0.19 declares it, failing or passed on. */
+/* Each as wlroots 0.20 declares it, failing or passed on. */
 #define WRAP(type, name, params, args) \
 	type __real_##name params; \
 	type __wrap_##name params; \

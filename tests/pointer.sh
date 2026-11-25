@@ -269,6 +269,13 @@ after_closed() { sed -n '/^popup-closed/,$p' "$SMOKE_DIR/I.log" | grep -q "$1"; 
 wait_for "without any motion, the window below has the pointer" after_closed '^enter'
 do_input wheel 2
 wait_for "and the wheel reaches it" after_closed '^axis'
+# Two fingers on both axes in one frame: wlroots before 0.19.3 and 0.20.2 gave the
+# second axis the wheel as its source and aborted on the mismatch.
+axes() { [ "$(sed -n '/^popup-closed/,$p' "$SMOKE_DIR/I.log" | grep -c '^axis')" -ge "$1" ]; }
+axes_before=$(sed -n '/^popup-closed/,$p' "$SMOKE_DIR/I.log" | grep -c '^axis')
+do_input scroll 10 10
+wait_for "scrolling on both axes reaches it" axes $((axes_before + 2))
+kill -0 "$pid" || fail "mwc died scrolling on both axes"
 stop I
 
 # ---- drag and drop ----------------------------------------------------------------------
