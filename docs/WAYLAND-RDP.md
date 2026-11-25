@@ -44,7 +44,7 @@ Between the two the server has no RDP, only SSH.
 
 ## 1. Requirements
 
-mwc needs wlroots 0.19 and wayrdp FreeRDP 3, which Ubuntu ships from 26.04 on.
+mwc needs wlroots 0.19 or 0.20 and wayrdp FreeRDP 3, which Ubuntu ships from 26.04 on.
 A 24.04 server must be upgraded first. `do-release-upgrade` is made to run
 over SSH. The risks are a connection that drops halfway, a full disk, and a
 server that doesn't come back with its network after the reboot. Each has a

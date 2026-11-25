@@ -52,7 +52,9 @@ window state or way to change one goes there too.
 - mwc builds against wlroots 0.20 and 0.19 (Ubuntu 26.04): nothing only one of them
   has. A case needing a fix 0.19.2 lacks checks `wlroots_fixed` (`tests/lib.sh`).
 - No workarounds for wlroots bugs fixed upstream; mwc waits for the release. The
-  wlroots source is in `~/data/src/wlroots` (tag 0.20.2) for checking what it does.
+  wlroots source is in `~/data/src/wlroots` for checking what it does, with the tags of
+  both versions: read the one in question with `git show 0.20.2:PATH` or `0.19.2:PATH`,
+  whatever is checked out.
 - In `mwc.h` one comment line for a contract, none for what the name says.
 - The running session reads `~/.config/mwc/mwmrc`; SIGHUP to `mwc` reloads it, a new
   binary needs a restart.

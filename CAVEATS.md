@@ -45,7 +45,7 @@ they exist only with `MWC_VIRTUAL_INPUT=1` or in the tests.
 
 ## wlroots 0.19.2
 
-Ubuntu 26.04 has wlroots 0.19.2, which lacks two fixes of 0.19.3 and 0.20.2. mwc doesn't
+Ubuntu 26.04 has wlroots 0.19.2, which lacks two fixes of 0.19.3 (0.20 has them). mwc doesn't
 work around them; the cases in `tests/session.sh` and `tests/pointer.sh` are skipped there.
 
 A screen capture first asked for while the monitor is off (grim, wayvnc or wayrdp

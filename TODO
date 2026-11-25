@@ -31,9 +31,18 @@ TODO
   in CAVEATS streichen. Bis dahin baut mwc gegen beide (Server mit wayrdp auf
   Ubuntu 26.04, docs/WAYLAND-RDP.md).
 
+* src/fifo.c auf wlroots 0.20: primary_output() nimmt den Output, auf dem
+  der größte Teil liegt, wie 0.19 die Frame-Callbacks taktet. 0.20 taktet
+  über den mit der höchsten Bildrate unter surface->current_outputs (6204fc3,
+  51d0514). Ein FIFO-Fenster über 60 und 144 Hz, größtenteils auf 60 Hz,
+  bekommt auf 0.20 Callbacks mit 144 Hz, die Barriere aber mit 60 Hz.
+  Abnahme: ein Fall in tests/fifo.sh mit zwei headless Outputs verschiedener
+  Bildrate, der auf 0.20 ohne die Änderung fehlschlägt.
+
 * ext-workspace-v1 aus wlroots (wlr_ext_workspace_v1, seit 0.20) statt
-  src/workspace.c. Erst ohne wlroots 0.19 (siehe oben). Kein Fehler, nur weniger eigener Code; nur wenn es die
-  festen Desktops und das Umschalten beim Commit genauso abbildet.
+  src/workspace.c. Erst ohne wlroots 0.19 (siehe oben). Kein Fehler, nur
+  weniger eigener Code; nur wenn es die festen Desktops und das Umschalten
+  beim Commit genauso abbildet.
   Abnahme: tests/desktop.sh unverändert.
 
 * Sloppy Focus als Alternative zu Click-to-Focus. Der Fokus folgt dem Zeiger

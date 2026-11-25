@@ -421,7 +421,7 @@ captured_is() { # description file x y rrggbb
 	echo "ok: $1"
 }
 echo 'Mwm*rootBackground: #204060' >"$RC"
-# The first capture of a monitor that is off: wlroots before 0.19.3 and 0.20.2 kept
+# The first capture of a monitor that is off: wlroots 0.19 before 0.19.3 kept
 # the source it made then, with no size and no formats, after the monitor came back.
 if wlroots_fixed; then
 	begin

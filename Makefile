@@ -5,6 +5,8 @@ PKG_CONFIG ?= pkg-config
 # wlroots 0.20, else 0.19 (Ubuntu 26.04); mwc uses nothing that differs between them.
 WLROOTS := $(or $(firstword $(foreach p,wlroots-0.20 wlroots-0.19,\
 	$(if $(shell $(PKG_CONFIG) --exists $(p) && echo ok),$(p)))),wlroots-0.20)
+# The tests ask for the same one: wlroots_fixed in tests/lib.sh.
+export WLROOTS PKG_CONFIG
 PKGS = $(WLROOTS) wayland-server xkbcommon pixman-1 cairo pangocairo
 
 ifeq ($(filter clean uninstall,$(MAKECMDGOALS)),)

@@ -66,17 +66,17 @@ require_tools() {
 	done
 }
 
-# True where wlroots has the fixes of 0.19.3 and 0.20.2 that some cases test; Ubuntu
-# 26.04 has 0.19.2. Unknown counts as fixed, so the cases run.
+# True where wlroots has the fixes some cases test: 0.20 has them from 0.20.0, 0.19 from
+# 0.19.3; Ubuntu 26.04 has 0.19.2. The Makefile names the wlroots it built against.
+# Unknown counts as fixed, so the cases run.
 wlroots_fixed() {
 	local v major minor patch
-	v=$(pkg-config --modversion wlroots-0.20 2>/dev/null ||
-		pkg-config --modversion wlroots-0.19 2>/dev/null) || return 0
+	v=$(${PKG_CONFIG:-pkg-config} --modversion "${WLROOTS:-wlroots-0.20}" 2>/dev/null ||
+		${PKG_CONFIG:-pkg-config} --modversion wlroots-0.19 2>/dev/null) || return 0
 	IFS=. read -r major minor patch <<<"$v"
 	patch=${patch%%[!0-9]*}
 	case $major.$minor in
 	0.19) [ "${patch:-0}" -ge 3 ] ;;
-	0.20) [ "${patch:-0}" -ge 2 ] ;;
 	*) return 0 ;;
 	esac
 }
